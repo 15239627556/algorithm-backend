@@ -18,11 +18,52 @@ from backend.tools.public_methods import thread_decorator, upload_folder, images
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
 from project.inference_queue_manager import TileInferenceQueueManager
-from project.smear_project import MagnificationLevel
+from project.smear_project import MagnificationLevel, TaskStatus
+from project.tile_queue import TileQueueRouter, TileMsg
 
 QueueManager = TileInferenceQueueManager()
+tile_router = TileQueueRouter()
 
 dispatcher = X100ImageModels.X100ImageModels(num_workers=1)
+
+
+def _on_tile_factory(task_service):
+    def on_tile(msg: TileMsg):
+        task_id = msg.task_id
+        project = task_service.project[task_id]
+
+        # meta 里带 position_x/position_y/image_uid
+        position_x = int(msg.tile_meta["position_x"])
+        position_y = int(msg.tile_meta["position_y"])
+        image_uid = msg.tile_meta["image_uid"]
+
+        # bytes -> np image
+        img = cv2.imdecode(np.frombuffer(msg.tile_bytes, np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("cv2.imdecode failed")
+
+        # 先创建 tile（保证推理结果回来能找到 tile）
+        # with task_service.project_lock[task_id]:
+        project.add_tile(
+            magnification=MagnificationLevel.X40,
+            row_index=msg.row_index,
+            col_index=msg.col_index,
+            position_x=position_x,
+            position_y=position_y,
+            image_uid=image_uid,
+        )
+        print('add tile:', task_id, msg.row_index, msg.col_index)
+        # 再提交推理（异步）
+        QueueManager.submit_tile(
+            project_task_id=task_id,
+            magnification=MagnificationLevel.X40,
+            row_index=msg.row_index,
+            col_index=msg.col_index,
+            image=img,
+            extra=None,
+        )
+
+    return on_tile
 
 
 class TaskService:
@@ -30,6 +71,8 @@ class TaskService:
         # project
         # {task_id: {"task_info": task_info, "project": ZWXKScanProject, grid: nx.Graph}}
         self.project = {}
+        self.grids = {}
+        self.project_lock = {}
         # 当前正在运行的任务id
         self.task_id = None
 
@@ -57,7 +100,11 @@ class TaskService:
         project = SmearProject(task_id=task_id, smear_type=task_info['smear_type'],
                                dpi=task_info['dpi'], num_rows=num_rows, num_cols=num_cols,
                                tile_width=tile_width, tile_height=tile_height)
+        tile_router.create_task(task_id, on_tile_callback=_on_tile_factory(self), num_workers=8, queue_maxsize=256,
+                                get_timeout_sec=300)
         self.project[task_id] = project
+        self.project_lock[task_id] = threading.Lock()
+        self.grids[task_id] = np.full((num_rows, num_rows), False, dtype=bool)
         project.save_pickle(upload_folder)
         print('创建任务成功：', task_id)
         self.task_id = task_id
@@ -76,9 +123,20 @@ class TaskService:
                 'ret_code': RET_CODE.TASK_IN_PROGRESS.value,
                 'ret_desc': RET_DESC.TASK_IN_PROGRESS.value,
             }
+        uploaded = False
+        with self.project_lock[task_id]:
+            grid = self.grids[task_id]
+            if grid[row_index, col_index]:
+                uploaded = True
+            grid[row_index, col_index] = True
+            finished = grid.all()
+
+        if uploaded:
+            return {
+                'ret_code': RET_CODE.IMAGE_ALREADY_UPLOADED.value,
+                'ret_desc': RET_DESC.IMAGE_ALREADY_UPLOADED.value,
+            }
         row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
-        project = self.project[task_id]
-        print('上传图片：', task_id, row_index, col_index, position_x, position_y)
         # 判断上传的图片是否为空
         image_bytes = tile_image.read()
         if len(image_bytes) == 0:
@@ -87,30 +145,58 @@ class TaskService:
                 'ret_desc': RET_DESC.CLIENT_ERROR.value,
             }
         image_uid = uuid.uuid4().hex
-        project.add_tile(
-            magnification=MagnificationLevel.X40,
-            row_index=row_index,
-            col_index=col_index,
-            position_x=position_x,
-            position_y=position_y,
-            image_uid=image_uid,
-        )
-        print('add_tile done')
         # np_arr = np.frombuffer(image_bytes, dtype=np.uint8).copy()
         # img_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        # print(img_np)
         # cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-        QueueManager.submit_tile(
-            project_task_id=task_id,
-            magnification=MagnificationLevel.X40,
+
+        # QueueManager.submit_tile(
+        #     project_task_id=task_id,
+        #     magnification=MagnificationLevel.X40,
+        #     row_index=row_index,
+        #     col_index=col_index,
+        #     image=cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        # )
+        tile_router.push_tile(
+            task_id=task_id,
             row_index=row_index,
             col_index=col_index,
-            image=cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+            tile_bytes=image_bytes,
+            tile_meta={
+                "position_x": position_x,
+                "position_y": position_y,
+                "image_uid": image_uid
+            }
         )
+        # project.add_tile(
+        #     magnification=MagnificationLevel.X40,
+        #     row_index=row_index,
+        #     col_index=col_index,
+        #     position_x=position_x,
+        #     position_y=position_y,
+        #     image_uid=image_uid,
+        # )
+        # missing_tiles = project.get_layer(MagnificationLevel.X40).check_missing_tiles()
+        print('++++++++++++++', row_index, col_index, finished)
+        if finished:
+            print('\n\n\n\nfinish_tile called=============================================')
+            # self.check_data(task_id)
+            tile_router.finish_task(task_id)
+            tile_router.join_task(task_id)
+            self.check_data(task_id)
         return {
             'ret_code': RET_CODE.API_SUCCESS.value,
             'ret_desc': RET_DESC.API_SUCCESS.value,
             'image_uid': image_uid
         }
+
+    @thread_decorator
+    def check_data(self, task_id: str):
+        project = self.project[task_id]
+        QueueManager.finish_tile(task_id, MagnificationLevel.X40)
+        project.set_task_status(TaskStatus.COMPLETED)  # 100: 已完成
+        project.save_pickle(upload_folder)
+        print('任务完成：============================================', task_id)
 
     def check_image(self, task_id: str) -> dict:
         if task_id not in self.project:

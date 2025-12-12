@@ -365,3 +365,14 @@ class SmearProject:
         with open(path, "rb") as f:
             obj = pickle.load(f)
         return obj
+
+
+if __name__ == '__main__':
+    project = SmearProject.load_pickle('36d2bb7c7f3741a9be0bd2c36d86e4d9', '../backend/uploads')
+    print(project)
+    print(project.get_layer(MagnificationLevel.X40).get_tile(16, 13).cells)
+    for row in range(25):
+        for col in range(26):
+            tile = project.get_layer(MagnificationLevel.X40).get_tile(row, col)
+            if tile:
+                print(f"Tile ({row}, {col}): {len(tile.cells)} cells")

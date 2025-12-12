@@ -12,6 +12,7 @@ import numpy as np
 
 from cells import MagnificationLevel, Cell
 from project.smear_project import SmearProject
+from backend.tools.public_methods import thread_decorator
 from tiles import Tile
 
 # 你的模型类（40x / 100x）
@@ -59,7 +60,7 @@ class ModelAdapter:
     # enqueue_fn(model, image: np.ndarray, **kwargs) -> model_task_id
     enqueue_fn: Callable[[object, np.ndarray], object]
     # parse_result_fn(result, *, project, job, tile) -> List[Cell]
-    parse_result_fn: Callable[[object, SmearProject, TileModelTask, Tile], List[Cell]]
+    parse_result_fn: Callable[[object, SmearProject, TileModelTask, Tile], List[Dict]]
 
 
 # =========================
@@ -95,23 +96,41 @@ def parse_result_as_cell_list(
     layer_name = project.get_layer(job.magnification).name  # 一定存在
 
     cells: List[Cell] = []
-    for item in result.get("cell_list", []):
-        cell = Cell(
+    for item in result.get("haveCellCenterPoints", []):
+        local_cell_rects = Cell(
             id=uuid.uuid4().hex,
             magnification=job.magnification,
             layer_name=layer_name,
             tile_row=job.row_index,
             tile_col=job.col_index,
-            x_min=int(item["cell_xmin"]),
-            y_min=int(item["cell_ymin"]),
-            x_max=int(item["cell_xmax"]),
-            y_max=int(item["cell_ymax"]),
-            cell_type_id=int(item["cell_type"]),
-            cell_type_name=str(item.get("cell_type_name", item["cell_type"])),
-            class_confidence=float(item.get("class_confidence", 1.0)),
-            bbox_confidence=float(item.get("bbox_confidence", 1.0)),
+            x_min=int(item[0]),
+            y_min=int(item[1]),
+            x_max=int(item[2]),
+            y_max=int(item[3]),
+            cell_type=0,
+            cell_type_name='有核细胞',
+            class_confidence=float(item[4]),
+            bbox_confidence=float(1.0),
         )
-        cells.append(cell)
+        cells.append(local_cell_rects)
+    for item in result.get("bigCellRects", []):
+        meg_rect = Cell(
+            id=uuid.uuid4().hex,
+            magnification=job.magnification,
+            layer_name=layer_name,
+            tile_row=job.row_index,
+            tile_col=job.col_index,
+            x_min=int(item[0]),
+            y_min=int(item[1]),
+            x_max=int(item[3]),
+            y_max=int(item[4]),
+            cell_type=1,
+            cell_type_name='巨核细胞',
+            class_confidence=float(item[4]),
+            bbox_confidence=float(1.0),
+        )
+        cells.append(meg_rect)
+    print('1234567890', job.row_index, job.col_index, len(cells))
     return cells
 
 
@@ -147,7 +166,7 @@ def parse_x100_result_from_rects(
         x_max = x_min + w
         y_max = y_min + h
 
-        cell_type_id = int(types[0]) if len(types) > 0 else -1
+        cell_type = int(types[0]) if len(types) > 0 else -1
         class_conf = float(ratios[0]) if len(ratios) > 0 else 1.0
 
         cell = Cell(
@@ -160,8 +179,8 @@ def parse_x100_result_from_rects(
             y_min=y_min,
             x_max=x_max,
             y_max=y_max,
-            cell_type_id=cell_type_id,
-            cell_type_name=str(cell_type_id),
+            cell_type=cell_type,
+            cell_type_name=str(cell_type),
             class_confidence=class_conf,
             bbox_confidence=1.0,
         )
@@ -221,7 +240,7 @@ class TileInferenceQueueManager:
 
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
-        self.register_default_x40_model(1)
+        self.register_default_x40_model(2)
         print(self._adapters.get(MagnificationLevel.X40).model)
         # self.register_default_x100_model(1)
 
@@ -318,13 +337,9 @@ class TileInferenceQueueManager:
         :return: 模型内部的 task_id
         """
         adapter = self._adapters.get(magnification)
-        print(adapter.model)
         if adapter is None:
             raise RuntimeError(f"No model adapter registered for magnification={magnification}")
-
-        print('Submitting tile to model:', magnification, row_index, col_index)
         model_task_id = adapter.enqueue_fn(adapter.model, image)
-        print('Model task id:', model_task_id)
         job = TileModelTask(
             project_task_id=project_task_id,
             magnification=magnification,
@@ -333,14 +348,37 @@ class TileInferenceQueueManager:
             model_task_id=model_task_id,
             extra=extra or {},
         )
-
         with self._queue_lock:
             self._queue.append(job)
             with self._cond:
                 self._cond.notify()
-        print('Model task id123:', model_task_id)
-        print(self._queue.__len__(), 'tasks in queue')
         return model_task_id
+
+    def finish_tile(
+            self,
+            project_task_id: str,
+            magnification: MagnificationLevel,
+    ) -> None:
+        """
+        推理任务完成。
+        :param project_task_id: SmearProject.task_id
+        :param magnification: 倍率（40x / 100x / 未来更多）
+        """
+        adapter = self._adapters.get(magnification)
+        if adapter is None:
+            raise RuntimeError(f"No model adapter registered for magnification={magnification}")
+        with self.enqueue_lock:
+            adapter.model.synchronize()
+        print('\n\n\n\nFinishing tile:'
+              ''
+              ''
+              ''
+              ''
+              ''
+              ''
+              ''
+              ''
+              '', magnification, project_task_id)
 
     # ---------- 停止 ----------
 
@@ -371,7 +409,6 @@ class TileInferenceQueueManager:
                 if not self._queue:
                     continue
                 job = self._queue.popleft()
-
             adapter = self._adapters.get(job.magnification)
             if adapter is None:
                 # 没找到对应模型，忽略这个任务
@@ -385,7 +422,6 @@ class TileInferenceQueueManager:
                     self._queue.append(job)
                 time.sleep(self._poll_interval)
                 continue
-
             # 找到对应的项目和瓦片
             project = self.get_project(job.project_task_id)
             if project is None:

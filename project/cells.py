@@ -37,10 +37,10 @@ class Cell:
     x_max: int
     y_max: int
 
-    cell_type_id: int
+    cell_type: int
     cell_type_name: str
-    class_confidence: float
-    bbox_confidence: float
+    class_confidence: float = 1.0
+    bbox_confidence: float = 1.0
 
     extra: dict = field(default_factory=dict)
 
@@ -53,7 +53,7 @@ class Cell:
             "cell_ymin": self.y_min,
             "cell_xmax": self.x_max,
             "cell_ymax": self.y_max,
-            "cell_type": self.cell_type_id,
+            "cell_type": self.cell_type,
             "cell_type_name": self.cell_type_name,
             "class_confidence": float(self.class_confidence),
             "bbox_confidence": float(self.bbox_confidence),
