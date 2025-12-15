@@ -1016,16 +1016,17 @@ def _points_in_union_rects(P, rects):
     return inside.any(axis=1)  # (N,)
 
 
+
 def wbc_generate_task(
         best_result,
         infos_40xtile,
         user_choose_area,
-        pad=100,
-        params=None,
+        pad: int = 100,
+        params: Optional[SetCoverSolverParameter] = None,
         tile_w: int = 2448,
         tile_h: int = 2048,
-        halo_tiles: int = 1,  # 邻域补片
-        halo_px: int = 0,  # 对“微矩形”做轻量像素外扩
+        halo_tiles: int = 1,   # 邻域补片
+        halo_px: int = 0,      # 对“微矩形”做轻量像素外扩
 ):
     """
     只用【被选中的网格点】对应的微矩形作为 ROI（而非整块 tile），
@@ -1156,20 +1157,21 @@ def wbc_generate_task(
     return rects_x100, matched_points, matched_sizes
 
 
+
 def meg_generate_task_filtered_BMP(
         wbs_first_rect,
         infos_40xtile,
         user_choose_area,
         Adition_shooting_flag,
-        view_type="meg",
-        pad=100,
-        save_flag=False,
+        view_type: str = "meg",
+        pad: int = 100,
+        save_flag: bool = False,
         save_dir=None,
-        params: SetCoverSolverParameter = SetCoverSolverParameter(),
+        params: Optional[SetCoverSolverParameter] = None,
         iou_thr: float = 0.90,
-        iom_thr: float = 0.90,  # 保留签名兼容；最终去重采用 NMS 的 IoU
-        bad_iom_thr: float = 0.50,  # 过滤坏区用：候选框与坏区的 IoM 阈值（交/小框面积）
-        bad_center_hit: bool = True,  # 过滤坏区用：是否用中心点命中坏区
+        iom_thr: float = 0.90, # 保留签名兼容；最终去重采用 NMS 的 IoU
+        bad_iom_thr: float = 0.50, # 过滤坏区用：候选框与坏区的 IoM 阈值（交/小框面积）
+        bad_center_hit: bool = True, # 过滤坏区用：是否用中心点命中坏区
         eps: float = 1e-9,  # 数值稳定
         debug: bool = False
 ):
@@ -1850,12 +1852,15 @@ def build_grouped_results_from_assignment(
     return grouped_results
 
 
+
 def select_and_generate_bestArea_capture_tasks(
         infos_40xtile,
         user_choose_area,
         heatmap_orientation,
         target_cell_num,
-        save_flag=False,
+        rect_width: int = 384,
+        rect_height: int = 283,
+        save_flag: bool = False,
         save_dir: str | None = None,
 ):
     """
@@ -1912,7 +1917,11 @@ def select_and_generate_bestArea_capture_tasks(
 
     if target_cell_num <= 0:
         raise ValueError("目标细胞数量必须大于 0")
-
+    
+    # 创建带自定义宽高的参数对象，后面传给 wbc / meg 两个任务函数
+    solver_params = SetCoverSolverParameter(rect_width=rect_width,
+                                            rect_height=rect_height)
+    
     # 1) 创建分值热力图
     Scores_Matrix = scores_matrix(infos_40xtile, user_choose_area)
 
@@ -1971,7 +1980,8 @@ def select_and_generate_bestArea_capture_tasks(
 
     # 8) 一次性生成所有有核拍摄任务（100×）
     # 虽然该步骤根据best_result[outPointsAll]生成的x100框，但在步骤9 x100框分配时是按task_points_list进行匹配的，task_points_list过滤了骨髓小粒
-    rects_x100, matched_points, matched_sizes = wbc_generate_task(best_result, infos_40xtile, user_choose_area)
+    rects_x100, matched_points, matched_sizes = wbc_generate_task(best_result, infos_40xtile, user_choose_area, params=solver_params)
+
     print("生成的百倍任务矩形列表： {}".format(len(rects_x100)))
 
     if len(rects_x100) != len(matched_points):
@@ -2019,10 +2029,23 @@ def select_and_generate_bestArea_capture_tasks(
     # 10) 生成巨核拍摄任务
     wbs_first_rect = task_rects_list[0]  # 热力图坐标 (x, y, w, h)
     wbs_first_abs_rect = heatmap_rect_to_abs_rect(wbs_first_rect, user_choose_area, infos_40xtile)  # 绝对像素坐标
-    meg_task = meg_generate_task_filtered_BMP(wbs_first_abs_rect, infos_40xtile, user_choose_area,
-                                              Adition_shooting_flag='False',
-                                              save_flag=save_flag, save_dir=save_dir,
-                                              view_type="meg", debug=True, bad_iom_thr=0.2)
+    meg_task = meg_generate_task_filtered_BMP(
+        wbs_first_abs_rect,
+        infos_40xtile,
+        user_choose_area,
+        Adition_shooting_flag='False',
+        view_type="meg",
+        pad=100,
+        save_flag=save_flag,
+        save_dir=save_dir,
+        params=solver_params,        
+        iou_thr=0.90,
+        iom_thr=0.90,
+        bad_iom_thr=0.2,
+        bad_center_hit=True,
+        debug=True,
+    )
+
 
     x100_results.append(meg_task)  # 巨核任务放在最后
 
@@ -2040,6 +2063,7 @@ if __name__ == "__main__":
     project_list = os.listdir(json_dir)
 
     for project_name in project_list:
+        print("*********处理项目**********：", project_name)
         json_path = os.path.join(json_dir, project_name)
         save_dir = '/home/ubuntu/VScodeProjects/megLoc_heatmap/new_output_8/' + Path(json_path).stem
         if os.path.exists(save_dir) == False:
@@ -2062,9 +2086,21 @@ if __name__ == "__main__":
         heatmap_orientation = 1
         target_cell_num = 500
         start_time = time.time()
-        task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile, user_choose_area, heatmap_orientation,
-                                                               target_cell_num,
-                                                               save_flag=True, save_dir=save_dir)
+        # task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile, 
+        #                                                        user_choose_area, 
+        #                                                        heatmap_orientation,
+        #                                                        target_cell_num,
+        #                                                        save_flag=True, 
+        #                                                        save_dir=save_dir)
+        
+        task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile,
+                                                                user_choose_area,
+                                                                heatmap_orientation,
+                                                                target_cell_num,
+                                                                rect_width=512,     # 百倍视野的宽
+                                                                rect_height=320,    # 百倍视野的高
+                                                                save_flag=True,
+                                                                save_dir=save_dir)
         end_time = time.time()
         print(f"百倍任务列表生成成功，耗时：{end_time - start_time:.2f} 秒，共 {len(task_list)} 个任务块")
 
