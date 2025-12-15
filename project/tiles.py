@@ -19,7 +19,7 @@ class TileMeta:
     - extra: 任何自定义字段
     """
     image_uid: Optional[str] = None
-    quality_score: Optional[float] = None
+    quality_score: List[List[float]] = field(default_factory=list)
     stain_type: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
@@ -54,6 +54,18 @@ class Tile:
         向当前瓦片添加一个细胞（cell 坐标必须为全局坐标）。
         """
         self.cells.append(cell)
+
+    def set_meta_quality_score(self, score: list) -> None:
+        """
+        设置当前瓦片的质量分数。
+        """
+        self.meta.quality_score = score
+
+    def get_meta_quality_score(self) -> List[List[float]]:
+        """
+        获取当前瓦片的质量分数。
+        """
+        return self.meta.quality_score
 
     def as_api_dict(self) -> dict:
         """

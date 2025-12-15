@@ -31,7 +31,7 @@ def get_queue_manager() -> TileInferenceQueueManager:
         # Under spawn, child process imports modules too; avoid double-init.
         if mp.current_process().name != "MainProcess":
             raise RuntimeError("QueueManager must be initialized in MainProcess")
-        QueueManager = TileInferenceQueueManager()
+        QueueManager = TileInferenceQueueManager(model_num_workers=3)
     return QueueManager
 
 
@@ -59,8 +59,6 @@ def _on_tile_factory(task_service):
             position_y=position_y,
             image_uid=image_uid,
         )
-        print('add tile:', task_id, msg.row_index, msg.col_index)
-
         # B方案：只提交 bytes，不在 Flask 进程 decode / 不触碰模型
         get_queue_manager().submit_tile_bytes(
             project_task_id=task_id,

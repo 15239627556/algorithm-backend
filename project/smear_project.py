@@ -258,6 +258,17 @@ class SmearProject:
         for cell in cells:
             tile.add_cell(cell)
 
+    def set_meta_quality_score_to_tile(
+            self,
+            magnification: MagnificationLevel,
+            row_index: int,
+            col_index: int,
+            score: list
+    ):
+        layer = self.layers.get(magnification)
+        tile = layer.get_tile(row_index, col_index)
+        tile.set_meta_quality_score(score)
+
     def get_cells_in_roi(
             self,
             magnification: MagnificationLevel,
@@ -369,10 +380,10 @@ class SmearProject:
 
 
 if __name__ == '__main__':
-    project = SmearProject.load_pickle('0b38a9a1bf5e459eb93acb068508850d', '../backend/uploads')
-    print(project.get_layer(MagnificationLevel.X40).get_tile(20, 12).cells)
-    for row in range(25):
-        for col in range(26):
+    project = SmearProject.load_pickle('0b8f4fc475b046adbc3c47107a2829de', '../backend/uploads')
+    layer = project.layers.get(MagnificationLevel.X40)
+    for row in range(layer.num_rows):
+        for col in range(layer.num_cols):
             tile = project.get_layer(MagnificationLevel.X40).get_tile(row, col)
             if tile:
                 print(f"Tile ({row}, {col}): {len(tile.cells)} cells")

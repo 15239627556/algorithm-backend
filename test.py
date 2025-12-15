@@ -1,24 +1,14 @@
 import cv2
 import time
 # from algorithms.x40enhance import X40ImageEnhanceModels
-# from algorithms.x40model import X40ImageModels
+from algorithms.x40model import X40ImageModels
 
 # from algorithms.x100model import X100ImageModels
 # from algorithms.x100CSFmodel import X100CSFImageModels
 
 # im1 = cv2.imread("algorithm_source/x100model/1.jpg")
-im1 = cv2.imread("algorithm_source/x40model/1.jpg")
+im1 = cv2.imread(r"/mnt/d/data/data20250901/Images/Pos[7][13].jpg")
 # im1 = cv2.imread("algorithm_source/x100CSFmodel/1.jpg")
-print(type(im1))
-print()
-print(im1.shape)
-print()
-print(im1.dtype)
-print()
-print(im1.nbytes)
-print()
-print(im1)
-exit()
 dispatcher = X40ImageModels.X40ImageModels(num_workers=2)
 # dispatcher = X100ImageModels.X100ImageModels(num_workers=2)
 # dispatcher = X100CSFImageModels.X100CSFImageModels(num_workers=2)
@@ -49,6 +39,7 @@ for task_id in range(50):
     # print("enhance_arr", result["enhance_arr"])
     # img = result["enhance_arr"]
     # cv2.imwrite("output.jpg", img)
+print(result)
 
 for i in result["haveCellCenterPoints"]:
     x, y, x1, y1, sore = i

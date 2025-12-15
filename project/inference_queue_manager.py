@@ -102,8 +102,6 @@ def _inference_process_main(
     pending: Deque[tuple[Any, TileModelTask]] = deque()
 
     running = True
-    grids_sub = np.full((23, 25), False, dtype=bool)
-    grids_res = np.full((23, 25), False, dtype=bool)
     while running:
         try:
             msg = in_q.get(timeout=poll_interval)
@@ -113,25 +111,15 @@ def _inference_process_main(
             mtype = msg.get("type")
             if mtype == "SUBMIT":
                 job: TileModelTask = msg["job"]
-                grids_sub[job.row_index, job.col_index] = True
                 img = cv2.imdecode(np.frombuffer(job.tile_bytes, np.uint8), cv2.IMREAD_COLOR)
-                # if img is None:
-                #     out_q.put({"type": "ERROR", "project_task_id": job.project_task_id,
-                #                "row_index": job.row_index, "col_index": job.col_index,
-                #                "magnification": job.magnification, "error": "cv2.imdecode failed"})
-                # else:
-                img = np.ascontiguousarray(img)
+                # img = np.ascontiguousarray(img)
                 model_task_id = model.enqueue_task(img)
                 pending.append((model_task_id, job))
-
             elif mtype == "SYNC":
                 try:
-                    print('我进来了======')
                     model.synchronize()
-                    print('我出来了======')
                 except Exception as e:
                     out_q.put({"type": "ERROR", "error": repr(e), "where": "SYNC"})
-
             elif mtype == "STOP":
                 running = False
 
@@ -140,13 +128,13 @@ def _inference_process_main(
             try:
                 result = model.get_result(model_task_id)
             except Exception as e:
+                print(f'[InferenceProcess ERROR]{job.row_index}{job.col_index}', repr(e))
                 out_q.put({"type": "ERROR", "project_task_id": job.project_task_id,
                            "row_index": job.row_index, "col_index": job.col_index,
                            "magnification": job.magnification, "error": repr(e)})
                 continue
 
             if result:
-                grids_res[job.row_index, job.col_index] = True
                 out_q.put(
                     {
                         "type": "RESULT",
@@ -161,12 +149,6 @@ def _inference_process_main(
                 )
             else:
                 pending.append((model_task_id, job))
-        # rows, cols = np.where(grids_sub == False)
-        # coords = list(zip(rows, cols))
-        # print('grids_sub:', coords[:2])
-        # rows, cols = np.where(grids_res == False)
-        # coords = list(zip(rows, cols))
-        # print('grids_res:', coords[:2])
 
 
 class TileInferenceQueueManager:
@@ -208,7 +190,7 @@ class TileInferenceQueueManager:
         self._submitted: Dict[str, int] = {}  # task_id -> submitted tiles
         self._written: Dict[str, int] = {}  # task_id -> tiles written back to project (RESULT handled)
         self._cv = threading.Condition()
-        self.count_result = 0
+        self.write_count = 0
 
     def register_project(self, project: SmearProject) -> None:
         self._projects[project.task_id] = project
@@ -303,6 +285,9 @@ class TileInferenceQueueManager:
 
     def _handle_out_msg(self, msg: dict) -> None:
         mtype = msg.get("type")
+        self.write_count += 1
+        print(self.write_count)
+        print(mtype)
         if mtype == "RESULT":
             project_task_id = msg["project_task_id"]
             magnification = msg["magnification"]
@@ -312,22 +297,22 @@ class TileInferenceQueueManager:
 
             project = self.get_project(project_task_id)
             if project is None:
-                print("[DROP] project None", project_task_id);
+                print("[DROP] project None", project_task_id)
                 return
 
             layer = project.get_layer(magnification)
             if layer is None:
-                print("[DROP] layer None", project_task_id, magnification);
+                print("[DROP] layer None", project_task_id, magnification)
                 return
 
             tile = layer.get_tile(row_index, col_index)
             if tile is None:
-                print("[DROP] tile None", project_task_id, magnification, row_index, col_index);
+                print("[DROP] tile None", project_task_id, magnification, row_index, col_index)
                 return
 
             adapter = self._adapters.get(magnification)
             if adapter is None:
-                print("[DROP] adapter None", magnification, type(magnification));
+                print("[DROP] adapter None", magnification, type(magnification))
                 return
 
             job = TileModelTask(
@@ -344,7 +329,10 @@ class TileInferenceQueueManager:
                 cells = adapter.parse_result_fn(result, project, job, tile)
             except Exception:
                 return
-
+            areaScoreInfo = result.get("areaScoreInfo", [])
+            print(areaScoreInfo)
+            project.set_meta_quality_score_to_tile(magnification, row_index, col_index, areaScoreInfo)
+            print("++++++++++++++++", row_index, col_index, len(result.get('haveCellCenterPoints')))
             if cells:
                 project.add_cells_to_tile(magnification, row_index, col_index, cells)
 
@@ -352,17 +340,8 @@ class TileInferenceQueueManager:
                 self._written[project_task_id] = self._written.get(project_task_id, 0) + 1
                 self._cv.notify_all()
 
-            self.count_result += 1
-
-            print(row_index, col_index, len(cells))
-            print(self.count_result)
-            if self.count_result >= 570:
-                print(self._expected[project_task_id])
-                print(self._submitted[project_task_id])
-                print(self._written[project_task_id])
-
-
         elif mtype == "ERROR":
             print("[InferenceProcess ERROR]", msg)
         else:
+            print('[InferenceProcess UNKNOWN MSG]', msg)
             return
