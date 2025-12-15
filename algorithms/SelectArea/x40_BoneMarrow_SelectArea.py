@@ -1853,6 +1853,122 @@ def build_grouped_results_from_assignment(
 
 
 
+
+def _build_tile_lookup(infos_40xtile: List[Dict[str, Any]]) -> Dict[Tuple[int, int], Dict[str, Any]]:
+    """
+    建立 (row_index, col_index) -> tile_info 的索引
+    这里假设:
+      row_index 对应 index_40xtile_y
+      col_index 对应 index_40xtile_x
+    如果你们定义相反，调换一下即可。
+    """
+    lookup = {}
+    for info in infos_40xtile:
+        x = int(info.get("index_40xtile_x"))
+        y = int(info.get("index_40xtile_y"))
+        lookup[(y, x)] = info
+    return lookup
+
+
+def _normalize_view_type(view_type: Any) -> str:
+    """
+    旧结构可能是 'wbc'/'meg'/'WBC'/'MEG' 等
+    新结构期望: 'WBC' 或 'MEG'
+    """
+    if view_type is None:
+        assert False, "view_type 不能为空"
+    s = str(view_type).strip()
+    s_low = s.lower()
+    if s_low == "meg":
+        return "MEG"
+    if s_low == "wbc":
+        return "WBC"
+    # 兜底：尽量大写
+    return s.upper()
+
+
+def convert_task_list_old_to_new(
+    old_task_list: List[List[Dict[str, Any]]],
+    infos_40xtile: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    将旧返回结构 old_task_list (List[List[Dict]]) 转为新结构 List[Dict]
+    
+    参数:
+      old_task_list: 旧结构
+      infos_40xtile: 40x tile 信息(只包含用户框选范围内的tile)
+
+    返回:
+      new_task_list: 新结构 list
+    """
+
+
+    tile_lookup = _build_tile_lookup(infos_40xtile)
+
+    new_list: List[Dict[str, Any]] = []
+    task_index = 0
+
+    for sub_list in old_task_list:  # 初始拍摄框/补拍0/补拍1/... 
+        for task in sub_list:       # 组内每个任务点
+            task_index += 1
+
+            row_index = int(task.get("row_index", 0))
+            col_index = int(task.get("col_index", 0))
+
+            tile_info = tile_lookup.get((row_index, col_index))
+            if tile_info is None:
+                assert False, f"未找到对应 tile 信息，row_index={row_index}, col_index={col_index}"
+            else:
+                abs_x = int(tile_info.get("abs_40xtile_x", 0))
+                abs_y = int(tile_info.get("abs_40xtile_y", 0))
+
+            view_pos_x = int(task.get("view_pos_x"))
+            view_pos_y = int(task.get("view_pos_y"))
+            view_w = int(task.get("view_width"))
+            view_h = int(task.get("view_height"))
+
+            view_xmin = abs_x + view_pos_x
+            view_ymin = abs_y + view_pos_y
+            view_xmax = view_xmin + view_w
+            view_ymax = view_ymin + view_h
+
+            # cell_list 转换：局部左上角 -> 绝对左上角 -> 绝对右下角
+            new_cells: List[Dict[str, int]] = []
+            for c in task.get("cell_list"):
+                cell_x = int(c.get("cell_x"))
+                cell_y = int(c.get("cell_y"))
+                cell_w = int(c.get("cell_width"))
+                cell_h = int(c.get("cell_height"))
+
+                cell_xmin = abs_x + cell_x
+                cell_ymin = abs_y + cell_y
+                cell_xmax = cell_xmin + cell_w
+                cell_ymax = cell_ymin + cell_h
+
+                new_cells.append({
+                    "cell_xmin": cell_xmin,
+                    "cell_ymin": cell_ymin,
+                    "cell_xmax": cell_xmax,
+                    "cell_ymax": cell_ymax,
+                })
+
+            # 新结构任务点
+            new_task: Dict[str, Any] = {
+                "task_index": task_index, 
+                "Adition_shooting_flag": task.get("Adition_shooting_flag"),
+                "view_type": _normalize_view_type(task.get("view_type")),
+                "view_xmin": view_xmin,
+                "view_ymin": view_ymin,
+                "view_xmax": view_xmax,
+                "view_ymax": view_ymax,
+                "cell_list": new_cells,
+            }
+
+            new_list.append(new_task)
+
+    return new_list
+
+
 def select_and_generate_bestArea_capture_tasks(
         infos_40xtile,
         user_choose_area,
@@ -1931,9 +2047,7 @@ def select_and_generate_bestArea_capture_tasks(
     print("头部区域裁剪 Rect： {}".format(head_crop_rect))
 
     # 3) 计算旋转框尺寸
-    rects = generate_unique_rects(
-        [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 30, 40, 60, 80, 100, 120, 160, 200, 300,
-         400])
+    rects = generate_unique_rects([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 30, 40, 60, 80, 100, 120, 160, 200, 300, 400])
     print("生成的旋转框尺寸： {}".format(len(rects)))
 
     # 4) 计算每个旋转框的得分和细胞数量（目标= target_cell_num*3）
@@ -2049,7 +2163,15 @@ def select_and_generate_bestArea_capture_tasks(
 
     x100_results.append(meg_task)  # 巨核任务放在最后
 
-    return x100_results
+    # 11) 转换为新结构输出
+    new_x100_results = convert_task_list_old_to_new(x100_results, infos_40xtile)
+
+    return new_x100_results
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -2103,6 +2225,7 @@ if __name__ == "__main__":
                                                                 save_dir=save_dir)
         end_time = time.time()
         print(f"百倍任务列表生成成功，耗时：{end_time - start_time:.2f} 秒，共 {len(task_list)} 个任务块")
+        print(f"百倍任务列表示例：{task_list[:1]}")
 
         with open(save_result_json_path, 'w') as f:
             json.dump(task_list, f, indent=4)
