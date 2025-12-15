@@ -1,15 +1,12 @@
 import os
 import threading
+import multiprocessing as mp
 import time
 import uuid
-from datetime import datetime
 
 import cv2
 import numpy as np
-import werkzeug.datastructures
 from itertools import chain
-from functools import wraps
-from copy import deepcopy
 
 from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
 from algorithms.x100model import X100ImageModels
@@ -21,9 +18,26 @@ from project.inference_queue_manager import TileInferenceQueueManager
 from project.smear_project import MagnificationLevel, TaskStatus
 from project.tile_queue import TileQueueRouter, TileMsg
 
-QueueManager = TileInferenceQueueManager()
+# -----------------------------
+# B方案：QueueManager 懒加载 + 预热
+# -----------------------------
+
+QueueManager = None
+
+
+def get_queue_manager() -> TileInferenceQueueManager:
+    global QueueManager
+    if QueueManager is None:
+        # Under spawn, child process imports modules too; avoid double-init.
+        if mp.current_process().name != "MainProcess":
+            raise RuntimeError("QueueManager must be initialized in MainProcess")
+        QueueManager = TileInferenceQueueManager()
+    return QueueManager
+
+
 tile_router = TileQueueRouter()
 
+# NOTE: 如果 X100ImageModels 也内部带多进程/GPU，建议也改为懒加载。
 dispatcher = X100ImageModels.X100ImageModels(num_workers=1)
 
 
@@ -32,18 +46,11 @@ def _on_tile_factory(task_service):
         task_id = msg.task_id
         project = task_service.project[task_id]
 
-        # meta 里带 position_x/position_y/image_uid
         position_x = int(msg.tile_meta["position_x"])
         position_y = int(msg.tile_meta["position_y"])
         image_uid = msg.tile_meta["image_uid"]
 
-        # bytes -> np image
-        img = cv2.imdecode(np.frombuffer(msg.tile_bytes, np.uint8), cv2.IMREAD_COLOR)
-        if img is None:
-            raise ValueError("cv2.imdecode failed")
-
-        # 先创建 tile（保证推理结果回来能找到 tile）
-        # with task_service.project_lock[task_id]:
+        # 先创建 tile，确保结果回来能找到 tile
         project.add_tile(
             magnification=MagnificationLevel.X40,
             row_index=msg.row_index,
@@ -53,13 +60,15 @@ def _on_tile_factory(task_service):
             image_uid=image_uid,
         )
         print('add tile:', task_id, msg.row_index, msg.col_index)
-        # 再提交推理（异步）
-        QueueManager.submit_tile(
+
+        # B方案：只提交 bytes，不在 Flask 进程 decode / 不触碰模型
+        get_queue_manager().submit_tile_bytes(
             project_task_id=task_id,
             magnification=MagnificationLevel.X40,
             row_index=msg.row_index,
             col_index=msg.col_index,
-            image=img,
+            tile_bytes=msg.tile_bytes,
+            tile_meta=msg.tile_meta,
             extra=None,
         )
 
@@ -68,12 +77,10 @@ def _on_tile_factory(task_service):
 
 class TaskService:
     def __init__(self):
-        # project
-        # {task_id: {"task_info": task_info, "project": ZWXKScanProject, grid: nx.Graph}}
         self.project = {}
+        self.project_x100 = {}
         self.grids = {}
         self.project_lock = {}
-        # 当前正在运行的任务id
         self.task_id = None
 
     def load_data(self, task_id):
@@ -88,6 +95,9 @@ class TaskService:
         self.project[task_id] = SmearProject.load_pickle(task_id, upload_folder)
 
     def create_task(self, task_info: dict) -> dict:
+        # B+预热：确保 inference 进程已 READY
+        get_queue_manager()
+
         task_id = uuid.uuid4().hex
         self.task_id = task_id
         task_info['task_id'] = task_id
@@ -97,18 +107,27 @@ class TaskService:
         num_cols = task_info.get('num_cols')
         tile_width = task_info.get('tile_width', 2448)
         tile_height = task_info.get('pixel_height', 2048)
+
         project = SmearProject(task_id=task_id, smear_type=task_info['smear_type'],
                                dpi=task_info['dpi'], num_rows=num_rows, num_cols=num_cols,
                                tile_width=tile_width, tile_height=tile_height)
-        tile_router.create_task(task_id, on_tile_callback=_on_tile_factory(self), num_workers=8, queue_maxsize=256,
-                                get_timeout_sec=300)
+
+        tile_router.create_task(
+            task_id,
+            on_tile_callback=_on_tile_factory(self),
+            num_workers=4,
+            queue_maxsize=256,
+            get_timeout_sec=300,
+        )
+
         self.project[task_id] = project
         self.project_lock[task_id] = threading.Lock()
-        self.grids[task_id] = np.full((num_rows, num_rows), False, dtype=bool)
-        project.save_pickle(upload_folder)
+        self.grids[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
+
         print('创建任务成功：', task_id)
-        self.task_id = task_id
-        QueueManager.register_project(project)
+        get_queue_manager().register_project(project)
+        get_queue_manager().set_expected_tiles(task_id, num_rows * num_cols)
+
         return {
             'task_id': task_id,
             'ret_code': RET_CODE.API_SUCCESS.value,
@@ -123,80 +142,60 @@ class TaskService:
                 'ret_code': RET_CODE.TASK_IN_PROGRESS.value,
                 'ret_desc': RET_DESC.TASK_IN_PROGRESS.value,
             }
-        uploaded = False
-        with self.project_lock[task_id]:
-            grid = self.grids[task_id]
-            if grid[row_index, col_index]:
-                uploaded = True
-            grid[row_index, col_index] = True
-            finished = grid.all()
-
-        if uploaded:
-            return {
-                'ret_code': RET_CODE.IMAGE_ALREADY_UPLOADED.value,
-                'ret_desc': RET_DESC.IMAGE_ALREADY_UPLOADED.value,
-            }
-        row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
-        # 判断上传的图片是否为空
         image_bytes = tile_image.read()
         if len(image_bytes) == 0:
             return {
                 'ret_code': RET_CODE.CLIENT_ERROR.value,
                 'ret_desc': RET_DESC.CLIENT_ERROR.value,
             }
-        image_uid = uuid.uuid4().hex
-        # np_arr = np.frombuffer(image_bytes, dtype=np.uint8).copy()
-        # img_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        # print(img_np)
-        # cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-
-        # QueueManager.submit_tile(
-        #     project_task_id=task_id,
-        #     magnification=MagnificationLevel.X40,
-        #     row_index=row_index,
-        #     col_index=col_index,
-        #     image=cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-        # )
-        tile_router.push_tile(
-            task_id=task_id,
-            row_index=row_index,
-            col_index=col_index,
-            tile_bytes=image_bytes,
-            tile_meta={
-                "position_x": position_x,
-                "position_y": position_y,
-                "image_uid": image_uid
+        row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
+        with self.project_lock[task_id]:
+            grid = self.grids[task_id]
+            if grid[row_index, col_index]:
+                return {
+                    'ret_code': RET_CODE.IMAGE_ALREADY_UPLOADED.value,
+                    'ret_desc': RET_DESC.IMAGE_ALREADY_UPLOADED.value,
+                }
+            grid[row_index, col_index] = True
+            finished = grid.all()
+            image_uid = uuid.uuid4().hex
+            tile_router.push_tile(
+                task_id=task_id,
+                row_index=row_index,
+                col_index=col_index,
+                tile_bytes=image_bytes,
+                tile_meta={
+                    "position_x": position_x,
+                    "position_y": position_y,
+                    "image_uid": image_uid
+                }
+            )
+            # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
+            if finished:
+                self._finish_task_async(task_id)
+            return {
+                'ret_code': RET_CODE.API_SUCCESS.value,
+                'ret_desc': RET_DESC.API_SUCCESS.value,
+                'image_uid': image_uid
             }
-        )
-        # project.add_tile(
-        #     magnification=MagnificationLevel.X40,
-        #     row_index=row_index,
-        #     col_index=col_index,
-        #     position_x=position_x,
-        #     position_y=position_y,
-        #     image_uid=image_uid,
-        # )
-        # missing_tiles = project.get_layer(MagnificationLevel.X40).check_missing_tiles()
-        print('++++++++++++++', row_index, col_index, finished)
-        if finished:
-            print('\n\n\n\nfinish_tile called=============================================')
-            # self.check_data(task_id)
-            tile_router.finish_task(task_id)
-            tile_router.join_task(task_id)
-            self.check_data(task_id)
-        return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
-            'image_uid': image_uid
-        }
 
     @thread_decorator
-    def check_data(self, task_id: str):
-        project = self.project[task_id]
-        QueueManager.finish_tile(task_id, MagnificationLevel.X40)
-        project.set_task_status(TaskStatus.COMPLETED)  # 100: 已完成
-        project.save_pickle(upload_folder)
-        print('任务完成：============================================', task_id)
+    def _finish_task_async(self, task_id: str):
+        try:
+            tile_router.finish_task(task_id)
+            tile_router.join_task(task_id)
+
+            project = self.project[task_id]
+            get_queue_manager().finish_tile(task_id, MagnificationLevel.X40)
+            print('等待所有图像处理完成：============================================', task_id)
+            get_queue_manager().wait_written_all(task_id, timeout=300.0)
+            print('所有图像处理完成，开始选区：============================================', task_id)
+            project.set_task_status(TaskStatus.COMPLETED)  # 100: 已完成
+            print('准备pickle保存：============================================', task_id)
+            project.save_pickle(upload_folder)
+            print('任务完成：============================================', task_id)
+        except Exception as e:
+            print("[finish_task_async ERROR]", task_id, repr(e))
 
     def check_image(self, task_id: str) -> dict:
         if task_id not in self.project:
@@ -233,17 +232,17 @@ class TaskService:
             'task_status': self.get_desc(task_status.value)
         }
 
-    def get_result(self, task_id: str, min_row: int, max_row: int, min_col: int, max_col: int) -> dict:
+    def get_result(self, task_id: str, roi_xmin, roi_ymin, roi_xmax, roi_ymax) -> dict:
         if task_id not in self.project:
             result = self.load_data(task_id)
             if result:
                 return result
         project = self.project[task_id]
-        if not max_row or not max_col:
+        if not roi_xmax or not roi_ymax:
             layer = project.get_layer(MagnificationLevel.X40)
-            max_row = layer.num_rows - 1
-            max_col = layer.num_cols - 1
-        cell_list = project.get_cells_in_roi(MagnificationLevel.X40, min_row, max_row, min_col, max_col)
+            roi_xmax = layer.num_rows
+            roi_ymax = layer.num_cols
+        cell_list = project.get_cells_in_roi(MagnificationLevel.X40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return {
             'ret_code': RET_CODE.API_SUCCESS.value,
             'ret_desc': RET_DESC.API_SUCCESS.value,
@@ -251,102 +250,57 @@ class TaskService:
             'cell_list': cell_list
         }
 
-    def get_node(self, task_id):
-        pass
-
-    def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_num_WBC, target_num_MEG,
-                           index_offset, request_task_num):
+    def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_num_WBC,
+                           target_num_MEG, index_offset, request_task_num):
+        if task_id not in self.project:
+            result = self.load_data(task_id)
+            if result:
+                return result
         project = self.project[task_id]
-        if project.task_status != 100:
-            return {
-                'ret_code': RET_CODE.TASK_RUNNING.value,
-                'ret_desc': RET_DESC.TASK_RUNNING.value,
-            }
-        infos_40xtile = []
         layer = project.get_layer(MagnificationLevel.X40)
         if not user_choice_area:
-            print('user_choose_area is None, use full area')
+            print('user_choice_area is None, use full area')
             user_choice_area = {
-                'min_row': 0,
-                'max_row': layer.num_rows - 1,
-                'min_col': 0,
-                'max_col': layer.num_cols - 1,
+                'x_min': 0,
+                'y_min': 0,
+                'x_max': layer.num_cols - 1,
+                'y_max': layer.num_rows - 1
             }
-        min_row = user_choice_area['min_row']
-        max_row = user_choice_area['max_row']
-        min_col = user_choice_area['min_col']
-        max_col = user_choice_area['max_col']
-        if not self.project[task_id].get(f'task_list_x100_{min_row}_{max_row}_{min_col}_{max_col}'):
-            for row in range(min_row, max_row + 1):
-                for col in range(min_col, max_col + 1):
-                    # todo
-                    data = project.nodes[(row, col)]
-                    position = data['position']
-                    meg_center_pt = data['meg_center_pt']
-                    global_cell_rects_dedup = data['global_cell_rects_dedup']
-                    local_cell_rects = data['wbc_center_pt']
-                    scores = data['area_score_info']
-                    new_scores = {
-                        '0_0': [scores[0][4], scores[0][5]],
-                        '1_0': [scores[1][4], scores[1][5]],
-                        '0_1': [scores[2][4], scores[2][5]],
-                        '1_1': [scores[3][4], scores[3][5]],
-                    }
-                    if not data:
-                        continue
-                    abs_40xtile_x = position[0]
-                    abs_40xtile_y = position[1]
-                    global_cell_rects = [
-                        [one[0] + abs_40xtile_x, one[1] + abs_40xtile_y, one[2] + abs_40xtile_x, one[3] + abs_40xtile_y,
-                         one[4]] for one in
-                        local_cell_rects]
+        x_min, y_min, x_max, y_max = user_choice_area['x_min'], user_choice_area['y_min'], \
+            user_choice_area['x_max'], user_choice_area['y_max']
+        if not self.project_x100[task_id]:
+            infos_40xtile = []
+            for row in range(y_min, y_max + 1):
+                for col in range(x_min, y_min + 1):
+                    tile = layer.get_tile(row, col)
                     infos_40xtile.append({
-                        'index_40xtile_x': col,
-                        'index_40xtile_y': layer.num_rows - 1 - row,
-                        'abs_40xtile_x': abs_40xtile_x,
-                        'abs_40xtile_y': abs_40xtile_y,
-                        "local_cell_rects": local_cell_rects,
-                        "global_cell_rects": global_cell_rects,
-                        'global_cell_rects_dedup': global_cell_rects_dedup,
-                        "meg_rect": meg_center_pt,
-                        'scores': new_scores
+                        "index_40xtile_x": tile.col_index,
+                        'index_40xtile_y': layer.num_rows - tile.row_index - 1,
+                        'abs_40xtile_x': tile.global_x,
+                        'abs_40xtile_y': tile.global_y,
+                        'local_cell_rects': [],
+                        'global_cell_rects': [],
+                        'global_cell_rects_dedup': [],
+                        'meg_rect': [],
+                        "scores": []
                     })
+                    pass
+
             save_dir = os.path.join(images_folder, task_id)
             os.makedirs(save_dir, exist_ok=True)
-            task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile, user_choice_area, 2, request_task_num,
+            task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile, user_choice_area, 2, target_cell_num,
                                                                    save_flag=True, save_dir=save_dir)
             new_task_list = list(chain(*task_list))
-            # new_task_list = list(chain.from_iterable(task_list))
-            self.project[task_id][f'task_list_x100_{min_row}_{max_row}_{min_col}_{max_col}'] = new_task_list
+            self.project_x100[task_id] = new_task_list
+            pass
         else:
-            new_task_list = self.project[task_id][f'task_list_x100_{min_row}_{max_row}_{min_col}_{max_col}']
+            new_task_list = self.project_x100[task_id]
         return {
             'ret_code': RET_CODE.API_SUCCESS.value,
             'ret_desc': RET_DESC.API_SUCCESS.value,
-            'task_list_total': len(new_task_list),
-            'task_list': new_task_list[index_offset:index_offset + ask_task_num]
+            'task_list_num': len(new_task_list),
+            'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
-
-    def get_task_result_x40(self, task_id):
-        new_project = self.project[task_id]['project']
-        match_result = []
-        for node in new_project.nodes:
-            y, x = node
-            data = new_project.nodes[node]
-            big_cells = data['meg_center_pt']
-            local_cell_centers = data['wbc_center_pt']
-            scores = data['area_score_info']
-            match_result.append(
-                {
-                    'x': x,
-                    'y': y,
-                    'big_cells': big_cells,
-                    'local_cell_centers': local_cell_centers,
-                    'scores': scores
-                }
-            )
-        return {'ret_code': RET_CODE.API_SUCCESS.value, 'ret_desc': RET_DESC.API_SUCCESS.value,
-                'match_result': match_result}
 
     @staticmethod
     def get_task_result_x100(task_id, image_file, smear_type, magnification, task_type,

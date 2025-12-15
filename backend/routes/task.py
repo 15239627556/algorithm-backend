@@ -100,23 +100,25 @@ class GetResult(Resource):
     def post(self):
         args = request.json
         task_id = args.get('task_id')
-        min_row = args.get('min_row', 0)
-        min_col = args.get('min_col', 0)
-        max_row = args.get('max_row')
-        max_col = args.get('max_col')
-        result = taskService.get_result(task_id, min_row, max_row, min_col, max_col)
+        roi_xmin = args.get('roi_xmin', 0)
+        roi_ymin = args.get('roi_ymin', 0)
+        roi_xmax = args.get('roi_xmax')
+        roi_ymax = args.get('roi_ymax')
+        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return make_response(jsonify(result), 200)
 
 
-user_choice_area = task.model('user_choice_area', {
+user_choice_area_mod = task.model('user_choice_area', {
     'x_min': fields.Integer(required=True, description='用户框选区域的x最小值'),
-    'ymin': fields.Integer(required=True, description='用户框选区域的y最小值'),
+    'y_min': fields.Integer(required=True, description='用户框选区域的y最小值'),
     'x_max': fields.Integer(required=True, description='用户框选区域的x最大值'),
     'y_max': fields.Integer(required=True, description='用户框选区域的y最大值'),
 })
 get_task_x100 = task.model('get_task_x100', {
     'task_id': fields.String(required=True, description='任务ID'),
-    'user_choice_area': fields.Nested(user_choice_area, required=True, description='用户框选的扫描区域'),
+    'user_choice_area': fields.Nested(user_choice_area_mod, required=True, description='用户框选的扫描区域'),
+    'view_width': fields.Integer(required=True, description='拍摄视图宽度'),
+    'view_height': fields.Integer(required=True, description='拍摄视图高度'),
     'target_num_WBC': fields.Integer(required=True, description='目标白细胞数量'),
     'target_num_MEG': fields.Integer(required=True, description='目标巨核细胞数量'),
     'index_offset': fields.Integer(required=True, description='拍摄任务索引偏移，默认为0'),

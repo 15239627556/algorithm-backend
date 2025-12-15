@@ -1,4 +1,10 @@
-import os, sys
+import multiprocessing as mp
+
+# IMPORTANT: must be the very first thing executed in the entry process.
+mp.set_start_method("spawn", force=True)
+
+import os
+import sys
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -14,11 +20,12 @@ sys.path.append(project_dir)
 from flask import Flask, request
 from flask_cors import CORS
 from flask_restx import Api
+
 from backend.routes.task import task
 from backend.routes.ImgFilter import ImgFilter
 
-api = Api(version='2025.12.09', title='算法服务',
-          description='2025.12.09版本，算法服务，端口号为3889', doc="/")
+api = Api(version='2025.12.12', title='算法服务',
+          description='2025.12.12版本，算法服务，端口号为3889', doc="/")
 app = Flask(__name__, static_url_path='/uploads', static_folder='uploads')
 api.init_app(app)
 CORS(app, supports_credentials=True)
@@ -57,5 +64,23 @@ def log_request():
 
 # ========== 日志配置结束 ==========
 
+
+def _prewarm_models() -> None:
+    """
+    B+预热：启动时拉起 inference 进程并等待模型 READY，避免首次请求加载拖慢接口。
+    注意：这里“加载模型”的进程是 inference 子进程，不是 Flask 主进程。
+    """
+    try:
+        from backend.services.task_service import get_queue_manager  # lazy import to avoid cycles
+        qm = get_queue_manager()
+        _ = qm
+        print("[Prewarm] Inference process is READY.")
+    except Exception as e:
+        print("[Prewarm] FAILED:", repr(e))
+        raise
+
+
 if __name__ == '__main__':
+    print("### FLASK MAIN PID =", os.getpid())
+    _prewarm_models()
     app.run(host='0.0.0.0', port=3889, debug=False, threaded=True)

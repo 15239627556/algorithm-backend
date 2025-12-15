@@ -282,6 +282,7 @@ class SmearProject:
             roi_ymax = 1 << 31
 
         roi = (roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        print(roi)
         return layer.iter_cells_in_roi(roi)
 
     # ---------- 生成 100x 拍摄任务 (骨髓) ----------
@@ -368,9 +369,8 @@ class SmearProject:
 
 
 if __name__ == '__main__':
-    project = SmearProject.load_pickle('36d2bb7c7f3741a9be0bd2c36d86e4d9', '../backend/uploads')
-    print(project)
-    print(project.get_layer(MagnificationLevel.X40).get_tile(16, 13).cells)
+    project = SmearProject.load_pickle('0b38a9a1bf5e459eb93acb068508850d', '../backend/uploads')
+    print(project.get_layer(MagnificationLevel.X40).get_tile(20, 12).cells)
     for row in range(25):
         for col in range(26):
             tile = project.get_layer(MagnificationLevel.X40).get_tile(row, col)

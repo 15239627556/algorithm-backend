@@ -1,452 +1,368 @@
 # inference_queue_manager.py
 from __future__ import annotations
 
+import multiprocessing as mp
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Callable, Dict, Deque, Optional, Tuple, List
-from collections import deque
 import uuid
+from dataclasses import dataclass, field
+from typing import Any, Callable, Deque, Dict, List, Optional
+from collections import deque
 
 import numpy as np
+import cv2
 
 from cells import MagnificationLevel, Cell
 from project.smear_project import SmearProject
-from backend.tools.public_methods import thread_decorator
 from tiles import Tile
 
-# 你的模型类（40x / 100x）
-from algorithms.x40model.X40ImageModels import X40ImageModels
-
-
-# from algorithms.x100model import X100ImageModels
-
-
-# dispatcher = X100ImageModels.X100ImageModels(num_workers=1)
-
-
-# =========================
-# 任务 / 适配器 数据结构
-# =========================
 
 @dataclass
 class TileModelTask:
-    """
-    表示“一个瓦片的一次模型推理任务”，对应一个模型内部 task_id。
-
-    注意区分：
-    - project_task_id: 你自己的大任务 ID（SmearProject.task_id）
-    - model_task_id:   模型内部的 task id（enqueue_task 的返回值）
-    """
     project_task_id: str
     magnification: MagnificationLevel
     row_index: int
     col_index: int
 
-    model_task_id: object | str | int
+    tile_bytes: bytes
+    tile_meta: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
 
 @dataclass
 class ModelAdapter:
-    """
-    每个倍率对应一个模型适配器：
-    - 持有模型实例 model
-    - 知道如何 enqueue_task
-    - 知道如何解析 get_result 的输出为 List[Cell]
-    """
     magnification: MagnificationLevel
-    model: object
-    # enqueue_fn(model, image: np.ndarray, **kwargs) -> model_task_id
-    enqueue_fn: Callable[[object, np.ndarray], object]
-    # parse_result_fn(result, *, project, job, tile) -> List[Cell]
-    parse_result_fn: Callable[[object, SmearProject, TileModelTask, Tile], List[Dict]]
+    parse_result_fn: Callable[[dict, SmearProject, "TileModelTask", Tile], List[Cell]]
 
 
-# =========================
-# 结果解析函数（示例）
-# =========================
-
-def parse_result_as_cell_list(
-        result: dict,
-        project: SmearProject,
-        job: TileModelTask,
-        tile: Tile,
-) -> List[Cell]:
-    """
-    通用解析函数：
-    假设模型返回格式类似 /get_task_result 的结构：
-
-    result = {
-        "cell_list": [
-            {
-                "cell_xmin": int,
-                "cell_ymin": int,
-                "cell_xmax": int,
-                "cell_ymax": int,
-                "cell_type": int,
-                "cell_type_name": str,
-                "class_confidence": float,
-                "bbox_confidence": float,
-            },
-            ...
-        ]
-    }
-    """
-    layer_name = project.get_layer(job.magnification).name  # 一定存在
+def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileModelTask, tile: Tile) -> List[Cell]:
+    layer_name = project.get_layer(job.magnification).name
 
     cells: List[Cell] = []
     for item in result.get("haveCellCenterPoints", []):
-        local_cell_rects = Cell(
-            id=uuid.uuid4().hex,
-            magnification=job.magnification,
-            layer_name=layer_name,
-            tile_row=job.row_index,
-            tile_col=job.col_index,
-            x_min=int(item[0]),
-            y_min=int(item[1]),
-            x_max=int(item[2]),
-            y_max=int(item[3]),
-            cell_type=0,
-            cell_type_name='有核细胞',
-            class_confidence=float(item[4]),
-            bbox_confidence=float(1.0),
+        cells.append(
+            Cell(
+                id=uuid.uuid4().hex,
+                magnification=job.magnification,
+                layer_name=layer_name,
+                tile_row=job.row_index,
+                tile_col=job.col_index,
+                x_min=int(item[0]),
+                y_min=int(item[1]),
+                x_max=int(item[2]),
+                y_max=int(item[3]),
+                cell_type=0,
+                cell_type_name="有核细胞",
+                class_confidence=float(item[4]),
+                bbox_confidence=float(1.0),
+            )
         )
-        cells.append(local_cell_rects)
+
     for item in result.get("bigCellRects", []):
-        meg_rect = Cell(
-            id=uuid.uuid4().hex,
-            magnification=job.magnification,
-            layer_name=layer_name,
-            tile_row=job.row_index,
-            tile_col=job.col_index,
-            x_min=int(item[0]),
-            y_min=int(item[1]),
-            x_max=int(item[3]),
-            y_max=int(item[4]),
-            cell_type=1,
-            cell_type_name='巨核细胞',
-            class_confidence=float(item[4]),
-            bbox_confidence=float(1.0),
+        cells.append(
+            Cell(
+                id=uuid.uuid4().hex,
+                magnification=job.magnification,
+                layer_name=layer_name,
+                tile_row=job.row_index,
+                tile_col=job.col_index,
+                x_min=int(item[0]),
+                y_min=int(item[1]),
+                x_max=int(item[2]),
+                y_max=int(item[3]),
+                cell_type=1,
+                cell_type_name="巨核细胞",
+                class_confidence=float(item[4]),
+                bbox_confidence=float(1.0),
+            )
         )
-        cells.append(meg_rect)
-    print('1234567890', job.row_index, job.col_index, len(cells))
     return cells
 
 
-def parse_x100_result_from_rects(
-        result: dict,
-        project: SmearProject,
-        job: TileModelTask,
-        tile: Tile,
-) -> List[Cell]:
-    """
-    针对 X100ImageModels 的默认解析：
-    - result["cellRects"]: N x 4 (x, y, w, h)，这里假设是局部坐标（以 tile 左上角为原点）
-    - result["cellTypes"]: N x k，取第一个作为 top1 类型
-    - result["cellRatios"]: N x k，对应每种类型的占比（置信度）
+def _inference_process_main(
+        in_q: "mp.Queue[dict]",
+        out_q: "mp.Queue[dict]",
+        ready_evt: "mp.synchronize.Event",
+        num_workers: int,
+        poll_interval: float,
+) -> None:
+    import os
+    print("### INFERENCE PROCESS PID =", os.getpid())
 
-    你可以根据实际模型输出调整这里。
-    """
-    layer_name = project.get_layer(job.magnification).name
+    # Import ONLY inside inference process to avoid touching TRT/CUDA in Flask process.
+    from algorithms.x40model.X40ImageModels import X40ImageModels
 
-    cell_rects = np.asarray(result["cellRects"]).astype(int)
-    cell_types = np.asarray(result["cellTypes"]).astype(int)
-    cell_ratios = np.asarray(result["cellRatios"]).astype(float)
+    model = X40ImageModels(num_workers)
 
-    # 如果 100x 图像相对于全局坐标有偏移，则可以通过 job.extra 传入
-    offset_x = int(job.extra.get("offset_x", tile.global_x))
-    offset_y = int(job.extra.get("offset_y", tile.global_y))
+    try:
+        ready_evt.set()
+    except Exception:
+        pass
 
-    cells: List[Cell] = []
-    for rect, types, ratios in zip(cell_rects, cell_types, cell_ratios):
-        x, y, w, h = rect.tolist()
-        x_min = offset_x + x
-        y_min = offset_y + y
-        x_max = x_min + w
-        y_max = y_min + h
+    pending: Deque[tuple[Any, TileModelTask]] = deque()
 
-        cell_type = int(types[0]) if len(types) > 0 else -1
-        class_conf = float(ratios[0]) if len(ratios) > 0 else 1.0
+    running = True
+    grids_sub = np.full((23, 25), False, dtype=bool)
+    grids_res = np.full((23, 25), False, dtype=bool)
+    while running:
+        try:
+            msg = in_q.get(timeout=poll_interval)
+        except Exception:
+            msg = None
+        if msg is not None:
+            mtype = msg.get("type")
+            if mtype == "SUBMIT":
+                job: TileModelTask = msg["job"]
+                grids_sub[job.row_index, job.col_index] = True
+                img = cv2.imdecode(np.frombuffer(job.tile_bytes, np.uint8), cv2.IMREAD_COLOR)
+                # if img is None:
+                #     out_q.put({"type": "ERROR", "project_task_id": job.project_task_id,
+                #                "row_index": job.row_index, "col_index": job.col_index,
+                #                "magnification": job.magnification, "error": "cv2.imdecode failed"})
+                # else:
+                img = np.ascontiguousarray(img)
+                model_task_id = model.enqueue_task(img)
+                pending.append((model_task_id, job))
 
-        cell = Cell(
-            id=uuid.uuid4().hex,
-            magnification=job.magnification,
-            layer_name=layer_name,
-            tile_row=job.row_index,
-            tile_col=job.col_index,
-            x_min=x_min,
-            y_min=y_min,
-            x_max=x_max,
-            y_max=y_max,
-            cell_type=cell_type,
-            cell_type_name=str(cell_type),
-            class_confidence=class_conf,
-            bbox_confidence=1.0,
-        )
-        cells.append(cell)
+            elif mtype == "SYNC":
+                try:
+                    print('我进来了======')
+                    model.synchronize()
+                    print('我出来了======')
+                except Exception as e:
+                    out_q.put({"type": "ERROR", "error": repr(e), "where": "SYNC"})
 
-    return cells
+            elif mtype == "STOP":
+                running = False
 
+        if pending:
+            model_task_id, job = pending.popleft()
+            try:
+                result = model.get_result(model_task_id)
+            except Exception as e:
+                out_q.put({"type": "ERROR", "project_task_id": job.project_task_id,
+                           "row_index": job.row_index, "col_index": job.col_index,
+                           "magnification": job.magnification, "error": repr(e)})
+                continue
 
-# =========================
-# 队列管理类
-# =========================
+            if result:
+                grids_res[job.row_index, job.col_index] = True
+                out_q.put(
+                    {
+                        "type": "RESULT",
+                        "project_task_id": job.project_task_id,
+                        "magnification": job.magnification,
+                        "row_index": job.row_index,
+                        "col_index": job.col_index,
+                        "result": result,
+                        "tile_meta": job.tile_meta,
+                        "extra": job.extra,
+                    }
+                )
+            else:
+                pending.append((model_task_id, job))
+        # rows, cols = np.where(grids_sub == False)
+        # coords = list(zip(rows, cols))
+        # print('grids_sub:', coords[:2])
+        # rows, cols = np.where(grids_res == False)
+        # coords = list(zip(rows, cols))
+        # print('grids_res:', coords[:2])
+
 
 class TileInferenceQueueManager:
-    """
-    统一管理不同倍率的模型队列：
-    - 负责把瓦片图片丢给对应模型（enqueue_task）
-    - 轮询 get_result
-    - 把结果解析为 Cell 列表，写回 SmearProject 对应瓦片
-
-    用法示例：
-
-    manager = TileInferenceQueueManager(project_registry)
-    manager.register_default_x40_model()
-    manager.register_default_x100_model()
-
-    # 某个地方上传了瓦片图像（np.ndarray）
-    manager.submit_tile(
-        project_task_id=task_id,
-        magnification=MagnificationLevel.X40,
-        row_index=row,
-        col_index=col,
-        image=image_ndarray,
-    )
-    """
-
     def __init__(
             self,
             project_registry: Optional[Dict[str, SmearProject]] = None,
             poll_interval: float = 0.001,
+            model_num_workers: int = 1,
+            ready_timeout_sec: float = 300.0,
+            mp_ctx: Optional[mp.context.BaseContext] = None,
     ) -> None:
-        """
-        :param project_registry: 可选的 {task_id: SmearProject} 初始字典。
-                                 如果传进来，就直接引用这份 dict；
-                                 如果不传，就内部自己维护一份。
-        """
-        # 如果外面给了一份 dict，我们就直接引用（不是 copy）
         self._projects: Dict[str, SmearProject] = project_registry if project_registry is not None else {}
-
-        self._poll_interval = poll_interval
+        self._poll_interval = float(poll_interval)
 
         self._adapters: Dict[MagnificationLevel, ModelAdapter] = {}
+        self.register_default_x40_adapter()
 
-        self._queue: Deque[TileModelTask] = deque()
-        self._queue_lock = threading.Lock()
-        self._cond = threading.Condition()
+        self._mp = mp_ctx if mp_ctx is not None else mp.get_context("spawn")
+        self._in_q: "mp.Queue[dict]" = self._mp.Queue(maxsize=512)
+        self._out_q: "mp.Queue[dict]" = self._mp.Queue(maxsize=512)
+        self._ready_evt = self._mp.Event()
+
+        self._proc = self._mp.Process(
+            target=_inference_process_main,
+            args=(self._in_q, self._out_q, self._ready_evt, int(model_num_workers), self._poll_interval),
+            daemon=True,
+        )
+        self._proc.start()
+
+        if not self._ready_evt.wait(timeout=float(ready_timeout_sec)):
+            raise TimeoutError(f"Inference process READY timeout after {ready_timeout_sec}s")
+
         self._stop_flag = False
+        self._result_thread = threading.Thread(target=self._result_loop, daemon=True, name="inference-result-loop")
+        self._result_thread.start()
 
-        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
-        self._worker.start()
-        self.register_default_x40_model(2)
-        print(self._adapters.get(MagnificationLevel.X40).model)
-        # self.register_default_x100_model(1)
-
-    # ---------- Project 管理 ----------
+        # ---- task progress tracking (main process) ----
+        self._expected: Dict[str, int] = {}  # task_id -> expected tiles
+        self._submitted: Dict[str, int] = {}  # task_id -> submitted tiles
+        self._written: Dict[str, int] = {}  # task_id -> tiles written back to project (RESULT handled)
+        self._cv = threading.Condition()
+        self.count_result = 0
 
     def register_project(self, project: SmearProject) -> None:
-        """
-        注册一个新的 SmearProject，使队列管理器后续可以根据 task_id 找到它。
-
-        一般在 create_task 的时候调用：
-        - project = SmearProject(...)
-        - manager.register_project(project)
-        """
         self._projects[project.task_id] = project
 
     def unregister_project(self, task_id: str) -> None:
-        """
-        当任务完成且不再需要时，可以把它从管理器中移除。
-        """
         self._projects.pop(task_id, None)
 
     def get_project(self, task_id: str) -> Optional[SmearProject]:
-        """
-        方便外部访问管理器内部维护的项目。
-        """
         return self._projects.get(task_id)
 
-    # ---------- 模型注册 ----------
-
-    def register_model_adapter(self, adapter: ModelAdapter) -> None:
-        """
-        注册一个倍率对应的模型适配器。
-        """
-        self._adapters[adapter.magnification] = adapter
-
-    def register_default_x40_model(self, num_workers: int = 8) -> None:
-        """
-        方便直接使用默认的 40x 模型。
-        """
-        model = X40ImageModels(num_workers)
-
-        def enqueue_fn(m, image: np.ndarray):
-            # 这里假定 X40ImageModels.enqueue_task(image) 签名为这样
-            return m.enqueue_task(image)
-
-        adapter = ModelAdapter(
+    def register_default_x40_adapter(self) -> None:
+        self._adapters[MagnificationLevel.X40] = ModelAdapter(
             magnification=MagnificationLevel.X40,
-            model=model,
-            enqueue_fn=enqueue_fn,
-            # 这里假定 40x 模型也返回类似 {"cell_list": [...]} 的结构
             parse_result_fn=parse_result_as_cell_list,
         )
-        self.register_model_adapter(adapter)
 
-    def register_default_x100_model(self, num_workers: int = 1) -> None:
-        """
-        方便直接使用默认的 100x 模型。
-        """
-        # model = X100ImageModels.X100ImageModels(num_workers=num_workers)
-        #
-        # def enqueue_fn(m, image: np.ndarray):
-        #     # 你当前的代码是: enqueue_task(image, cell_target_type)
-        #     # 为了通用，这里只传 image。需要 cell_target_type 的话，可以通过 job.extra 再封装一个适配器。
-        #     return m.enqueue_task(image)
-        #
-        # adapter = ModelAdapter(
-        #     magnification=MagnificationLevel.X100,
-        #     model=model,
-        #     enqueue_fn=enqueue_fn,
-        #     parse_result_fn=parse_x100_result_from_rects,
-        # )
-        # self.register_model_adapter(adapter)
-
-    # ---------- 提交任务 ----------
-
-    def submit_tile(
+    def submit_tile_bytes(
             self,
             project_task_id: str,
             magnification: MagnificationLevel,
             row_index: int,
             col_index: int,
-            image: np.ndarray,
+            tile_bytes: bytes,
+            tile_meta: Optional[dict] = None,
             extra: Optional[dict] = None,
-    ) -> object:
-        """
-        提交一个瓦片推理任务。
-
-        :param project_task_id: SmearProject.task_id
-        :param magnification: 倍率（40x / 100x / 未来更多）
-        :param row_index: 瓦片行号
-        :param col_index: 瓦片列号
-        :param image: 瓦片图像（numpy ndarray，BGR 或 RGB 由模型自己决定）
-        :param extra: 额外信息（比如 100x 图像在全局坐标上的偏移等）
-        :return: 模型内部的 task_id
-        """
-        adapter = self._adapters.get(magnification)
-        if adapter is None:
-            raise RuntimeError(f"No model adapter registered for magnification={magnification}")
-        model_task_id = adapter.enqueue_fn(adapter.model, image)
+    ) -> None:
         job = TileModelTask(
             project_task_id=project_task_id,
             magnification=magnification,
-            row_index=row_index,
-            col_index=col_index,
-            model_task_id=model_task_id,
+            row_index=int(row_index),
+            col_index=int(col_index),
+            tile_bytes=tile_bytes,
+            tile_meta=tile_meta or {},
             extra=extra or {},
         )
-        with self._queue_lock:
-            self._queue.append(job)
-            with self._cond:
-                self._cond.notify()
-        return model_task_id
+        self._in_q.put({"type": "SUBMIT", "job": job})
+        self.mark_submitted(project_task_id, 1)
 
-    def finish_tile(
-            self,
-            project_task_id: str,
-            magnification: MagnificationLevel,
-    ) -> None:
-        """
-        推理任务完成。
-        :param project_task_id: SmearProject.task_id
-        :param magnification: 倍率（40x / 100x / 未来更多）
-        """
-        adapter = self._adapters.get(magnification)
-        if adapter is None:
-            raise RuntimeError(f"No model adapter registered for magnification={magnification}")
-        with self.enqueue_lock:
-            adapter.model.synchronize()
-        print('\n\n\n\nFinishing tile:'
-              ''
-              ''
-              ''
-              ''
-              ''
-              ''
-              ''
-              ''
-              '', magnification, project_task_id)
+    def set_expected_tiles(self, project_task_id: str, expected: int) -> None:
+        with self._cv:
+            self._expected[project_task_id] = int(expected)
+            self._submitted.setdefault(project_task_id, 0)
+            self._written.setdefault(project_task_id, 0)
+            self._cv.notify_all()
 
-    # ---------- 停止 ----------
+    def mark_submitted(self, project_task_id: str, n: int = 1) -> None:
+        with self._cv:
+            self._submitted[project_task_id] = self._submitted.get(project_task_id, 0) + int(n)
+            self._cv.notify_all()
 
-    def stop(self) -> None:
+    def wait_written_all(self, project_task_id: str, timeout: float = 300.0) -> None:
         """
-        结束后台线程（服务关闭时调用）。
+        Wait until written >= expected (if expected set), otherwise wait written >= submitted.
+        This guarantees RESULT has been handled (written back into project).
         """
-        self._stop_flag = True
-        with self._cond:
-            self._cond.notify_all()
-        if self._worker.is_alive():
-            self._worker.join()
+        t0 = time.time()
+        with self._cv:
+            while True:
+                exp = self._expected.get(project_task_id, None)
+                sub = self._submitted.get(project_task_id, 0)
+                wrt = self._written.get(project_task_id, 0)
 
-    # ---------- 工作线程 ----------
-
-    def _worker_loop(self) -> None:
-        """
-        从队列中取出任务，轮询模型结果，并写入 SmearProject。
-        """
-        while True:
-            with self._cond:
-                while not self._queue and not self._stop_flag:
-                    self._cond.wait()
-                if self._stop_flag and not self._queue:
+                target = exp if exp is not None else sub
+                if target > 0 and wrt >= target:
                     return
 
-            with self._queue_lock:
-                if not self._queue:
-                    continue
-                job = self._queue.popleft()
-            adapter = self._adapters.get(job.magnification)
-            if adapter is None:
-                # 没找到对应模型，忽略这个任务
-                continue
+                if time.time() - t0 >= timeout:
+                    raise TimeoutError(
+                        f"wait_written_all timeout: task={project_task_id}, written={wrt}, target={target}, submitted={sub}, expected={exp}"
+                    )
+                self._cv.wait(timeout=0.2)
 
-            # 拿模型的结果
-            result = adapter.model.get_result(job.model_task_id)
-            if not result:
-                # 结果尚未准备好，重新放回队列稍后再试
-                with self._queue_lock:
-                    self._queue.append(job)
-                time.sleep(self._poll_interval)
+    def finish_tile(self, project_task_id: str, magnification: MagnificationLevel) -> None:
+        self._in_q.put({"type": "SYNC", "project_task_id": project_task_id})
+
+    def stop(self) -> None:
+        self._stop_flag = True
+        try:
+            self._in_q.put({"type": "STOP"})
+        except Exception:
+            pass
+        if self._proc.is_alive():
+            self._proc.join(timeout=5.0)
+
+    def _result_loop(self) -> None:
+        while not self._stop_flag:
+            try:
+                msg = self._out_q.get(timeout=0.2)
+            except Exception:
                 continue
-            # 找到对应的项目和瓦片
-            project = self.get_project(job.project_task_id)
+            self._handle_out_msg(msg)
+
+    def _handle_out_msg(self, msg: dict) -> None:
+        mtype = msg.get("type")
+        if mtype == "RESULT":
+            project_task_id = msg["project_task_id"]
+            magnification = msg["magnification"]
+            row_index = msg["row_index"]
+            col_index = msg["col_index"]
+            result = msg["result"]
+
+            project = self.get_project(project_task_id)
             if project is None:
-                # 对应项目已经被释放 / 不存在
-                continue
+                print("[DROP] project None", project_task_id);
+                return
 
-            layer = project.get_layer(job.magnification)
+            layer = project.get_layer(magnification)
             if layer is None:
-                continue
+                print("[DROP] layer None", project_task_id, magnification);
+                return
 
-            tile = layer.get_tile(job.row_index, job.col_index)
+            tile = layer.get_tile(row_index, col_index)
             if tile is None:
-                continue
+                print("[DROP] tile None", project_task_id, magnification, row_index, col_index);
+                return
 
-            # 解析模型结果 -> List[Cell]
+            adapter = self._adapters.get(magnification)
+            if adapter is None:
+                print("[DROP] adapter None", magnification, type(magnification));
+                return
+
+            job = TileModelTask(
+                project_task_id=project_task_id,
+                magnification=magnification,
+                row_index=row_index,
+                col_index=col_index,
+                tile_bytes=b"",
+                tile_meta=msg.get("tile_meta", {}),
+                extra=msg.get("extra", {}),
+            )
+
             try:
                 cells = adapter.parse_result_fn(result, project, job, tile)
-            except Exception as e:
-                # 可以在这里加入日志记录
-                continue
+            except Exception:
+                return
 
             if cells:
-                project.add_cells_to_tile(
-                    magnification=job.magnification,
-                    row_index=job.row_index,
-                    col_index=job.col_index,
-                    cells=cells,
-                )
+                project.add_cells_to_tile(magnification, row_index, col_index, cells)
+
+            with self._cv:
+                self._written[project_task_id] = self._written.get(project_task_id, 0) + 1
+                self._cv.notify_all()
+
+            self.count_result += 1
+
+            print(row_index, col_index, len(cells))
+            print(self.count_result)
+            if self.count_result >= 570:
+                print(self._expected[project_task_id])
+                print(self._submitted[project_task_id])
+                print(self._written[project_task_id])
+
+
+        elif mtype == "ERROR":
+            print("[InferenceProcess ERROR]", msg)
+        else:
+            return

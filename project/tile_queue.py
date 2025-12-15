@@ -29,7 +29,7 @@ class TileTaskWrap:
             task_id: str,
             on_tile_callback: Callable[[TileMsg], None],
             on_finish_callback: Optional[Callable[[str], None]] = None,
-            num_workers: int = 8,
+            num_workers: int = 4,
             queue_maxsize: int = 0,
             get_timeout_sec: int = 300,
     ):

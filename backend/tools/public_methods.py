@@ -15,9 +15,12 @@ def thread_decorator(f):
     :return:
     """
 
+    @wraps(f)
     def wrapper(*args, **kwargs):
-        thr = Thread(target=f, args=args, kwargs=kwargs)
+        thr = Thread(target=f, args=args, kwargs=kwargs, daemon=True)
         thr.start()
+
+        return thr
 
     return wrapper
 
