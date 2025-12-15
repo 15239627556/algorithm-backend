@@ -139,7 +139,7 @@ class GetTaskListX100(Resource):
         target_num_WBC = json_data.get('target_num_WBC')
         target_num_MEG = json_data.get('target_num_MEG')
         index_offset = json_data.get('index_offset', 0)
-        request_task_num = json_data.get('request_task_num', 1000)
+        request_task_num = json_data.get('request_task_num', 100)
         result = taskService.get_task_list_x100(task_id, user_choice_area, view_width, view_height, target_num_WBC,
                                                 target_num_MEG, index_offset, request_task_num)
         return make_response(jsonify(result), 200)

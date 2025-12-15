@@ -39,6 +39,8 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
     layer_name = project.get_layer(job.magnification).name
 
     cells: List[Cell] = []
+    position_x = int(job.tile_meta["position_x"])
+    position_y = int(job.tile_meta["position_y"])
     for item in result.get("haveCellCenterPoints", []):
         cells.append(
             Cell(
@@ -47,10 +49,10 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
                 layer_name=layer_name,
                 tile_row=job.row_index,
                 tile_col=job.col_index,
-                x_min=int(item[0]),
-                y_min=int(item[1]),
-                x_max=int(item[2]),
-                y_max=int(item[3]),
+                x_min=int(item[0] + position_x),
+                y_min=int(item[1] + position_y),
+                x_max=int(item[2] + position_x),
+                y_max=int(item[3] + position_y),
                 cell_type=0,
                 cell_type_name="有核细胞",
                 class_confidence=float(item[4]),
@@ -66,10 +68,10 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
                 layer_name=layer_name,
                 tile_row=job.row_index,
                 tile_col=job.col_index,
-                x_min=int(item[0]),
-                y_min=int(item[1]),
-                x_max=int(item[2]),
-                y_max=int(item[3]),
+                x_min=int(item[0] + position_x),
+                y_min=int(item[1] + position_y),
+                x_max=int(item[2] + position_x),
+                y_max=int(item[3] + position_y),
                 cell_type=1,
                 cell_type_name="巨核细胞",
                 class_confidence=float(item[4]),
@@ -286,8 +288,6 @@ class TileInferenceQueueManager:
     def _handle_out_msg(self, msg: dict) -> None:
         mtype = msg.get("type")
         self.write_count += 1
-        print(self.write_count)
-        print(mtype)
         if mtype == "RESULT":
             project_task_id = msg["project_task_id"]
             magnification = msg["magnification"]
@@ -330,9 +330,7 @@ class TileInferenceQueueManager:
             except Exception:
                 return
             areaScoreInfo = result.get("areaScoreInfo", [])
-            print(areaScoreInfo)
             project.set_meta_quality_score_to_tile(magnification, row_index, col_index, areaScoreInfo)
-            print("++++++++++++++++", row_index, col_index, len(result.get('haveCellCenterPoints')))
             if cells:
                 project.add_cells_to_tile(magnification, row_index, col_index, cells)
 

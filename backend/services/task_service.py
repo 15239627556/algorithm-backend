@@ -9,6 +9,7 @@ import numpy as np
 from itertools import chain
 
 from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
+from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
 from backend.tools.MESSAGE_DICT import RET_CODE, RET_DESC
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
@@ -271,23 +272,48 @@ class TaskService:
             for row in range(y_min, y_max + 1):
                 for col in range(x_min, y_min + 1):
                     tile = layer.get_tile(row, col)
+                    global_x, global_y = tile.global_x, tile.global_y
+                    cells = tile.cells
+                    scores = tile.get_meta_quality_score()
+                    new_scores = {
+                        '0_0': [scores[0][4], scores[0][5]],
+                        '1_0': [scores[1][4], scores[1][5]],
+                        '0_1': [scores[2][4], scores[2][5]],
+                        '1_1': [scores[3][4], scores[3][5]],
+                    }
+                    meg_center_pt = []  # 巨核细胞
+                    local_cell_rects = []  # 有核细胞
+                    global_cell_rects = []
+                    # haveCellCenterPoints cell_type == 0: 有核细胞
+                    # bigCellRects cell_type == 1: 巨核细胞
+                    for one in cells:
+                        if one.cell_type == 0:  # 有核细胞
+                            local_cell_rects.append([one.x_min, one.y_min, one.x_max, one.y_max, one.class_confidence])
+                            global_cell_rects.append([one.x_min + global_x, one.x_max + global_x, one.y_min + global_y,
+                                                      one.y_max + global_y])
+                        if one.cell_type == 1:  # 巨核细胞
+                            meg_center_pt.append([one.x_min, one.y_min, one.x_max, one.y_max, one.class_confidence])
                     infos_40xtile.append({
                         "index_40xtile_x": tile.col_index,
                         'index_40xtile_y': layer.num_rows - tile.row_index - 1,
-                        'abs_40xtile_x': tile.global_x,
-                        'abs_40xtile_y': tile.global_y,
-                        'local_cell_rects': [],
-                        'global_cell_rects': [],
-                        'global_cell_rects_dedup': [],
-                        'meg_rect': [],
-                        "scores": []
+                        'abs_40xtile_x': global_x,
+                        'abs_40xtile_y': global_y,
+                        'local_cell_rects': local_cell_rects,
+                        'global_cell_rects': global_cell_rects,
+                        'meg_rect': meg_center_pt,
+                        "scores": new_scores
                     })
-                    pass
-
+            infos_40xtile = dedup_cells_across_tiles(infos_40xtile, iou_thresh=0.2)  # 有核细胞去重
             save_dir = os.path.join(images_folder, task_id)
             os.makedirs(save_dir, exist_ok=True)
-            task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile, user_choice_area, 2, target_cell_num,
-                                                                   save_flag=True, save_dir=save_dir)
+            task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile,
+                                                                   user_choice_area,
+                                                                   2,
+                                                                   target_num_WBC,
+                                                                   rect_width=view_width,  # 百倍视野的宽
+                                                                   rect_height=view_height,  # 百倍视野的高
+                                                                   save_flag=True,
+                                                                   save_dir=save_dir)
             new_task_list = list(chain(*task_list))
             self.project_x100[task_id] = new_task_list
             pass
