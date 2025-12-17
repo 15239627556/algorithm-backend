@@ -365,7 +365,11 @@ class TaskService:
                 for i in range(len(cellRects)):
                     x, y, w, h, *o = cellRects[i]
                     cell_type = cellTypes[i][0] + 200000
-                    cell_type_name = CELL_TYPES.get(cell_type, '未知细胞')
+                    new_cell_type = CELL_TYPES.get(cell_type)
+                    if not new_cell_type:
+                        cell_type_name = '未知细胞'
+                    else:
+                        cell_type_name = new_cell_type[1]
                     class_confidence = cellRatios[i][0]
                     new_one_data = {
                         "cell_xmin": x,
