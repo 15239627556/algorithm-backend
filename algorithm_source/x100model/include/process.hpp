@@ -22,7 +22,7 @@ void process_batch(WorkerSharedBuffer* buffer, WorkerDataBlock &block, int slot_
         // cv::Mat image(task.image_height, task.image_width, CV_8UC3, task.data);
         int W = 2448;
         int H = 2048;
-        if(task.task_type == X100HAVECELL)
+        if(task.task_type == X100HAVECELL || task.task_type == X100RBCCELL )
         {
             W = 2048;
             H = 1536;

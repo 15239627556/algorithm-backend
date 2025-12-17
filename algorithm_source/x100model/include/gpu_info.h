@@ -1,4 +1,4 @@
 static const std::string GPU_NAMES[] = {
-    "NVIDIA GeForce RTX 2080 Ti",
+    "NVIDIA GeForce RTX 4070 Ti SUPER",
 };
 #define GPU_COUNT 1

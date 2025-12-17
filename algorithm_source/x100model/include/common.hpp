@@ -42,8 +42,9 @@ enum TaskStatus {
 };
 
 enum TaskTypes {
-    X100HAVECELL   = 0,      /* x100有核任务 */
+    X100HAVECELL    = 0,      /* x100有核任务 */
     X100BIGCELL     = 1,      /* x100巨核任务*/
+    X100RBCCELL     = 2,      /* x100红细胞任务 */
 };
 
 struct itmCellRcgz_x100{

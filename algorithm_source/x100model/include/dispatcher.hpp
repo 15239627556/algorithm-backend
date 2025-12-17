@@ -57,6 +57,7 @@ public:
             TaskTypes ttype;
             if (task_type == 0) ttype = X100HAVECELL;
             else if (task_type == 1) ttype = X100BIGCELL;
+            else if (task_type == 2) ttype = X100RBCCELL;
             else {
                 throw std::runtime_error("Invalid task type.");
             }

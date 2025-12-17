@@ -55,3 +55,8 @@ Makefile
 
 /algorithms/SelectArea/__pycache__/__pycache__/
 *.pyc
+/.venv/
+/opencv4/
+/TensorRT-8.6.1.6/
+/access.log
+/error.log

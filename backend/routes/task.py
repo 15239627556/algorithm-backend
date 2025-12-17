@@ -86,10 +86,10 @@ class TaskStatus(Resource):
 
 get_task_result = task.model('get_task_result', {
     'task_id': fields.String(required=True, description='任务ID'),
-    'min_row': fields.Integer(required=True, description="用户框选的扫描区域行号(最小)"),
-    'min_col': fields.Integer(required=True, description="用户框选的扫描区域列号(最小)"),
-    'max_row': fields.Integer(required=True, description="用户框选的扫描区域行号(最大)"),
-    'max_col': fields.Integer(required=True, description="用户框选的扫描区域列号(最大)"),
+    'roi_xmin': fields.Integer(required=False, description="结果区域左上角x坐标，默认为0"),
+    'roi_ymin': fields.Integer(required=False, description="结果区域左上角y坐标，默认为0"),
+    'roi_xmax': fields.Integer(required=False, description="结果区域右下角x坐标，默认为图像宽度"),
+    'roi_ymax': fields.Integer(required=False, description="结果区域右下角y坐标，默认为图像高度"),
 })
 
 
@@ -121,8 +121,8 @@ get_task_x100 = task.model('get_task_x100', {
     'view_height': fields.Integer(required=True, description='拍摄视图高度'),
     'target_num_WBC': fields.Integer(required=True, description='目标白细胞数量'),
     'target_num_MEG': fields.Integer(required=True, description='目标巨核细胞数量'),
-    'index_offset': fields.Integer(required=True, description='拍摄任务索引偏移，默认为0'),
-    'request_task_num': fields.Integer(required=True, description='请求生成的拍摄任务数量，默认为100', default=100),
+    'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0'),
+    'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
 })
 
 
@@ -146,7 +146,11 @@ class GetTaskListX100(Resource):
 
 
 result_x100 = task.parser()
-result_x100.add_argument('task_id', type=str, required=False, help='任务ID，由创建任务接口返回，可不填', location='form')
+result_x100.add_argument('task_id', type=str, required=True, help='任务ID，由创建任务接口返回，可不填', location='form')
+result_x100.add_argument('position_xmin', type=int, required=True, help='左上角在全图中的x坐标', location='form')
+result_x100.add_argument('position_ymin', type=int, required=True, help='左上角在全图中的y坐标', location='form')
+result_x100.add_argument('position_xmax', type=int, required=True, help='右下角在全图中的x坐标', location='form')
+result_x100.add_argument('position_ymax', type=int, required=True, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 result_x100.add_argument('smear_type', type=str, required=True, help='涂片类型，取值范围：BM, PB, CF', location='form')
 result_x100.add_argument('magnification', type=int, required=True, help='放大倍数', location='form')
@@ -169,7 +173,12 @@ class GetTaskResultX100(Resource):
         magnification = args.get('magnification')
         task_type = args.get('task_type')
         camera_type = args.get('camera_type')
-        edge_cell_filter = args.get('edge_cell_filter')
+        edge_cell_filter = args.get('edge_cell_filter', True)
+        position_xmin = args.get('position_xmin', None)
+        position_ymin = args.get('position_ymin', None)
+        position_xmax = args.get('position_xmax', None)
+        position_ymax = args.get('position_ymax', None)
         result = taskService.get_task_result_x100(task_id, image_file, smear_type, magnification, task_type,
-                                                  camera_type, edge_cell_filter)
+                                                  camera_type, edge_cell_filter, position_xmin, position_ymin,
+                                                  position_xmax, position_ymax)
         return make_response(jsonify(result), 200)

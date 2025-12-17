@@ -10,6 +10,7 @@
 #include "libX100BigCellClassify.hpp"
 #include "libX100BigCellLoc.hpp"
 #include "libX100CellLoc.hpp"
+#include "libX100RBCLocate.hpp"
 #include <functional>
 #include <chrono>
 #define INPUT_IMAGE_NUM     1
@@ -51,6 +52,10 @@ public:
         if (!lpClassify100XBig) {
             std::cerr << "X100BigClassifyOnnx 加载失败！" << std::endl;
         }
+        lplocation100XRBC = new X100RBCLocateOnnx(gpu_id);
+        if (!lplocation100XRBC) {
+            std::cerr << "X100RBCLocateOnnx 加载失败！" << std::endl;
+        }
 
 
         std::cout << "模型加载结束" << std::endl;
@@ -82,6 +87,8 @@ public:
     }
     /*添加任务到队列*/
     void add_x40_task(std::vector<cv::Mat>& imgs, WorkerSharedBuffer* buffer, int slot_id, TaskTypes tasktype) {
+        // std::cout << imgs[0].cols << " *** " << imgs[0].rows << std::endl;
+
         const int image_actual_num_local = static_cast<int>(imgs.size());
         auto task = std::make_shared<X100Task>();
         task->images = imgs[0];
@@ -115,6 +122,7 @@ private:
     X100HaveClassifyOnnx* lpClassify100xHave;
     X100BigLocateOnnx* lplocation100XBig;
     X100BigClassifyOnnx* lpClassify100XBig;
+    X100RBCLocateOnnx* lplocation100XRBC;
     
     /*图片处理*/
     cv::Rect makeUpSquare(cv::Rect re, cv::Mat flame)
@@ -256,9 +264,14 @@ private:
                 std::cout << "X100HAVECELL  locate" << std::endl;
                 task_to_collect->flag_x100_locate_inferred = lpLocation100xHave->infer(task_to_collect->images, task_to_collect->result_x100_locate);
             }
-            else{
-                std::cout << "X100HAVECELL big locate" << std::endl;
+            else if(task_to_collect->tasktype == X100BIGCELL){
+                std::cout << "X100MEGCELL locate" << std::endl;
                 task_to_collect->flag_x100_locate_inferred = lplocation100XBig->infer(task_to_collect->images, task_to_collect->result_x100_locate);
+            }
+            else{
+                std::cout << "X100RBCCELL locate" << std::endl;
+                // std::cout << "task_to_collect->images " << task_to_collect->images.cols << " " << task_to_collect->images.rows << std::endl;
+                task_to_collect->flag_x100_locate_inferred = lplocation100XRBC->infer(task_to_collect->images, task_to_collect->result_x100_locate);
             }
             std::cout << "task_to_collect->result_x100_locate " << task_to_collect->result_x100_locate.size() << std::endl;
             cv_infer_classify.notify_one();
@@ -298,27 +311,43 @@ private:
                 std::vector<itmCellRcgz_x100> out;
                 for(size_t i = 0; i < task_to_collect->result_x100_locate.size(); i++)
                 {
-                    cv::Rect rect_new = makeUpSquare(task_to_collect->result_x100_locate[i], src);
-                    cv::Mat cell_mat = src(rect_new);
-                    if(cell_mat.empty())
+                    if(task_to_collect->tasktype == X100RBCCELL)
                     {
-                        std::cout << "图片数据空 rect_new ----> " << rect_new << std::endl;
-                        continue; 
-                    }
-                    // cv::imwrite("cell.jpg", cell_mat);
-                    if(task_to_collect->tasktype == X100HAVECELL)
-                    {
-                        std::cout << "X100HAVECELL  classify" << std::endl;
-                        lpClassify100xHave->infer(cell_mat, out);
-                        out.resize(5); // 只保留前 5 个元素
+                        std::cout << "X100RBCCELL no classification is need" << std::endl;
+                        itmCellRcgz_x100 item_;
+                        item_.m_type = 0;
+                        item_.m_pcnt = 0.99;
+                        for(int k = 0; k < 5; k++)
+                            out.push_back(item_);
                         task_to_collect->result_x100_classify.push_back(out);
                     }
                     else{
-                        std::cout << "X100HAVECELL big classify" << std::endl;
-                        lpClassify100XBig->infer(cell_mat, out);
-                        out.resize(5); // 只保留前 5 个元素
-                        task_to_collect->result_x100_classify.push_back(out);
+                        cv::Rect rect_new = makeUpSquare(task_to_collect->result_x100_locate[i], src);
+                        cv::Mat cell_mat = src(rect_new);
+                        if(cell_mat.empty())
+                        {
+                            std::cout << "图片数据空 rect_new ----> " << rect_new << std::endl;
+                            continue; 
+                        }
+                        // cv::imwrite("cell.jpg", cell_mat);
+                        if(task_to_collect->tasktype == X100HAVECELL)
+                        {
+                            std::cout << "X100HAVECELL  classify" << std::endl;
+                            lpClassify100xHave->infer(cell_mat, out);
+                            out.resize(5); // 只保留前 5 个元素
+                            task_to_collect->result_x100_classify.push_back(out);
+                        }
+                        else if(task_to_collect->tasktype == X100BIGCELL){
+                            std::cout << "X100BIGCELL big classify" << std::endl;
+                            lpClassify100XBig->infer(cell_mat, out);
+                            out.resize(5); // 只保留前 5 个元素
+                            task_to_collect->result_x100_classify.push_back(out);
+                        }
+                        else{
+                            std::cout << "tasktype error" << std::endl;
+                        }
                     }
+                    
                 }
                 task_to_collect->flag_x100_classify_inferred = true;
             }

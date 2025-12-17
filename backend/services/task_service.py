@@ -11,7 +11,7 @@ from itertools import chain
 from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
-from backend.tools.MESSAGE_DICT import RET_CODE, RET_DESC
+from backend.tools.MESSAGE_DICT import RET_CODE, RET_DESC, Task_Type, CELL_TYPES
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
@@ -237,10 +237,6 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        if not roi_xmax or not roi_ymax:
-            layer = project.get_layer(MagnificationLevel.X40)
-            roi_xmax = layer.num_rows
-            roi_ymax = layer.num_cols
         cell_list = project.get_cells_in_roi(MagnificationLevel.X40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return {
             'ret_code': RET_CODE.API_SUCCESS.value,
@@ -267,7 +263,13 @@ class TaskService:
             }
         x_min, y_min, x_max, y_max = user_choice_area['x_min'], user_choice_area['y_min'], \
             user_choice_area['x_max'], user_choice_area['y_max']
-        if not self.project_x100[task_id]:
+        user_choose_area = {
+            'min_row': y_min,
+            'max_row': y_max,
+            'min_col': x_min,
+            'max_col': x_max
+        }
+        if not self.project_x100.get(task_id):
             infos_40xtile = []
             for row in range(y_min, y_max + 1):
                 for col in range(x_min, y_min + 1):
@@ -307,7 +309,7 @@ class TaskService:
             save_dir = os.path.join(images_folder, task_id)
             os.makedirs(save_dir, exist_ok=True)
             task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile,
-                                                                   user_choice_area,
+                                                                   user_choose_area,
                                                                    2,
                                                                    target_num_WBC,
                                                                    rect_width=view_width,  # 百倍视野的宽
@@ -326,9 +328,28 @@ class TaskService:
             'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
 
-    @staticmethod
-    def get_task_result_x100(task_id, image_file, smear_type, magnification, task_type,
-                             camera_type, edge_cell_filter):
+    def get_task_result_x100(self, task_id, image_file, smear_type, magnification, task_type,
+                             camera_type, edge_cell_filter, *args):
+        if None in args:
+            return {
+                'ret_code': RET_CODE.CLIENT_ERROR.value,
+                'ret_desc': RET_DESC.CLIENT_ERROR.value
+            }
+        try:
+            task_type = Task_Type[task_type].value
+        except KeyError:
+            return {
+                'ret_code': RET_CODE.CLIENT_ERROR.value,
+                'ret_desc': RET_DESC.CLIENT_ERROR.value,
+            }
+        if task_id not in self.project:
+            result = self.load_data(task_id)
+            if result:
+                return result
+        # todo 为以后关联留的
+        # project = self.project[task_id]
+        # position_xmin, position_ymin, position_xmax, position_ymax = args
+        # project.add_tile()
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR_BGR)
@@ -342,13 +363,28 @@ class TaskService:
                 cellTypes = new_result['cellTypes'].astype(int).tolist()
                 cellRatios = new_result['cellRatios'].astype(float).tolist()
                 for i in range(len(cellRects)):
-                    one_data = {'cell_pos': {'x': cellRects[i][0], 'y': cellRects[i][1], 'width': cellRects[i][2],
-                                             'height': cellRects[i][3]},
-                                'cell_types': {
-                                    f"top{j + 1}": {'type': int(cellTypes[i][j]), 'pecent': float(cellRatios[i][j])}
-                                    for j in range(len(cellTypes[i]))
-                                }}
-                    cell_list.append(one_data)
+                    x, y, w, h, *o = cellRects[i]
+                    cell_type = cellTypes[i][0] + 200000
+                    cell_type_name = CELL_TYPES.get(cell_type, '未知细胞')
+                    class_confidence = cellRatios[i][0]
+                    new_one_data = {
+                        "cell_xmin": x,
+                        "cell_ymin": y,
+                        'cell_xmax': x + w,
+                        'cell_ymax': y + h,
+                        'cell_type': cell_type,
+                        'cell_type_name': cell_type_name,
+                        'class_confidence': class_confidence,
+                        'bbox_confidence': 1
+
+                    }
+                    # one_data = {'cell_pos': {'x': cellRects[i][0], 'y': cellRects[i][1], 'width': cellRects[i][2],
+                    #                          'height': cellRects[i][3]},
+                    #             'cell_types': {
+                    #                 f"top{j + 1}": {'type': int(cellTypes[i][j]), 'pecent': float(cellRatios[i][j])}
+                    #                 for j in range(len(cellTypes[i]))
+                    #             }}
+                    cell_list.append(new_one_data)
                 break
             else:
                 time.sleep(0.001)
