@@ -9,8 +9,9 @@ from typing import Any, Callable, Dict, Optional, Tuple, List
 @dataclass(frozen=True)
 class TileMsg:
     task_id: str
-    row_index: int
-    col_index: int
+    image_uid: str
+    position_x: int
+    position_y: int
     tile_bytes: bytes
     tile_meta: Any = None
 
@@ -59,10 +60,10 @@ class TileTaskWrap:
             t.start()
             self._workers.append(t)
 
-    def put_tile(self, row_index: int, col_index: int, tile_bytes: bytes, tile_meta: Any = None) -> None:
+    def put_tile(self, image_uid, position_x, position_y, tile_bytes, tile_meta) -> None:
         if self._stop_event.is_set() or self._cleaned_up:
             raise RuntimeError(f"TileTaskWrap[{self.task_id}] stopping/cleaned; cannot accept new tiles.")
-        self.tile_queue.put(TileMsg(self.task_id, row_index, col_index, tile_bytes, tile_meta))
+        self.tile_queue.put(TileMsg(self.task_id, image_uid, position_x, position_y, tile_bytes, tile_meta))
 
     def finish(self) -> None:
         # 投放哨兵：每个 worker 都能退出
@@ -175,12 +176,13 @@ class TileQueueRouter:
             self._tasks[task_id] = wrap
             return wrap
 
-    def push_tile(self, task_id: str, row_index: int, col_index: int, tile_bytes: bytes, tile_meta: Any = None) -> None:
+    def push_tile(self, task_id: str, image_uid: int, position_x: int, position_y: int,
+                  tile_bytes, tile_meta: Any = None) -> None:
         with self._lock:
             wrap = self._tasks.get(task_id)
         if wrap is None:
             raise KeyError(f"Task '{task_id}' not found. Call create_task() first.")
-        wrap.put_tile(row_index, col_index, tile_bytes, tile_meta)
+        wrap.put_tile(image_uid, position_x, position_y, tile_bytes, tile_meta)
 
     def finish_task(self, task_id: str) -> None:
         with self._lock:

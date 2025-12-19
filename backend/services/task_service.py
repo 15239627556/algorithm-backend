@@ -11,12 +11,11 @@ from itertools import chain
 from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
-from backend.tools.MESSAGE_DICT import RET_CODE, RET_DESC, Task_Type, CELL_TYPES
+from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100, TaskStatus
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
 from project.inference_queue_manager import TileInferenceQueueManager
-from project.smear_project import MagnificationLevel, TaskStatus
 from project.tile_queue import TileQueueRouter, TileMsg
 
 # -----------------------------
@@ -45,30 +44,16 @@ dispatcher = X100ImageModels.X100ImageModels(num_workers=1)
 def _on_tile_factory(task_service):
     def on_tile(msg: TileMsg):
         task_id = msg.task_id
-        project = task_service.project[task_id]
-
-        position_x = int(msg.tile_meta["position_x"])
-        position_y = int(msg.tile_meta["position_y"])
-        image_uid = msg.tile_meta["image_uid"]
-
-        # 先创建 tile，确保结果回来能找到 tile
-        project.add_tile(
-            magnification=MagnificationLevel.X40,
-            row_index=msg.row_index,
-            col_index=msg.col_index,
-            position_x=position_x,
-            position_y=position_y,
-            image_uid=image_uid,
-        )
+        image_uid = msg.image_uid
+        msg.tile_meta['position_x'] = msg.position_x
+        msg.tile_meta['position_y'] = msg.position_y
         # B方案：只提交 bytes，不在 Flask 进程 decode / 不触碰模型
         get_queue_manager().submit_tile_bytes(
             project_task_id=task_id,
-            magnification=MagnificationLevel.X40,
-            row_index=msg.row_index,
-            col_index=msg.col_index,
+            dpi=40,
+            image_uid=image_uid,
             tile_bytes=msg.tile_bytes,
             tile_meta=msg.tile_meta,
-            extra=None,
         )
 
     return on_tile
@@ -77,17 +62,18 @@ def _on_tile_factory(task_service):
 class TaskService:
     def __init__(self):
         self.project = {}
-        self.project_x100 = {}
+        self.project_info = {}
         self.grids = {}
         self.project_lock = {}
-        self.task_id = None
+        self.x40_task_status = {}
+        self.X100_results = {}
 
     def load_data(self, task_id):
         os.makedirs(upload_folder, exist_ok=True)
         file_path = os.path.join(upload_folder, f"{task_id}.smear.pkl")
         if not os.path.exists(file_path):
-            return {"ret_code": RET_CODE.CLIENT_ERROR.value,
-                    "ret_desc": RET_DESC.CLIENT_ERROR.value,
+            return {"ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
                     'reason': '任务ID不存在',
                     'msg': f"file for task_id '{task_id}' not found."
                     }
@@ -96,21 +82,11 @@ class TaskService:
     def create_task(self, task_info: dict) -> dict:
         # B+预热：确保 inference 进程已 READY
         get_queue_manager()
-
         task_id = uuid.uuid4().hex
-        self.task_id = task_id
-        task_info['task_id'] = task_id
-        task_info['task_status'] = 101  # 101: 进行中, 100: 已完成
         task_info['smear_type'] = task_info.get('smear_type', 'BM')  # bm为骨髓
         num_rows = task_info.get('num_rows')
         num_cols = task_info.get('num_cols')
-        tile_width = task_info.get('tile_width', 2448)
-        tile_height = task_info.get('pixel_height', 2048)
-
-        project = SmearProject(task_id=task_id, smear_type=task_info['smear_type'],
-                               dpi=task_info['dpi'], num_rows=num_rows, num_cols=num_cols,
-                               tile_width=tile_width, tile_height=tile_height)
-
+        project = SmearProject(smear_type=task_info['smear_type'], dpi=task_info['dpi'])
         tile_router.create_task(
             task_id,
             on_tile_callback=_on_tile_factory(self),
@@ -121,77 +97,82 @@ class TaskService:
 
         self.project[task_id] = project
         self.project_lock[task_id] = threading.Lock()
+        self.x40_task_status[task_id] = TaskStatus.RUNNING
         self.grids[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
-
+        self.project_info[task_id] = task_info
         print('创建任务成功：', task_id)
-        get_queue_manager().register_project(project)
+        get_queue_manager().register_project(project, task_id)
         get_queue_manager().set_expected_tiles(task_id, num_rows * num_cols)
-
         return {
             'task_id': task_id,
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value
         }
 
     def upload_image(self, task_id, row_index, col_index, position_x, position_y, tile_image):
-        if self.task_id is None:
-            self.task_id = task_id
-        if task_id != self.task_id:
-            return {
-                'ret_code': RET_CODE.TASK_IN_PROGRESS.value,
-                'ret_desc': RET_DESC.TASK_IN_PROGRESS.value,
-            }
         image_bytes = tile_image.read()
         if len(image_bytes) == 0:
             return {
-                'ret_code': RET_CODE.CLIENT_ERROR.value,
-                'ret_desc': RET_DESC.CLIENT_ERROR.value,
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
             }
         row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
         with self.project_lock[task_id]:
             grid = self.grids[task_id]
             if grid[row_index, col_index]:
                 return {
-                    'ret_code': RET_CODE.IMAGE_ALREADY_UPLOADED.value,
-                    'ret_desc': RET_DESC.IMAGE_ALREADY_UPLOADED.value,
+                    'ret_code': RetCode.IMAGE_ALREADY_UPLOADED.value,
+                    'ret_desc': RetDesc.IMAGE_ALREADY_UPLOADED.value,
                 }
             grid[row_index, col_index] = True
             finished = grid.all()
-            image_uid = uuid.uuid4().hex
-            tile_router.push_tile(
-                task_id=task_id,
-                row_index=row_index,
-                col_index=col_index,
-                tile_bytes=image_bytes,
-                tile_meta={
-                    "position_x": position_x,
-                    "position_y": position_y,
-                    "image_uid": image_uid
-                }
-            )
-            # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
-            if finished:
-                self._finish_task_async(task_id)
-            return {
-                'ret_code': RET_CODE.API_SUCCESS.value,
-                'ret_desc': RET_DESC.API_SUCCESS.value,
-                'image_uid': image_uid
+        project = self.project[task_id]
+        layer = project.get_layer(40)
+        # 先创建 tile，确保结果回来能找到 tile
+        task_info = self.project_info[task_id]
+        image_uid = layer.add_tile(
+            x=position_x,
+            y=position_y,
+            w=task_info['tile_width'],
+            h=task_info['tile_height'],
+            image_data=None,
+            extra_meta={
+                'num_rows': task_info['num_rows'],
+                'num_cols': task_info['num_cols'],
+                'row_index': row_index,
+                'col_index': col_index,
             }
+        )
+        tile_router.push_tile(
+            task_id=task_id,
+            image_uid=image_uid,
+            position_x=position_x,
+            position_y=position_y,
+            tile_bytes=image_bytes,
+            tile_meta={
+                'row_index': row_index,
+                'col_index': col_index
+            }
+        )
+        # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
+        if finished:
+            self._finish_task_async(task_id)
+        return {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'image_uid': image_uid
+        }
 
     @thread_decorator
     def _finish_task_async(self, task_id: str):
         try:
             tile_router.finish_task(task_id)
             tile_router.join_task(task_id)
-
             project = self.project[task_id]
-            get_queue_manager().finish_tile(task_id, MagnificationLevel.X40)
-            print('等待所有图像处理完成：============================================', task_id)
+            get_queue_manager().finish_tile(task_id)
             get_queue_manager().wait_written_all(task_id, timeout=300.0)
-            print('所有图像处理完成，开始选区：============================================', task_id)
-            project.set_task_status(TaskStatus.COMPLETED)  # 100: 已完成
-            print('准备pickle保存：============================================', task_id)
-            project.save_pickle(upload_folder)
+            self.x40_task_status[task_id] = TaskStatus.COMPLETED  # 100: 已完成
+            project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
             print('任务完成：============================================', task_id)
         except Exception as e:
             print("[finish_task_async ERROR]", task_id, repr(e))
@@ -204,16 +185,16 @@ class TaskService:
         project = self.project[task_id]
         missing_tiles = project.check_missing_tiles()
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'missing_tiles': missing_tiles
         }
 
     @staticmethod
     def get_desc(code_value: int) -> str:
         try:
-            code_enum = RET_CODE(code_value)  # 反查枚举
-            desc_enum = RET_DESC[code_enum.name]  # 名称映射
+            code_enum = RetCode(code_value)  # 反查枚举
+            desc_enum = RetDesc[code_enum.name]  # 名称映射
             return desc_enum.value
         except Exception:
             return "未知状态码"
@@ -226,8 +207,8 @@ class TaskService:
         project = self.project[task_id]
         task_status = project.task_status
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'task_status': self.get_desc(task_status.value)
         }
 
@@ -237,10 +218,10 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        cell_list = project.get_cells_in_roi(MagnificationLevel.X40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        cell_list = project.get_cells_in_roi(40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'cell_count': len(cell_list),
             'cell_list': cell_list
         }
@@ -322,8 +303,8 @@ class TaskService:
         else:
             new_task_list = self.project_x100[task_id]
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'task_list_num': len(new_task_list),
             'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
@@ -332,15 +313,15 @@ class TaskService:
                              camera_type, edge_cell_filter, *args):
         if None in args:
             return {
-                'ret_code': RET_CODE.CLIENT_ERROR.value,
-                'ret_desc': RET_DESC.CLIENT_ERROR.value
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value
             }
         try:
-            task_type = Task_Type[task_type].value
+            task_type = TaskType[task_type].value
         except KeyError:
             return {
-                'ret_code': RET_CODE.CLIENT_ERROR.value,
-                'ret_desc': RET_DESC.CLIENT_ERROR.value,
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
             }
         if task_id not in self.project:
             result = self.load_data(task_id)
@@ -365,7 +346,7 @@ class TaskService:
                 for i in range(len(cellRects)):
                     x, y, w, h, *o = cellRects[i]
                     cell_type = cellTypes[i][0] + 200000
-                    new_cell_type = CELL_TYPES.get(cell_type)
+                    new_cell_type = CELL_TYPES_X100.get(cell_type)
                     if not new_cell_type:
                         cell_type_name = '未知细胞'
                     else:
@@ -393,8 +374,8 @@ class TaskService:
             else:
                 time.sleep(0.001)
         return {
-            "ret_code": RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            "ret_code": RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'cell_count': len(cell_list),
             'cell_list': serialize_non_json_fields(cell_list)
         }

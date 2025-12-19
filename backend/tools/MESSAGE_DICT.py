@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
 
+class TaskStatus(Enum):
+    """
+    任务状态（对应文档中的 100/101/102 等状态码）
+    """
+    COMPLETED = 100  # 任务已完成
+    RUNNING = 101  # 任务进行中
+    TIMEOUT = 102  # 任务超时
 
-class RET_CODE(Enum):
+class RetCode(Enum):
     """
     返回码枚举（数值）
     """
@@ -17,7 +24,7 @@ class RET_CODE(Enum):
     CLIENT_ERROR = 201  # 参数错误、文件类型错误、相关条目不存在等客户端错误
 
 
-class RET_DESC(Enum):
+class RetDesc(Enum):
     """
     返回码枚举（描述）
     """
@@ -32,16 +39,23 @@ class RET_DESC(Enum):
     CLIENT_ERROR = "参数错误、文件类型错误、相关条目不存在等客户端错误"
 
 
-class Task_Type(Enum):
+class TaskType(Enum):
     """
     任务类型枚举
     """
-    WBC = 0  # 任务类型0
-    MEG = 1  # 任务类型1
-    RBC = 2  # 任务类型2
+    WBC = 0  #
+    MEG = 1  #
+    RBC = 2  #
 
 
-CELL_TYPES = {
+CELL_TYPES_X40 = {
+    100000: ("Unclassified_WBC", "未分类白细胞"),
+    100001: ("Unclassified_MEG", "未分类巨核细胞"),
+    100002: ("Unclassified_RBC", "未分类红细胞"),
+    100003: ("Broken_Cell", "破碎细胞"),
+}
+
+CELL_TYPES_X100 = {
     200000: ("Myeloblast", "原始粒细胞"),
     200001: ("Promyelocyte", "早幼粒细胞"),
     200002: ("Neutrophilic_Myelocyte", "中性中幼粒细胞"),
@@ -79,36 +93,7 @@ CELL_TYPES = {
     200034: ("Platelet", "血小板"),
 }
 
-RET_CODE_OK = 200
-RET_DESC_OK = 'success'
-RET_DESC_TASK_CREATED = '任务创建成功'
-RET_DESC_UPLOAD_OK = '图片上传成功'
-RET_DESC_RESULT_OK = '结果获取成功'
-
-RET_CODE_ERROR = -1
-RET_DESC_EXISTS = '相关条目已存在'
-RET_DESC_NOT_EXISTS = '相关条目不存在'
-RET_DESC_PARAMS_ERROR = '参数错误'
-RET_DESC_FILE_TYPE_ERROR = '文件类型错误'
-
-RET_CODE_TASK_OK = 100
-RET_DESC_TASK_OK = "任务已完成"
-
-RET_CODE_TASK_RUN = 101
-RET_DESC_TASK_RUN = '任务正在进行中'
-
-RET_CODE_TASK_TIMEOUT = 102
-RET_DESC_TASK_TIMEOUT = "任务超时"
-
-RET_CODE_IMAGE_ERROR = 103
-RET_DESC_IMAGE_UPLOADED = "图片已上传,请勿重复上传"
-
-RET_CODE_IMAGE_MISSING = 104
-RET_DESC_IMAGE_MISSING = "图片已损坏,请检查上传图片是否完整"
-
-RET_CODE_TASK_BUSY = 105
-RET_DESC_TASK_BUSY = "当前有任务正在进行，请稍后再试"
-
-RET_DESC_TASK_UNKNOWN = '未知任务状态'
-
+# 目前开放的DPI
+dpi_list = [40, 100]
+# 允许上传的图片格式
 allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
