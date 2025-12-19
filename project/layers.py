@@ -41,7 +41,7 @@ class Layer:
         return list(self.tiles.values())
 
     # ---------- ROI 细胞查询 ----------
-    def iter_cells_in_roi(self, xmin, ymin, xmax, ymax, is_Cell: bool) -> list[dict | Cell]:
+    def iter_cells_in_roi(self, xmin, ymin, xmax, ymax, is_Cell: bool = False) -> list[dict | Cell]:
         if xmin is None:
             xmin = 0
         if ymin is None:

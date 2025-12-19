@@ -1,13 +1,6 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
 
-class TaskStatus(Enum):
-    """
-    任务状态（对应文档中的 100/101/102 等状态码）
-    """
-    COMPLETED = 100  # 任务已完成
-    RUNNING = 101  # 任务进行中
-    TIMEOUT = 102  # 任务超时
 
 class RetCode(Enum):
     """

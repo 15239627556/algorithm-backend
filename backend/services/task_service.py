@@ -11,7 +11,7 @@ from itertools import chain
 from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
-from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100, TaskStatus
+from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
@@ -65,7 +65,6 @@ class TaskService:
         self.project_info = {}
         self.grids = {}
         self.project_lock = {}
-        self.x40_task_status = {}
         self.X100_results = {}
 
     def load_data(self, task_id):
@@ -84,6 +83,7 @@ class TaskService:
         get_queue_manager()
         task_id = uuid.uuid4().hex
         task_info['smear_type'] = task_info.get('smear_type', 'BM')  # bm为骨髓
+        task_info['task_status'] = RetCode.TASK_RUNNING.value
         num_rows = task_info.get('num_rows')
         num_cols = task_info.get('num_cols')
         project = SmearProject(smear_type=task_info['smear_type'], dpi=task_info['dpi'])
@@ -97,7 +97,6 @@ class TaskService:
 
         self.project[task_id] = project
         self.project_lock[task_id] = threading.Lock()
-        self.x40_task_status[task_id] = TaskStatus.RUNNING
         self.grids[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
         self.project_info[task_id] = task_info
         print('创建任务成功：', task_id)
@@ -171,45 +170,66 @@ class TaskService:
             project = self.project[task_id]
             get_queue_manager().finish_tile(task_id)
             get_queue_manager().wait_written_all(task_id, timeout=300.0)
-            self.x40_task_status[task_id] = TaskStatus.COMPLETED  # 100: 已完成
+            self.project_info[task_id]['task_status'] = RetCode.TASK_FINISHED.value  # 100: 已完成
             project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
             print('任务完成：============================================', task_id)
         except Exception as e:
+            self.project_info[task_id]['task_status'] = RetCode.TASK_TIMEOUT.value  # 200: 失败
             print("[finish_task_async ERROR]", task_id, repr(e))
 
     def check_image(self, task_id: str) -> dict:
-        if task_id not in self.project:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        project = self.project[task_id]
-        missing_tiles = project.check_missing_tiles()
-        return {
-            'ret_code': RetCode.API_SUCCESS.value,
-            'ret_desc': RetDesc.API_SUCCESS.value,
-            'missing_tiles': missing_tiles
-        }
-
-    @staticmethod
-    def get_desc(code_value: int) -> str:
         try:
-            code_enum = RetCode(code_value)  # 反查枚举
-            desc_enum = RetDesc[code_enum.name]  # 名称映射
-            return desc_enum.value
-        except Exception:
-            return "未知状态码"
+            if task_id not in self.project:
+                result = self.load_data(task_id)
+                if result:
+                    return result
+            project = self.project[task_id]
+            grid = self.grids.get(task_id)
+            if grid is None:
+                layer = project.get_layer(40)
+                tiles = layer.iter_tiles()
+                tile0 = tiles[0]
+                num_rows = tile0.meta.get('num_rows', 0)
+                num_cols = tile0.meta.get('num_cols', 0)
+                grid = np.full((num_rows, num_cols), False, dtype=bool)
+                for tile in tiles:
+                    row_index = tile.meta.get('row_index')
+                    col_index = tile.meta.get('col_index')
+                    grid[row_index, col_index] = True
+            rows, cols = np.where(~grid)
+            missing_tiles = []
+            for r, c in zip(rows, cols):
+                missing_tiles.append({
+                    'row_index': int(r),
+                    'col_index': int(c),
+                    'position_missing': True,
+                    'image_missing': True
+                })
+            return {
+                'ret_code': RetCode.API_SUCCESS.value,
+                'ret_desc': RetDesc.API_SUCCESS.value,
+                'missing_tiles': missing_tiles
+            }
+        except Exception as e:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': str(e)
+            }
 
     def task_status(self, task_id: str) -> dict:
-        if task_id not in self.project:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        project = self.project[task_id]
-        task_status = project.task_status
+        task_info = self.project_info.get(task_id)
+        if not task_info:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': '任务ID不存在'
+            }
+        task_status = task_info.get('task_status')
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
-            'task_status': self.get_desc(task_status.value)
+            'task_status': task_status
         }
 
     def get_result(self, task_id: str, roi_xmin, roi_ymin, roi_xmax, roi_ymax) -> dict:
@@ -218,7 +238,8 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        cell_list = project.get_cells_in_roi(40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        layer = project.get_layer(40)
+        cell_list = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -233,7 +254,7 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        layer = project.get_layer(MagnificationLevel.X40)
+        layer = project.get_layer(40)
         if not user_choice_area:
             print('user_choice_area is None, use full area')
             user_choice_area = {
@@ -309,8 +330,8 @@ class TaskService:
             'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
 
-    def get_task_result_x100(self, task_id, image_file, smear_type, magnification, task_type,
-                             camera_type, edge_cell_filter, *args):
+    def get_task_result_x100(self, task_id, image_file, smear_type, dpi, task_type,
+                             edge_cell_filter, *args):
         if None in args:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -327,8 +348,9 @@ class TaskService:
             result = self.load_data(task_id)
             if result:
                 return result
-        # todo 为以后关联留的
-        # project = self.project[task_id]
+        project = self.project[task_id]
+        # layer = project.get_layer(dpi)
+        pass
         # position_xmin, position_ymin, position_xmax, position_ymax = args
         # project.add_tile()
         image_bytes = image_file.read()

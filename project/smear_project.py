@@ -41,7 +41,9 @@ class SmearProject:
         for layer in self.layers:
             if layer.dpi == dpi:
                 return layer
-        return None
+        layer = Layer(dpi)
+        self.layers.append(layer)
+        return layer
 
     def list_layers(self) -> List[Layer]:
         """列出所有倍率层"""
