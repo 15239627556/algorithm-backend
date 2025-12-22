@@ -29,10 +29,10 @@ class Tile:
     """
     # 瓦片在全局坐标中的左上角位置
     image_uid: str
-    x: int
-    y: int
     w: int
     h: int
+    x: Optional[int] = None
+    y: Optional[int] = None
     image_path: Optional[str] = None
     image_data: Optional[bytes] = None
     meta: Dict[str, list | int | str] = field(default_factory=dict)

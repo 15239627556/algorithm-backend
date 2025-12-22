@@ -10,9 +10,9 @@ from typing import Any, Callable, Dict, Optional, Tuple, List
 class TileMsg:
     task_id: str
     image_uid: str
-    position_x: int
-    position_y: int
     tile_bytes: bytes
+    position_x: Optional[int] = None
+    position_y: Optional[int] = None
     tile_meta: Any = None
 
 
@@ -63,7 +63,12 @@ class TileTaskWrap:
     def put_tile(self, image_uid, position_x, position_y, tile_bytes, tile_meta) -> None:
         if self._stop_event.is_set() or self._cleaned_up:
             raise RuntimeError(f"TileTaskWrap[{self.task_id}] stopping/cleaned; cannot accept new tiles.")
-        self.tile_queue.put(TileMsg(self.task_id, image_uid, position_x, position_y, tile_bytes, tile_meta))
+        self.tile_queue.put(TileMsg(task_id=self.task_id,
+                                    image_uid=image_uid,
+                                    position_x=position_x,
+                                    position_y=position_y,
+                                    tile_bytes=tile_bytes,
+                                    tile_meta=tile_meta))
 
     def finish(self) -> None:
         # 投放哨兵：每个 worker 都能退出
@@ -176,7 +181,7 @@ class TileQueueRouter:
             self._tasks[task_id] = wrap
             return wrap
 
-    def push_tile(self, task_id: str, image_uid: int, position_x: int, position_y: int,
+    def push_tile(self, task_id: str, image_uid: int, position_x: Optional[int], position_y: Optional[int],
                   tile_bytes, tile_meta: Any = None) -> None:
         with self._lock:
             wrap = self._tasks.get(task_id)

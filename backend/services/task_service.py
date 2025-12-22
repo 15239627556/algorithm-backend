@@ -48,9 +48,12 @@ def _on_tile_factory(task_service):
         msg.tile_meta['position_x'] = msg.position_x
         msg.tile_meta['position_y'] = msg.position_y
         # B方案：只提交 bytes，不在 Flask 进程 decode / 不触碰模型
+        project = task_service.project[task_id]
+        layer = project.list_layers()[0]
+        dpi = layer.dpi
         get_queue_manager().submit_tile_bytes(
             project_task_id=task_id,
-            dpi=40,
+            dpi=dpi,
             image_uid=image_uid,
             tile_bytes=msg.tile_bytes,
             tile_meta=msg.tile_meta,
@@ -64,6 +67,7 @@ class TaskService:
         self.project = {}
         self.project_info = {}
         self.grids = {}
+        self.grids_position = {}
         self.project_lock = {}
         self.X100_results = {}
 
@@ -98,6 +102,7 @@ class TaskService:
         self.project[task_id] = project
         self.project_lock[task_id] = threading.Lock()
         self.grids[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
+        self.grids_position[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
         self.project_info[task_id] = task_info
         print('创建任务成功：', task_id)
         get_queue_manager().register_project(project, task_id)
@@ -109,53 +114,96 @@ class TaskService:
         }
 
     def upload_image(self, task_id, row_index, col_index, position_x, position_y, tile_image):
-        image_bytes = tile_image.read()
-        if len(image_bytes) == 0:
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
-            }
-        row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
+        row_index, col_index = int(row_index), int(col_index)
         with self.project_lock[task_id]:
-            grid = self.grids[task_id]
-            if grid[row_index, col_index]:
-                return {
-                    'ret_code': RetCode.IMAGE_ALREADY_UPLOADED.value,
-                    'ret_desc': RetDesc.IMAGE_ALREADY_UPLOADED.value,
-                }
-            grid[row_index, col_index] = True
-            finished = grid.all()
+            matcher = self.project_info[task_id].get('matcher')
+            if not matcher:
+                matcher = {}
+                self.project_info[task_id]['matcher'] = matcher
+        image_uid = matcher.get((row_index, col_index))
         project = self.project[task_id]
-        layer = project.get_layer(40)
+        layer = project.list_layers()[0]
         # 先创建 tile，确保结果回来能找到 tile
         task_info = self.project_info[task_id]
-        image_uid = layer.add_tile(
-            x=position_x,
-            y=position_y,
-            w=task_info['tile_width'],
-            h=task_info['tile_height'],
-            image_data=None,
-            extra_meta={
-                'num_rows': task_info['num_rows'],
-                'num_cols': task_info['num_cols'],
-                'row_index': row_index,
-                'col_index': col_index,
-            }
-        )
-        tile_router.push_tile(
-            task_id=task_id,
-            image_uid=image_uid,
-            position_x=position_x,
-            position_y=position_y,
-            tile_bytes=image_bytes,
-            tile_meta={
-                'row_index': row_index,
-                'col_index': col_index
-            }
-        )
-        # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
-        if finished:
-            self._finish_task_async(task_id)
+        # 当不存在瓦片数据的时候，只更新位置信息
+        if tile_image is None:
+            if position_x is None or position_y is None:
+                return {
+                    'ret_code': RetCode.CLIENT_ERROR.value,
+                    'ret_desc': RetDesc.CLIENT_ERROR.value,
+                    'reason': 'position_x and position_y are required when tile_image is None'
+                }
+            with self.project_lock[task_id]:
+                self.grids_position[task_id][row_index, col_index] = True
+                position_x, position_y = int(position_x), int(position_y)
+                flag = 0
+                if not image_uid:
+                    tiles = layer.iter_tiles()
+                    for tile in tiles:
+                        r_idx = tile.meta.get('row_index')
+                        c_idx = tile.meta.get('col_index')
+                        if r_idx == row_index and c_idx == col_index:
+                            tile.x = position_x
+                            tile.y = position_y
+                            flag += 1
+                            break
+                else:
+                    tile = layer.get_tile(image_uid)
+                    flag += 1
+                    tile.x = position_x
+                    tile.y = position_y
+                if flag == 0:
+                    image_uid = layer.add_tile(
+                        x=position_x,
+                        y=position_y,
+                        w=task_info['tile_width'],
+                        h=task_info['tile_height'],
+                        image_data=None,
+                        extra_meta={
+                            'num_rows': task_info['num_rows'],
+                            'num_cols': task_info['num_cols'],
+                            'row_index': row_index,
+                            'col_index': col_index,
+                        }
+                    )
+                    matcher[(row_index, col_index)] = image_uid
+                if self.grids_position[task_id].all():
+                    project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+        else:
+            image_bytes = tile_image.read()
+            with self.project_lock[task_id]:
+                grid = self.grids[task_id]
+                grid[row_index, col_index] = True
+                finished = grid.all()
+            if not image_uid:
+                image_uid = layer.add_tile(
+                    x=position_x,
+                    y=position_y,
+                    w=task_info['tile_width'],
+                    h=task_info['tile_height'],
+                    image_data=None,
+                    extra_meta={
+                        'num_rows': task_info['num_rows'],
+                        'num_cols': task_info['num_cols'],
+                        'row_index': row_index,
+                        'col_index': col_index,
+                    }
+                )
+                matcher[(row_index, col_index)] = image_uid
+            tile_router.push_tile(
+                task_id=task_id,
+                image_uid=image_uid,
+                position_x=position_x,
+                position_y=position_y,
+                tile_bytes=image_bytes,
+                tile_meta={
+                    'row_index': row_index,
+                    'col_index': col_index
+                }
+            )
+            # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
+            if finished:
+                self._finish_task_async(task_id)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -186,7 +234,7 @@ class TaskService:
             project = self.project[task_id]
             grid = self.grids.get(task_id)
             if grid is None:
-                layer = project.get_layer(40)
+                layer = project.list_layers()[0]
                 tiles = layer.iter_tiles()
                 tile0 = tiles[0]
                 num_rows = tile0.meta.get('num_rows', 0)
@@ -238,7 +286,7 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        layer = project.get_layer(40)
+        layer = project.list_layers()[0]
         cell_list = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
@@ -254,7 +302,7 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        layer = project.get_layer(40)
+        layer = project.list_layers()[0]
         if not user_choice_area:
             print('user_choice_area is None, use full area')
             user_choice_area = {

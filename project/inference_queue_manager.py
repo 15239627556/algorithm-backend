@@ -35,16 +35,14 @@ class ModelAdapter:
 
 def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileModelTask, tile: Tile) -> List[Cell]:
     cells: List[Cell] = []
-    position_x = int(job.tile_meta["position_x"])
-    position_y = int(job.tile_meta["position_y"])
     for item in result.get("haveCellCenterPoints", []):
         cells.append(
             Cell(
                 id=uuid.uuid4().hex,
-                cell_xmin=int(item[0] + position_x),
-                cell_ymin=int(item[1] + position_y),
-                cell_xmax=int(item[2] + position_x),
-                cell_ymax=int(item[3] + position_y),
+                cell_xmin=int(item[0]),
+                cell_ymin=int(item[1]),
+                cell_xmax=int(item[2]),
+                cell_ymax=int(item[3]),
                 cell_type=100000,
                 cell_type_name=CELL_TYPES_X40[100000][1],
                 class_confidence=float(item[4]),
@@ -56,10 +54,10 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
         cells.append(
             Cell(
                 id=uuid.uuid4().hex,
-                cell_xmin=int(item[0] + position_x),
-                cell_ymin=int(item[1] + position_y),
-                cell_xmax=int(item[2] + position_x),
-                cell_ymax=int(item[3] + position_y),
+                cell_xmin=int(item[0]),
+                cell_ymin=int(item[1]),
+                cell_xmax=int(item[2]),
+                cell_ymax=int(item[3]),
                 cell_type=100001,
                 cell_type_name=CELL_TYPES_X40[100001][1],
                 class_confidence=float(item[4]),
