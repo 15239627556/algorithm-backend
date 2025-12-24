@@ -90,6 +90,8 @@ get_task_result = task.model('get_task_result', {
     'roi_ymin': fields.Integer(required=False, description="结果区域左上角y坐标，默认为0"),
     'roi_xmax': fields.Integer(required=False, description="结果区域右下角x坐标，默认为图像宽度"),
     'roi_ymax': fields.Integer(required=False, description="结果区域右下角y坐标，默认为图像高度"),
+    'index_offset': fields.Integer(required=False, description="结果索引偏移，默认为0"),
+    'request_task_num': fields.Integer(required=False, description="请求结果数量，默认为100")
 })
 
 
@@ -104,7 +106,9 @@ class GetResult(Resource):
         roi_ymin = args.get('roi_ymin', 0)
         roi_xmax = args.get('roi_xmax')
         roi_ymax = args.get('roi_ymax')
-        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        index_offset = args.get('index_offset', 0)
+        request_task_num = args.get('request_task_num', 100)
+        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num)
         return make_response(jsonify(result), 200)
 
 

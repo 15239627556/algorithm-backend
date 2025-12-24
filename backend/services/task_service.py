@@ -70,6 +70,8 @@ class TaskService:
         self.grids_position = {}
         self.project_lock = {}
         self.X100_results = {}
+        self.roi_cache = {}
+        self.roi_cache_lock = threading.Lock()
 
     def load_data(self, task_id):
         os.makedirs(upload_folder, exist_ok=True)
@@ -280,19 +282,63 @@ class TaskService:
             'task_status': task_status
         }
 
-    def get_result(self, task_id: str, roi_xmin, roi_ymin, roi_xmax, roi_ymax) -> dict:
+    def get_result(self, task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num):
         if task_id not in self.project:
             result = self.load_data(task_id)
             if result:
                 return result
         project = self.project[task_id]
         layer = project.list_layers()[0]
-        cell_list = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+
+        # 统一默认值（和 Layer 保持一致）
+        roi_xmin = 0 if roi_xmin is None else int(roi_xmin)
+        roi_ymin = 0 if roi_ymin is None else int(roi_ymin)
+        roi_xmax = float("inf") if roi_xmax is None else int(roi_xmax)
+        roi_ymax = float("inf") if roi_ymax is None else int(roi_ymax)
+
+        offset = max(0, int(index_offset or 0))
+        limit = max(0, int(request_task_num or 0))
+
+        roi_key = (roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+
+        # ---- 读缓存 / 构建缓存 ----
+        with self.roi_cache_lock:
+            task_cache = self.roi_cache.setdefault(task_id, {})
+            hit = task_cache.get(roi_key)
+
+        if hit is None:
+            # 第一次：遍历一次，拿到全量 Cell（只存对象，分页时再 to_dict）
+            cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax,
+                                                is_Cell=True)  # :contentReference[oaicite:5]{index=5}
+            total = len(cells_all)
+            hit = (total, cells_all)
+            with self.roi_cache_lock:
+                task_cache[roi_key] = hit
+                # 可选：限制每个 task 的 ROI 缓存数量，避免内存爆
+                if len(task_cache) > 8:
+                    task_cache.pop(next(iter(task_cache)))
+        else:
+            total, cells_all = hit
+
+        total, cells_all = hit
+        page_cells = cells_all[offset: offset + limit]
+        page_dicts = [c.to_dict() for c in page_cells]
+        has_more = (offset + limit) < total
+        if not has_more:
+            # 最后一页，释放缓存
+            with self.roi_cache_lock:
+                task_cache = self.roi_cache.get(task_id)
+                if task_cache and roi_key in task_cache:
+                    task_cache.pop(roi_key)
+
         return {
-            'ret_code': RetCode.API_SUCCESS.value,
-            'ret_desc': RetDesc.API_SUCCESS.value,
-            'cell_count': len(cell_list),
-            'cell_list': cell_list
+            "ret_code": RetCode.API_SUCCESS.value,
+            "ret_desc": RetDesc.API_SUCCESS.value,
+            "cell_count": total,  # ✅ 总量必有
+            "cell_list": page_dicts,  # ✅ 分页结果
+            "index_offset": offset,
+            # "request_task_num": limit,
+            # "has_more": (offset + limit) < total
         }
 
     def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_num_WBC,
