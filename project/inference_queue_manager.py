@@ -287,7 +287,7 @@ class TileInferenceQueueManager:
                 print("[DROP] tile None", project_task_id, dpi, image_uid)
                 return
 
-            adapter = self._adapters.get(dpi)
+            adapter = self._adapters.get(40)
             if adapter is None:
                 print("[DROP] adapter None", project_task_id, dpi)
                 return
