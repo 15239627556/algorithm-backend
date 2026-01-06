@@ -60,3 +60,7 @@ Makefile
 /TensorRT-8.6.1.6/
 /access.log
 /error.log
+/engines/
+/backend/uploads/
+/algorithms/
+*.ipynb
