@@ -64,3 +64,4 @@ Makefile
 /backend/uploads/
 /algorithms/
 *.ipynb
+*.log
