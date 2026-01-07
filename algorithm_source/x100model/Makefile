@@ -35,7 +35,7 @@ QUERY_GPU  := $(BIN_DIR)/query_gpu
 
 
 # === OpenCV Config ===
-OPENCV_DIR = /usr/local
+OPENCV_DIR = ../../opencv4
 OPENCV_INC = -I$(OPENCV_DIR)/include/opencv4
 OPENCV_LIB = -L$(OPENCV_DIR)/lib
 OPENCV_LIBS = -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_dnn -lopencv_highgui

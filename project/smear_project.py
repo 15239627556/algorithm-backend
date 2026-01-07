@@ -27,9 +27,9 @@ class SmearProject:
     - /get_task_result -> get_cells_in_roi()
     """
 
-    def __init__(self, smear_type: str, dpi: int) -> None:
+    def __init__(self, smear_type: str) -> None:
         self.smear_type = smear_type
-        self.layers: List[Layer] = [Layer(dpi)]  # 默认创建 40x 层
+        self.layers: List[Layer] = []
 
     # ---------- 图层管理 ----------
     def add_layer(self, dpi: int) -> None:

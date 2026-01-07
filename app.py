@@ -8,14 +8,6 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-backend_dir = os.path.join(root_dir, 'backend')
-algorithms_dir = os.path.join(root_dir, 'algorithms')
-project_dir = os.path.join(root_dir, 'project')
-sys.path.append(root_dir)
-sys.path.append(backend_dir)
-sys.path.append(algorithms_dir)
-sys.path.append(project_dir)
 
 from flask import Flask, request
 from flask_cors import CORS

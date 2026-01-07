@@ -13,9 +13,9 @@ from backend.tools.MESSAGE_DICT import CELL_TYPES_X40
 import numpy as np
 import cv2
 
-from cells import Cell
-from smear_project import SmearProject
-from tiles import Tile
+from project.cells import Cell
+from project.smear_project import SmearProject
+from project.tiles import Tile
 
 
 @dataclass

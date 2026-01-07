@@ -8,8 +8,6 @@ import cv2
 import numpy as np
 from itertools import chain
 
-from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
-from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
@@ -92,7 +90,8 @@ class TaskService:
         task_info['task_status'] = RetCode.TASK_RUNNING.value
         num_rows = task_info.get('num_rows')
         num_cols = task_info.get('num_cols')
-        project = SmearProject(smear_type=task_info['smear_type'], dpi=task_info['dpi'])
+        project = SmearProject(smear_type=task_info['smear_type'])
+        project.add_layer(task_info['dpi'])
         tile_router.create_task(
             task_id,
             on_tile_callback=_on_tile_factory(self),
@@ -115,7 +114,57 @@ class TaskService:
             'ret_desc': RetDesc.API_SUCCESS.value
         }
 
-    def upload_image(self, task_id, row_index, col_index, position_x, position_y, tile_image):
+    def update_coordinates(self, task_id, tiles_msg):
+        if task_id not in self.project:
+            result = self.load_data(task_id)
+            if result:
+                return result
+        project = self.project[task_id]
+        layer = project.list_layers()[0]
+        project_info = self.project_info[task_id]
+        with self.project_lock[task_id]:
+            matcher = project_info.get('matcher')
+            if not matcher:
+                matcher = {}
+                project_info['matcher'] = matcher
+        failed_tiles = []
+        for tile_info in tiles_msg:
+            row_index = int(tile_info['row_index'])
+            col_index = int(tile_info['col_index'])
+            position_x = int(tile_info['position_x'])
+            position_y = int(tile_info['position_y'])
+            image_uid = matcher.get((row_index, col_index))
+            if image_uid is None:
+                image_uid = layer.add_tile(
+                    x=position_x,
+                    y=position_y,
+                    w=project_info.get('tile_width'),
+                    h=project_info.get('tile_height'),
+                    image_data=None,
+                    extra_meta={
+                        'num_rows': project_info.get('num_rows'),
+                        'num_cols': project_info.get('num_cols'),
+                        'row_index': row_index,
+                        'col_index': col_index,
+                    }
+                )
+                matcher[(row_index, col_index)] = image_uid
+            else:
+                try:
+                    tiles = layer.get_tile(image_uid)
+                    tiles.x = position_x
+                    tiles.y = position_y
+                except Exception as e:
+                    tile_info['reason'] = str(e)
+                    failed_tiles.append(tile_info)
+        project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+        return {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'failed_tiles': failed_tiles
+        }
+
+    def upload_image(self, task_id, row_index, col_index, tile_image):
         row_index, col_index = int(row_index), int(col_index)
         with self.project_lock[task_id]:
             matcher = self.project_info[task_id].get('matcher')
@@ -127,85 +176,40 @@ class TaskService:
         layer = project.list_layers()[0]
         # 先创建 tile，确保结果回来能找到 tile
         task_info = self.project_info[task_id]
-        # 当不存在瓦片数据的时候，只更新位置信息
-        if tile_image is None:
-            if position_x is None or position_y is None:
-                return {
-                    'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': RetDesc.CLIENT_ERROR.value,
-                    'reason': 'position_x and position_y are required when tile_image is None'
-                }
-            with self.project_lock[task_id]:
-                self.grids_position[task_id][row_index, col_index] = True
-                position_x, position_y = int(position_x), int(position_y)
-                flag = 0
-                if not image_uid:
-                    tiles = layer.iter_tiles()
-                    for tile in tiles:
-                        r_idx = tile.meta.get('row_index')
-                        c_idx = tile.meta.get('col_index')
-                        if r_idx == row_index and c_idx == col_index:
-                            tile.x = position_x
-                            tile.y = position_y
-                            flag += 1
-                            break
-                else:
-                    tile = layer.get_tile(image_uid)
-                    flag += 1
-                    tile.x = position_x
-                    tile.y = position_y
-                if flag == 0:
-                    image_uid = layer.add_tile(
-                        x=position_x,
-                        y=position_y,
-                        w=task_info['tile_width'],
-                        h=task_info['tile_height'],
-                        image_data=None,
-                        extra_meta={
-                            'num_rows': task_info['num_rows'],
-                            'num_cols': task_info['num_cols'],
-                            'row_index': row_index,
-                            'col_index': col_index,
-                        }
-                    )
-                    matcher[(row_index, col_index)] = image_uid
-                if self.grids_position[task_id].all():
-                    project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
-        else:
-            image_bytes = tile_image.read()
-            with self.project_lock[task_id]:
-                grid = self.grids[task_id]
-                grid[row_index, col_index] = True
-                finished = grid.all()
-            if not image_uid:
-                image_uid = layer.add_tile(
-                    x=position_x,
-                    y=position_y,
-                    w=task_info['tile_width'],
-                    h=task_info['tile_height'],
-                    image_data=None,
-                    extra_meta={
-                        'num_rows': task_info['num_rows'],
-                        'num_cols': task_info['num_cols'],
-                        'row_index': row_index,
-                        'col_index': col_index,
-                    }
-                )
-                matcher[(row_index, col_index)] = image_uid
-            tile_router.push_tile(
-                task_id=task_id,
-                image_uid=image_uid,
-                position_x=position_x,
-                position_y=position_y,
-                tile_bytes=image_bytes,
-                tile_meta={
+        image_bytes = tile_image.read()
+        with self.project_lock[task_id]:
+            grid = self.grids[task_id]
+            grid[row_index, col_index] = True
+            finished = grid.all()
+        if not image_uid:
+            image_uid = layer.add_tile(
+                x=None,
+                y=None,
+                w=task_info['tile_width'],
+                h=task_info['tile_height'],
+                image_data=None,
+                extra_meta={
+                    'num_rows': task_info['num_rows'],
+                    'num_cols': task_info['num_cols'],
                     'row_index': row_index,
-                    'col_index': col_index
+                    'col_index': col_index,
                 }
             )
-            # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
-            if finished:
-                self._finish_task_async(task_id)
+            matcher[(row_index, col_index)] = image_uid
+        tile_router.push_tile(
+            task_id=task_id,
+            image_uid=image_uid,
+            position_x=None,
+            position_y=None,
+            tile_bytes=image_bytes,
+            tile_meta={
+                'row_index': row_index,
+                'col_index': col_index
+            }
+        )
+        # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
+        if finished:
+            self._finish_task_async(task_id)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,

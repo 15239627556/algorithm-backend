@@ -35,9 +35,7 @@ upload_tile = task.parser()
 upload_tile.add_argument('task_id', type=str, required=True, help='任务ID，由创建任务接口返回', location='form')
 upload_tile.add_argument('row_index', type=int, required=True, help='拼图块行索引', location='form')
 upload_tile.add_argument('col_index', type=int, required=True, help='拼图块列索引', location='form')
-upload_tile.add_argument('position_x', type=int, required=False, help='拼图块在全图中的x坐标', location='form')
-upload_tile.add_argument('position_y', type=int, required=False, help='拼图块在全图中的y坐标', location='form')
-upload_tile.add_argument('tile_image', type=FileStorage, required=False, help='图像文件（.jpg格式）', location='files')
+upload_tile.add_argument('tile_image', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 
 
 @task.route('/upload_tile')
@@ -49,10 +47,33 @@ class UploadImage(Resource):
         task_id = args.get('task_id')
         row_index = args.get('row_index')
         col_index = args.get('col_index')
-        position_x = args.get('position_x')
-        position_y = args.get('position_y')
         tile_image = args.get('tile_image')
-        result = taskService.upload_image(task_id, row_index, col_index, position_x, position_y, tile_image)
+        result = taskService.upload_image(task_id, row_index, col_index, tile_image)
+        return make_response(jsonify(result), 200)
+
+
+tiles_msg_model = task.model('tiles_msg', {
+    'row_index': fields.Integer(required=True, description='拼图块行索引'),
+    'col_index': fields.Integer(required=True, description='拼图块列索引'),
+    'position_x': fields.Integer(required=True, description='拼图块在全图中的左上角x坐标'),
+    'position_y': fields.Integer(required=True, description='拼图块在全图中的左上角y坐标')
+})
+
+coordinates_model = task.model('update_coordinates', {
+    'task_id': fields.String(required=True, description='任务ID，由创建任务接口返回'),
+    'tiles_msg': fields.List(fields.Nested(tiles_msg_model), required=True, description='拼图块坐标信息列表')
+})
+
+
+@task.route('/update_coordinates')
+class UpdateCoordinates(Resource):
+    @task.doc(description='更新拼图块坐标信息')
+    @task.expect(coordinates_model)
+    def post(self):
+        json_data = request.json
+        task_id = json_data.get('task_id')
+        tiles_msg = json_data.get('tiles_msg')
+        result = taskService.update_coordinates(task_id, tiles_msg)
         return make_response(jsonify(result), 200)
 
 
