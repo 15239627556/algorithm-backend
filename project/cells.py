@@ -13,7 +13,6 @@ class Cell:
     - cell_type / cell_type_name
     - class_confidence / bbox_confidence
     """
-    id: str
     cell_xmin: int
     cell_ymin: int
     cell_xmax: int
@@ -27,7 +26,6 @@ class Cell:
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
             "cell_xmin": self.cell_xmin,
             "cell_ymin": self.cell_ymin,
             "cell_xmax": self.cell_xmax,
