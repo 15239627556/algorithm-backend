@@ -135,7 +135,7 @@ class TaskService:
             position_y = int(tile_info['position_y'])
             image_uid = matcher.get((row_index, col_index))
             if image_uid is None:
-                image_uid = layer.add_tile(
+                tile = layer.add_tile(
                     x=position_x,
                     y=position_y,
                     w=project_info.get('tile_width'),
@@ -148,7 +148,7 @@ class TaskService:
                         'col_index': col_index,
                     }
                 )
-                matcher[(row_index, col_index)] = image_uid
+                matcher[(row_index, col_index)] = tile.image_uid
             else:
                 try:
                     tiles = layer.get_tile(image_uid)
@@ -182,7 +182,7 @@ class TaskService:
             grid[row_index, col_index] = True
             finished = grid.all()
         if not image_uid:
-            image_uid = layer.add_tile(
+            tile = layer.add_tile(
                 x=None,
                 y=None,
                 w=task_info['tile_width'],
@@ -195,7 +195,7 @@ class TaskService:
                     'col_index': col_index,
                 }
             )
-            matcher[(row_index, col_index)] = image_uid
+            matcher[(row_index, col_index)] = tile.image_uid
         tile_router.push_tile(
             task_id=task_id,
             image_uid=image_uid,

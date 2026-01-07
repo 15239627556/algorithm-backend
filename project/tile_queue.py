@@ -112,7 +112,6 @@ class TileTaskWrap:
             except Exception:
                 # 超时无任务：触发一次 cleanup（幂等）
                 self.is_timeout = True
-                self.cleanup()
                 break
 
             try:

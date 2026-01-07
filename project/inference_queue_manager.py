@@ -38,7 +38,6 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
     for item in result.get("haveCellCenterPoints", []):
         cells.append(
             Cell(
-                id=uuid.uuid4().hex,
                 cell_xmin=int(item[0]),
                 cell_ymin=int(item[1]),
                 cell_xmax=int(item[2]),
@@ -53,7 +52,6 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
     for item in result.get("bigCellRects", []):
         cells.append(
             Cell(
-                id=uuid.uuid4().hex,
                 cell_xmin=int(item[0]),
                 cell_ymin=int(item[1]),
                 cell_xmax=int(item[2]),
