@@ -19,7 +19,7 @@ class Layer:
     def add_tile(self, x: int, y: int, w: int, h: int,
                  image_path: Optional[str] = None,
                  image_data: Optional[bytes] = None,
-                 extra_meta: Optional[dict] = None) -> str:
+                 extra_meta: Optional[dict] = None) -> Tile:
         """
         添加一个瓦片到当前层。
         """
@@ -35,7 +35,7 @@ class Layer:
             meta=extra_meta,
         )
         self.tiles[image_uid] = tile
-        return image_uid
+        return tile
 
     def get_tile(self, image_uid) -> Optional[Tile]:
         return self.tiles.get(image_uid)

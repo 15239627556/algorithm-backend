@@ -32,9 +32,10 @@ class SmearProject:
         self.layers: List[Layer] = []
 
     # ---------- 图层管理 ----------
-    def add_layer(self, dpi: int) -> None:
+    def add_layer(self, dpi: int) -> Layer:
         """添加一个倍率层，例如新建 100x 采样层。"""
         self.layers.append(Layer(dpi))
+        return self.layers[-1]
 
     def get_layer(self, dpi) -> Optional[Layer]:
         """获取指定倍率层"""
