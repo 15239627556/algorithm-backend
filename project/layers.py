@@ -16,7 +16,9 @@ class Layer:
     tiles: Dict[str, Tile] = field(default_factory=dict, repr=False)
 
     # ---------- Tile 管理 ----------
-    def add_tile(self, x: int, y: int, w: int, h: int, image_data: Optional[bytes],
+    def add_tile(self, x: int, y: int, w: int, h: int,
+                 image_path: Optional[str] = None,
+                 image_data: Optional[bytes] = None,
                  extra_meta: Optional[dict] = None) -> str:
         """
         添加一个瓦片到当前层。
@@ -28,6 +30,7 @@ class Layer:
             y=y,
             w=w,
             h=h,
+            image_path=image_path,
             image_data=image_data,
             meta=extra_meta,
         )
