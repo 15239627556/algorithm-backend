@@ -2,9 +2,9 @@ import os
 from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
-from .db_adapter import connect_db, close_db, check_db_versions
-from .db_old import ZWXKProjectDBSon1
-from .db_new import ZWXKProjectDBSon0
+from db_adapter import connect_db, close_db, check_db_versions
+from db_old import ZWXKProjectDBSon1
+from db_new import ZWXKProjectDBSon0
 
 
 def find_db_files(root_folder):
@@ -63,8 +63,13 @@ def export_x100_big_image_and_x40_rect_image_test():
         img_pil_x40.save(save_path_x40, format='png')
 
 
+def export_smear_chenck_type_test():
+    dict = zwxkProjectDbSon.get_smear_type()
+    print(dict)
+
+
 if __name__ == '__main__':
-    db_files = find_db_files(r"\\192.168.31.180\共享目录-许婷\1、医院科室研究项目备份\上海中山\2025.10.13（8）")
+    db_files = find_db_files(r"E:\db")
     progress_bar = tqdm(range(len(db_files)), desc='Processing')
     for index, item in enumerate(db_files):
         cellid = 0
@@ -86,7 +91,7 @@ if __name__ == '__main__':
         else:
             print("未知版本")
         if zwxkProjectDbSon is not None:
-            export_x100_big_image_test()
+            export_smear_chenck_type_test()
 
         #  关闭数据连接
         close_db(conn)

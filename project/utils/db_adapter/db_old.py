@@ -1,4 +1,4 @@
-from .db_parent import ZWXKProjectDB, ImageX100
+from db_parent import ZWXKProjectDB, ImageX100
 import numpy as np
 
 
@@ -21,10 +21,10 @@ class ZWXKProjectDBSon1(ZWXKProjectDB):
             # md5 = md5[:44]
             smearNo = i[1]
             data = i[2]
-            m_upixel_x = self._blob_to_u32(data, 18)  # 采样图在分布图上位置x 左下角是分布图(0, 0)点
-            m_upixel_y = self._blob_to_u32(data, 22)  # 采样图在分布图上位置y 左下角是分布图(0, 0)点
-            m_upixel_w = self._blob_to_u32(data, 26)  # 采样图在分布图上位置w 左下角是分布图(0, 0)点
-            m_upixel_h = self._blob_to_u32(data, 30)  # 采样图在分布图上位置h 左下角是分布图(0, 0)点
+            m_upixel_x = self._blob_to_u32(data, 18)  # 采样图在分布图上位置x
+            m_upixel_y = self._blob_to_u32(data, 22)  # 采样图在分布图上位置y
+            m_upixel_w = self._blob_to_u32(data, 26)  # 采样图在分布图上位置w
+            m_upixel_h = self._blob_to_u32(data, 30)  # 采样图在分布图上位置h
             x100_image_md5_list.append([md5, smearNo, m_upixel_x, m_upixel_y, m_upixel_w, m_upixel_h])
         return x100_image_md5_list
 

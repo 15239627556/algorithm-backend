@@ -2,10 +2,12 @@ import math
 import numpy as np
 import io
 from PIL import Image
+import re
 
 
 # 分布图像素坐标，左上角为(0, 0)
 # 分布图行列坐标，左下角为(0, 0)
+# 细胞列表instance_list [x, y, w, h, m_umodify_type, m_ucell_type1]
 class ImageX40(object):
     def __init__(self, image_arr, md5, smearNo, row, col, x, y, w, h):
         self.image = image_arr
@@ -375,3 +377,32 @@ class ZWXKProjectDB(object):
                     imageX100 = ImageX100AndX40(self._blob_to_numpy(image_data), image_x40, md5, smearNo, instance_list)
                     # imageX100_list.append(imageX100)
             yield imageX100
+
+    # 获取玻片类型（0-无值， 1-骨髓， 2-血液， 3-尿液）
+    def get_smear_type(self):
+        # 获取数据库中所有表名
+        self._cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        table_names = [row[0] for row in self._cursor.fetchall()]
+
+        # 编译正则：匹配 project_local_smear_info 或 project_local_smear_info_V<数字>
+        pattern = re.compile(r'^project_local_smear_info(?:_V(\d+))?$')
+
+        # 查找匹配的表（正常只有一个）
+        target_table = None
+        for name in table_names:
+            if pattern.match(name):
+                target_table = name
+                break  # 因为只有一张，找到即可退出
+
+        if target_table is None:
+            return {}  # 没有匹配的表，返回空字典
+
+        # 查询该表的数据
+        self._cursor.execute(f"SELECT Data, SmearNo FROM {target_table}")
+        rows = self._cursor.fetchall()
+
+        # 构建字典
+        return {
+            smearNo: self._blob_to_u16(data, 142)
+            for data, smearNo in rows
+        }
