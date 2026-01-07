@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from tiles import Tile
-from cells import Cell
+from .tiles import Tile
+from .cells import Cell
 
 
 @dataclass
