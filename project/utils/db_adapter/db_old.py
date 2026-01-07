@@ -1,4 +1,4 @@
-from db_parent import ZWXKProjectDB, ImageX100
+from .db_parent import ZWXKProjectDB, ImageX100
 import numpy as np
 
 

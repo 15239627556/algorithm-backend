@@ -7,7 +7,7 @@ import json
 import pickle
 from typing import List, Optional
 
-from layers import Layer
+from .layers import Layer
 
 
 # =========================

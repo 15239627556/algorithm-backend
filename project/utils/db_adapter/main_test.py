@@ -2,9 +2,9 @@ import os
 from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
-from db_adapter import connect_db, close_db, check_db_versions
-from db_old import ZWXKProjectDBSon1
-from db_new import ZWXKProjectDBSon0
+from .db_adapter import connect_db, close_db, check_db_versions
+from .db_old import ZWXKProjectDBSon1
+from .db_new import ZWXKProjectDBSon0
 
 
 def find_db_files(root_folder):
