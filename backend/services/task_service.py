@@ -13,6 +13,7 @@ from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X1
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
+from project.cells import Cell
 from project.inference_queue_manager import TileInferenceQueueManager
 from project.tile_queue import TileQueueRouter, TileMsg
 
@@ -428,7 +429,7 @@ class TaskService:
             'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
 
-    def get_task_result_x100(self, task_id, image_file, smear_type, dpi, task_type,
+    def get_task_result_x100(self, task_id, image_file, algorithm_type, dpi,
                              edge_cell_filter, *args):
         if None in args:
             return {
@@ -436,7 +437,7 @@ class TaskService:
                 'ret_desc': RetDesc.CLIENT_ERROR.value
             }
         try:
-            task_type = TaskType[task_type].value
+            task_type = TaskType[algorithm_type].value
         except KeyError:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -447,16 +448,29 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        # layer = project.get_layer(dpi)
-        pass
-        # position_xmin, position_ymin, position_xmax, position_ymax = args
-        # project.add_tile()
+        layer = project.get_layer(dpi)
+        position_xmin, position_ymin, position_xmax, position_ymax = args
+        x, y, w, h = position_xmin, position_ymin, position_xmax - position_xmin, position_ymax - position_ymin
+        tiles = layer.iter_tiles()
+        tile = None
+        for one in tiles:
+            if one.x == w and one.y == y and one.w == w and one.h == h:
+                tile = one
+                break
+        if tile is None:
+            tile = layer.add_tile(
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+            )
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR_BGR)
         new_dispatcher = dispatcher
         task_id = new_dispatcher.enqueue_task(image, task_type)
         cell_list = []
+        cells = []
         for _ in range(7200000):  # 最多等待2小时
             new_result = new_dispatcher.get_result(task_id)
             if new_result:
@@ -483,16 +497,22 @@ class TaskService:
                         'bbox_confidence': 1
 
                     }
-                    # one_data = {'cell_pos': {'x': cellRects[i][0], 'y': cellRects[i][1], 'width': cellRects[i][2],
-                    #                          'height': cellRects[i][3]},
-                    #             'cell_types': {
-                    #                 f"top{j + 1}": {'type': int(cellTypes[i][j]), 'pecent': float(cellRatios[i][j])}
-                    #                 for j in range(len(cellTypes[i]))
-                    #             }}
+                    cell = Cell(
+                        cell_xmin=x,
+                        cell_ymin=y,
+                        cell_xmax=x + w,
+                        cell_ymax=y + h,
+                        cell_type=cell_type,
+                        cell_type_name=cell_type_name,
+                        class_confidence=class_confidence,
+                        bbox_confidence=1
+                    )
                     cell_list.append(new_one_data)
+                    cells.append(cell)
                 break
             else:
                 time.sleep(0.001)
+        tile.add_cells(cells)
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,

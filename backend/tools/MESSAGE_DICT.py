@@ -36,9 +36,12 @@ class TaskType(Enum):
     """
     任务类型枚举
     """
-    WBC = 0  #
-    MEG = 1  #
-    RBC = 2  #
+    BM_WBC = 0
+    PB_WBC = 0
+    CF_WBC = 0
+    BM_MEG = 1
+    BM_RBC = 2
+    PB_RBC = 2
 
 
 CELL_TYPES_X40 = {

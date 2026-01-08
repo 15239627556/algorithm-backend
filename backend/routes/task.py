@@ -177,9 +177,8 @@ result_x100.add_argument('position_ymin', type=int, required=True, help='左上�
 result_x100.add_argument('position_xmax', type=int, required=True, help='右下角在全图中的x坐标', location='form')
 result_x100.add_argument('position_ymax', type=int, required=True, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
-result_x100.add_argument('smear_type', type=str, required=True, help='涂片类型，取值范围：BM, PB, CF', location='form')
 result_x100.add_argument('dpi', type=int, required=True, help='放大倍数', location='form')
-result_x100.add_argument('task_type', type=str, required=True, help='任务类型，取值范围: WBC, RBC, MEG', location='form')
+result_x100.add_argument('algorithm_type', type=str, required=True, help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
                          location='form', default=True)
 
@@ -192,15 +191,14 @@ class GetTaskResultX100(Resource):
         args = result_x100.parse_args()
         task_id = args.get('task_id')
         image_file = args.get('image_file')
-        smear_type = args.get('smear_type')
         dpi = args.get('dpi')
-        task_type = args.get('task_type')
+        algorithm_type = args.get('algorithm_type')
         edge_cell_filter = args.get('edge_cell_filter', True)
         position_xmin = args.get('position_xmin', None)
         position_ymin = args.get('position_ymin', None)
         position_xmax = args.get('position_xmax', None)
         position_ymax = args.get('position_ymax', None)
-        result = taskService.get_task_result_x100(task_id, image_file, smear_type, dpi, task_type,
+        result = taskService.get_task_result_x100(task_id, image_file, algorithm_type, dpi,
                                                   edge_cell_filter, position_xmin, position_ymin,
                                                   position_xmax, position_ymax)
         return make_response(jsonify(result), 200)
