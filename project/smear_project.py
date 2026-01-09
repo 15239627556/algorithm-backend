@@ -81,7 +81,6 @@ class SmearProject:
     def from_dict(cls, data: dict) -> "SmearProject":
         project = cls(
             smear_type=data["smear_type"],
-            dpi=data["layers"][0]["dpi"] if data.get("layers") else 0,
         )
         project.layers = [Layer.from_dict(ld) for ld in data.get("layers", [])]
         return project
@@ -108,7 +107,6 @@ class SmearProject:
 
 
 if __name__ == '__main__':
-    dpi = 40
     project = SmearProject.load_json('../backend/uploads/b2364dafea904bea8fb978bfd218e1b9.json')
     print(project.list_layers())
     # layer = project.get_layer(dpi)
