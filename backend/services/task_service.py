@@ -16,6 +16,7 @@ from project.smear_project import SmearProject
 from project.cells import Cell
 from project.inference_queue_manager import TileInferenceQueueManager
 from project.tile_queue import TileQueueRouter, TileMsg
+from algorithms.SelectArea.main import *
 
 # -----------------------------
 # B方案：QueueManager 懒加载 + 预热
@@ -71,6 +72,7 @@ class TaskService:
         self.X100_results = {}
         self.roi_cache = {}
         self.roi_cache_lock = threading.Lock()
+        self.project_x100 = {}
 
     def load_data(self, task_id):
         os.makedirs(upload_folder, exist_ok=True)
@@ -371,62 +373,19 @@ class TaskService:
             'max_col': x_max
         }
         if not self.project_x100.get(task_id):
-            infos_40xtile = []
-            for row in range(y_min, y_max + 1):
-                for col in range(x_min, y_min + 1):
-                    tile = layer.get_tile(row, col)
-                    global_x, global_y = tile.global_x, tile.global_y
-                    cells = tile.cells
-                    scores = tile.get_meta_quality_score()
-                    new_scores = {
-                        '0_0': [scores[0][4], scores[0][5]],
-                        '1_0': [scores[1][4], scores[1][5]],
-                        '0_1': [scores[2][4], scores[2][5]],
-                        '1_1': [scores[3][4], scores[3][5]],
-                    }
-                    meg_center_pt = []  # 巨核细胞
-                    local_cell_rects = []  # 有核细胞
-                    global_cell_rects = []
-                    # haveCellCenterPoints cell_type == 0: 有核细胞
-                    # bigCellRects cell_type == 1: 巨核细胞
-                    for one in cells:
-                        if one.cell_type == 0:  # 有核细胞
-                            local_cell_rects.append([one.x_min, one.y_min, one.x_max, one.y_max, one.class_confidence])
-                            global_cell_rects.append([one.x_min + global_x, one.x_max + global_x, one.y_min + global_y,
-                                                      one.y_max + global_y])
-                        if one.cell_type == 1:  # 巨核细胞
-                            meg_center_pt.append([one.x_min, one.y_min, one.x_max, one.y_max, one.class_confidence])
-                    infos_40xtile.append({
-                        "index_40xtile_x": tile.col_index,
-                        'index_40xtile_y': layer.num_rows - tile.row_index - 1,
-                        'abs_40xtile_x': global_x,
-                        'abs_40xtile_y': global_y,
-                        'local_cell_rects': local_cell_rects,
-                        'global_cell_rects': global_cell_rects,
-                        'meg_rect': meg_center_pt,
-                        "scores": new_scores
-                    })
-            infos_40xtile = dedup_cells_across_tiles(infos_40xtile, iou_thresh=0.2)  # 有核细胞去重
-            save_dir = os.path.join(images_folder, task_id)
-            os.makedirs(save_dir, exist_ok=True)
-            task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile,
-                                                                   user_choose_area,
-                                                                   2,
-                                                                   target_num_WBC,
-                                                                   rect_width=view_width,  # 百倍视野的宽
-                                                                   rect_height=view_height,  # 百倍视野的高
-                                                                   save_flag=True,
-                                                                   save_dir=save_dir)
-            new_task_list = list(chain(*task_list))
-            self.project_x100[task_id] = new_task_list
+            bm_cfg = BM40Config(target_cell_num=target_num_WBC, x100_rect_width=view_width,
+                                x100_rect_height=view_height, )
+            pipeline = WBCSamplingPipeline(bm_cfg)
+            final_task_list = pipeline.run(project)
+            self.project_x100[task_id] = final_task_list
             pass
         else:
-            new_task_list = self.project_x100[task_id]
+            final_task_list = self.project_x100[task_id]
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
-            'task_list_num': len(new_task_list),
-            'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
+            'task_list_num': len(final_task_list),
+            'task_list': serialize_non_json_fields(final_task_list[index_offset:index_offset + request_task_num])
         }
 
     def get_task_result_x100(self, task_id, image_file, algorithm_type, dpi,
