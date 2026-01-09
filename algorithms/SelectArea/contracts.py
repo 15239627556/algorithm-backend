@@ -9,8 +9,8 @@ if str(root_dir) not in sys.path:
 from project.tiles import Tile
 
 from typing import Optional, Iterable, List, Any
-from data_structure import ScoreRegion
-from config import BM40Config
+from .data_structure import ScoreRegion
+from .config import BM40Config
 
 class TileContractError(ValueError):
     """Tile 或其数据不符合要求时抛出"""

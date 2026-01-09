@@ -11,9 +11,9 @@ from project.tiles import Tile
 from dataclasses import dataclass
 from typing import Any, Dict, List, Protocol, Optional
 
-from data_structure import ScoreRegion
-from contracts import TileContractError, validate_regions_in_tile
-from config import BM40Config
+from .data_structure import ScoreRegion
+from .contracts import TileContractError, validate_regions_in_tile
+from .config import BM40Config
 
 
 

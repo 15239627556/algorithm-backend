@@ -2,10 +2,10 @@ from __future__ import annotations
 import numpy as np
 import cv2
 from typing import List, Dict, Tuple, Any, Optional
-from heatmaps import HeatmapGrid
-from config import BM40Config
-from data_structure import SelectionResult, TaskOutput, CellOutput
-from setcover import solve, SetCoverSolverParameter
+from .heatmaps import HeatmapGrid
+from .config import BM40Config
+from .data_structure import SelectionResult, TaskOutput, CellOutput
+from .setcover import solve, SetCoverSolverParameter
 
 
 

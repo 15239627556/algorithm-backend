@@ -1,9 +1,9 @@
 from __future__ import annotations
 import numpy as np
 from typing import List, Tuple
-from heatmaps import HeatmapGrid
-from data_structure import Rect
-from config import BM40Config
+from .heatmaps import HeatmapGrid
+from .data_structure import Rect
+from .config import BM40Config
 
 
 def heatmap_rect_to_abs_rect(grid_rect: Rect, grid: HeatmapGrid) -> Rect:

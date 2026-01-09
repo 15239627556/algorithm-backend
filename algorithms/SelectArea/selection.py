@@ -11,44 +11,40 @@ import cv2
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 
-from heatmaps import HeatmapGrid
-from config import BM40Config
-from data_structure import SelectionResult, Rect
-
-
-
+from .heatmaps import HeatmapGrid
+from .config import BM40Config
+from .data_structure import SelectionResult, Rect
 
 def find_candidate_regions(
     grid: HeatmapGrid,
     cell_matrix: np.ndarray,
     search_rects: List[Tuple[int, int]],
     head_crop_rect: Rect,
-    config: BM40Config
+    config: BM40Config,
+    user_search_mask: Optional[np.ndarray] = None
 ) -> Dict[str, List[SelectionResult]]:
     """
-    在热力图网格上搜索候选区域。
-    使用卷积/滑动窗口在网格上搜索最优得分区域。
-    引入边缘空间惩罚，使算法天然倾向于非边缘区域。
+    在热力图网格上搜索候选区域，支持用户选区强制约束。
     """
-    
     orientation = config.heatmap_orientation   # 0: 头部在右，1: 头部在左
     
-    # A. 准备基础分值图（无效区填充惩罚值）
+    # A. 准备基础分值图
     avg_score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
     rows, cols = avg_score_map.shape
 
-    # B. 计算边缘惩罚图 (Spatial Penalty Map)
+    # B. 计算边缘惩罚图
     valid_mask = (grid.weights > 0).astype(np.uint8)
     dist_map = cv2.distanceTransform(valid_mask, cv2.DIST_L2, 5)
     penalty_map = np.zeros_like(avg_score_map)
     radius = config.edge_avoidance_radius
-    
-    # 边缘带判定：距离边缘越近，扣分越狠
     near_edge_mask = (dist_map < radius) & (valid_mask > 0)
     penalty_map[near_edge_mask] = config.edge_penalty_magnitude * (1.0 - dist_map[near_edge_mask] / radius)
     
-    # 合并分值，得到带有“边缘规避倾向”的调整图
     adjusted_score_map = avg_score_map + penalty_map
+
+    # 如果有用户选区，初步压低底图分数
+    if user_search_mask is not None:
+        adjusted_score_map[user_search_mask == 0] = config.heatmap_penalty_value * 100
 
     head_results: List[SelectionResult] = []
     tail_results: List[SelectionResult] = []
@@ -57,25 +53,11 @@ def find_candidate_regions(
     for (w, h) in search_rects:
         kernel_size = int(np.sqrt(w**2 + h**2)) + config.kernel_margin
         if kernel_size % 2 == 0: kernel_size += 1
-        
-        # 修正逻辑：计算需要的填充尺寸（filter2D 的锚点默认在中心）
         pad = kernel_size // 2
         
-        # 使用配置的惩罚值手动填充得分图边界 
-        padded_scores = cv2.copyMakeBorder(
-            adjusted_score_map, 
-            pad, pad, pad, pad, 
-            borderType=cv2.BORDER_CONSTANT, 
-            value=float(config.heatmap_penalty_value)
-        )
-        
-        # 使用 0 手动填充细胞密度图边界 
-        padded_cells = cv2.copyMakeBorder(
-            cell_matrix, 
-            pad, pad, pad, pad, 
-            borderType=cv2.BORDER_CONSTANT, 
-            value=0.0
-        )
+        # 填充边界
+        padded_scores = cv2.copyMakeBorder(adjusted_score_map, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=float(config.heatmap_penalty_value))
+        padded_cells = cv2.copyMakeBorder(cell_matrix, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0.0)
 
         base_mask = np.zeros((kernel_size, kernel_size), dtype=np.float32)
         pad_w, pad_h = (kernel_size - w) // 2, (kernel_size - h) // 2
@@ -86,22 +68,35 @@ def find_candidate_regions(
             M = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), -angle, 1.0)
             rotated_kernel = cv2.warpAffine(base_mask, M, (kernel_size, kernel_size), flags=cv2.INTER_NEAREST)
             
-            # 卷积计算：此时不再需要 borderType 和 borderValue 
+            # 卷积计算
             sum_scores_full = cv2.filter2D(padded_scores, -1, rotated_kernel)
             sum_cells_full = cv2.filter2D(padded_cells, -1, rotated_kernel)
             
-            # 裁剪回原始网格尺寸
             sum_scores = sum_scores_full[pad : pad + rows, pad : pad + cols]
             sum_cells = sum_cells_full[pad : pad + rows, pad : pad + cols]
             
-            # 查找最大值及其位置
+            # 1. 强制约束中心点坐标
+            if user_search_mask is not None:
+                sum_scores[user_search_mask == 0] = -1e12 
+            
             _, max_val, _, max_loc = cv2.minMaxLoc(sum_scores)
             cx, cy = int(max_loc[0]), int(max_loc[1])
 
-            # 几何判定：多边形四个顶点
+            # 2. 生成顶点并执行严格包含性检查
             rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
             
-            # 区分头/尾：根据配置的朝向判断极端坐标点 
+            if user_search_mask is not None:
+                pts_idx = rect_points.astype(np.int32)
+                # 检查是否越界及四个角是否都在掩码内
+                is_valid = True
+                for px, py in pts_idx:
+                    if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
+                        is_valid = False
+                        break
+                if not is_valid:
+                    continue  # 丢弃这个结果，因为它超出了用户设定
+
+            # 3. 结果入库
             extreme_x = np.max(rect_points[:, 0]) if orientation == 0 else np.min(rect_points[:, 0])
             in_head = (head_crop_rect.x <= extreme_x <= head_crop_rect.x2)
 
@@ -120,7 +115,6 @@ def find_candidate_regions(
                 tail_results.append(res)
 
     return {"head_results": head_results, "tail_results": tail_results}
-
 
 
 

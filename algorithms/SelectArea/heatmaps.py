@@ -14,9 +14,9 @@ from typing import List, Optional, Tuple
 import math
 import numpy as np
 
-from adapters import TileAdapter, DefaultScoresAdapter
-from config import BM40Config
-from data_structure import Rect, ScoreRegion
+from .adapters import TileAdapter, DefaultScoresAdapter
+from .config import BM40Config
+from .data_structure import Rect, ScoreRegion
 
 
 

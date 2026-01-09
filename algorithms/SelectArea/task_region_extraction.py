@@ -11,9 +11,9 @@ import cv2
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 
-from heatmaps import HeatmapGrid
-from config import BM40Config
-from data_structure import SelectionResult, Rect
+from .heatmaps import HeatmapGrid
+from .config import BM40Config
+from .data_structure import SelectionResult, Rect
 
 
 

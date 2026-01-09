@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 
 
@@ -48,6 +48,7 @@ class SelectionResult:
     vertices_grid: np.ndarray     # 网格坐标系下的四个顶点 (4, 2)
 
 
+
 @dataclass
 class CellOutput:
     """任务内单个细胞的坐标"""
@@ -56,16 +57,32 @@ class CellOutput:
     cell_xmax: int
     cell_ymax: int
 
-
+    def to_list(self) -> List[int]:
+        """按 [xmin, ymin, xmax, ymax] 顺序返回列表"""
+        return [self.cell_xmin, self.cell_ymin, self.cell_xmax, self.cell_ymax]
 
 @dataclass
 class TaskOutput:
     """单场百倍视野拍摄任务"""
     task_index: int
-    view_type: str  # 取值范围: "WBC", "MEG"
+    view_type: str  # "WBC", "MEG"
     view_xmin: int
     view_ymin: int
     view_xmax: int
     view_ymax: int
-    region_name: str  # 新增字段：记录属于哪个拍摄区域框（如：初始拍摄框、补拍1...）
+    region_name: str
     cell_list: List[CellOutput] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """将对象转换为符合前端或 JSON 要求的字典格式"""
+        return {
+            "task_index": self.task_index,
+            "view_type": self.view_type,
+            "view_xmin": self.view_xmin,
+            "view_ymin": self.view_ymin,
+            "view_xmax": self.view_xmax,
+            "view_ymax": self.view_ymax,
+            "region_name": self.region_name,
+            # 核心修改：通过列表推导式将 CellOutput 对象转换为 [x1, y1, x2, y2] 格式
+            "cell_list": [cell.to_list() for cell in self.cell_list]
+        }

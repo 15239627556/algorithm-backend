@@ -19,9 +19,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # 导入核心组件
-from data_structure import SelectionResult, TaskOutput
-from config import BM40Config
-from pipeline import WBCSamplingPipeline
+from .data_structure import SelectionResult, TaskOutput
+from .config import BM40Config
+from .pipeline import WBCSamplingPipeline
 
 
 # ===================== 可视化配置 =====================
@@ -58,10 +58,11 @@ def visualize_results(
     best_res: "SelectionResult", 
     tasks: List["TaskOutput"], 
     grid_info: Any, 
-    save_path_base: Path
+    save_path_base: Path,
+    user_search_mask: np.ndarray = None  
 ):
     """
-    可视化结果，内部解包数据。
+    可视化结果，并在图 2 上绘制用户约束区域（如有）。
     """
     if not tasks:
         print("[WARNING] 无采样任务，跳过可视化生成。")
@@ -73,46 +74,51 @@ def visualize_results(
     # 2. 准备热力图数据
     heatmap_data = grid_info.finalize(fill_value=np.nan)
     
-    # 计算归一化范围，增强灰度图对比度
+    # 计算归一化范围
     valid_scores = heatmap_data[~np.isnan(heatmap_data)]
-    if valid_scores.size > 0:
-        vmin = np.nanmin(valid_scores)
-        vmax = np.nanmax(valid_scores)
-    else:
-        vmin, vmax = 0, 1
+    vmin, vmax = (np.nanmin(valid_scores), np.nanmax(valid_scores)) if valid_scores.size > 0 else (0, 1)
 
     # ---------------------------------------------------------
-    # 图 3：纯分值图 (Heatmap Only) - 灰度图
+    # 图 3：纯分值图 (Heatmap Only)
     # ---------------------------------------------------------
     fig3, ax3 = plt.subplots(figsize=(12, 10))
-    # 使用 cmap='gray' 转换为灰度
     im3 = ax3.imshow(heatmap_data, cmap='gray', vmin=vmin, vmax=vmax, interpolation='nearest')
     plt.colorbar(im3, ax=ax3, label='Score (Grayscale)')
     ax3.set_title("Figure 3: Score Grid Heatmap (Grayscale)")
-    ax3.set_xlabel("Grid Column")
-    ax3.set_ylabel("Grid Row")
-    
-    # 修正路径拼接：使用 / 运算符
     fig3.savefig(save_path_base / "heatmap.png", dpi=200, bbox_inches='tight')
     plt.close(fig3)
 
     # ---------------------------------------------------------
-    # 图 2：灰度分值图 + 选区结果 (Selection on Heatmap)
+    # 图 2：灰度分值图 + 选区结果 + 用户约束区域
     # ---------------------------------------------------------
     fig2, ax2 = plt.subplots(figsize=(12, 10))
     ax2.imshow(heatmap_data, cmap='gray', vmin=vmin, vmax=vmax, interpolation='nearest')
     
-    # 绘制选区多边形 (vertices_grid 为 [col, row] 序列)
-    # 增加线宽至 4 确保可见
+    # A. 绘制用户约束区域 (User Choice Area) - 青色虚线框
+    if user_search_mask is not None and np.any(user_search_mask > 0):
+        # 寻找掩码中为 1 的坐标范围
+        y_indices, x_indices = np.where(user_search_mask > 0)
+        cmin, cmax = x_indices.min(), x_indices.max()
+        rmin, rmax = y_indices.min(), y_indices.max()
+        
+        # 绘制矩形（注意：imshow 中坐标是 [col, row]）
+        user_rect = patches.Rectangle(
+            (cmin - 0.5, rmin - 0.5), cmax - cmin + 1, rmax - rmin + 1,
+            linewidth=2, edgecolor='cyan', facecolor='none', 
+            linestyle='--', label='User Search Area', zorder=9
+        )
+        ax2.add_patch(user_rect)
+
+    # B. 绘制最终选区多边形 (Selection Result) - 黄色实线
     poly_grid = best_res.vertices_grid
     polygon = patches.Polygon(
         poly_grid, linewidth=2, edgecolor='yellow', facecolor='none', 
-        linestyle='-', label='Selection Area', zorder=10
+        linestyle='-', label='Final Selection', zorder=10
     )
     ax2.add_patch(polygon)
-    ax2.set_title("Figure 2: Final Selection Area on Grayscale Heatmap")
-    ax2.set_xlabel("Grid Column")
-    ax2.set_ylabel("Grid Row")
+    
+    ax2.set_title("Figure 2: Final Selection & User Constraint on Heatmap")
+    ax2.legend(loc='upper right') # 显示图例以区分两个框
     
     fig2.savefig(save_path_base / "fig2_selection.png", dpi=200, bbox_inches='tight')
     plt.close(fig2)
@@ -183,17 +189,29 @@ def main() -> None:
     viz_cfg = VizConfig()
     json_path = Path(viz_cfg.json_path)
 
-    # 1. 加载项目 (SmearProject 结构)
+
     project = SmearProject.load_json(str(json_path))
     print(f"[INFO] 成功加载项目: {project.smear_type}")
 
-    # 2. 初始化 Pipeline 并执行核心算法
-    bm_cfg = BM40Config(cell_size=896)
+
+    user_choice_area = {"x_min": 100000, "y_min": 30000, "x_max": 200000, "y_max": 60000}  # 示例用户选区
+    bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
+    # bm_cfg = BM40Config(target_cell_num=300)
     pipeline = WBCSamplingPipeline(bm_cfg)
     
-    # 直接传入 project
+  
     final_task_list = pipeline.run(project) 
     print(f"[INFO] 算法执行完成，生成了 {len(final_task_list)} 个拍摄视野")
+
+    # 转换为标准的字典列表 [{}, {}...]
+    json_ready_results = [task.to_dict() for task in final_task_list]
+    import json
+    with open(viz_cfg.out_dir + "/results.json", "w", encoding="utf-8") as f:
+        json.dump(json_ready_results, f, indent=2, ensure_ascii=False)
+        
+    print(f"[INFO] 转换完成，共 {len(json_ready_results)} 条任务数据")
+
+
 
     # 3. 执行可视化：同样直接传入 project
     if pipeline.best_res and pipeline.grid:
@@ -201,6 +219,7 @@ def main() -> None:
             best_res=pipeline.best_res,
             tasks=final_task_list,
             grid_info=pipeline.grid,
+            user_search_mask=pipeline.user_search_mask,
             save_path_base=Path(viz_cfg.out_dir)
         )
 
