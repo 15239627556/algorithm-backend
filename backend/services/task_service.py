@@ -361,12 +361,25 @@ class TaskService:
             # "has_more": (offset + limit) < total
         }
 
-    def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_num_WBC,
-                           target_num_MEG, index_offset, request_task_num):
+    def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_list,
+                           index_offset, request_task_num):
         if task_id not in self.project:
             result = self.load_data(task_id)
             if result:
                 return result
+        target_num_WBC = None
+        target_num_MEG = None
+        for one in target_list:
+            if one['type'] == 'BM_WBC':
+                target_num_WBC = one['count']
+            if one['type'] == 'BM_MEG':
+                target_num_MEG = one['count']
+        if target_num_WBC is None:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': '请求参数错误，缺少 BM_WBC 目标数量'
+            }
         project = self.project[task_id]
         x100_key = f"{task_id}_{user_choice_area}_{view_width}_{view_height}_{target_num_WBC}"
         if not self.project_x100.get(x100_key):

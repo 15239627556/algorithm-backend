@@ -134,18 +134,21 @@ class GetResult(Resource):
 
 
 user_choice_area_mod = task.model('user_choice_area', {
-    'x_min': fields.Integer(required=True, description='用户框选区域的x最小值'),
-    'y_min': fields.Integer(required=True, description='用户框选区域的y最小值'),
-    'x_max': fields.Integer(required=True, description='用户框选区域的x最大值'),
-    'y_max': fields.Integer(required=True, description='用户框选区域的y最大值'),
+    'x_min': fields.Integer(required=False, description='用户框选区域的x最小值'),
+    'y_min': fields.Integer(required=False, description='用户框选区域的y最小值'),
+    'x_max': fields.Integer(required=False, description='用户框选区域的x最大值'),
+    'y_max': fields.Integer(required=False, description='用户框选区域的y最大值'),
+})
+target_item_mod = task.model('TargetItem', {
+    'type': fields.String(required=True, description='目标类型，如 BM_MEG、BM_WBC 等'),
+    'count': fields.Integer(required=True, description='该类型目标的数量')
 })
 get_task_x100 = task.model('get_task_x100', {
     'task_id': fields.String(required=True, description='任务ID'),
-    'user_choice_area': fields.Nested(user_choice_area_mod, required=True, description='用户框选的扫描区域'),
+    'user_choice_area': fields.Nested(user_choice_area_mod, required=False, description='用户框选的扫描区域'),
     'view_width': fields.Integer(required=True, description='拍摄视图宽度'),
     'view_height': fields.Integer(required=True, description='拍摄视图高度'),
-    'target_num_WBC': fields.Integer(required=True, description='目标白细胞数量'),
-    'target_num_MEG': fields.Integer(required=True, description='目标巨核细胞数量'),
+    'target_list': fields.List(fields.Nested(target_item_mod), required=True, description='目标类型及数量列表'),
     'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0'),
     'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
 })
@@ -161,12 +164,11 @@ class GetTaskListX100(Resource):
         user_choice_area = json_data.get('user_choice_area')
         view_width = json_data.get('view_width')
         view_height = json_data.get('view_height')
-        target_num_WBC = json_data.get('target_num_WBC')
-        target_num_MEG = json_data.get('target_num_MEG')
+        target_list = json_data.get('target_list')
         index_offset = json_data.get('index_offset', 0)
         request_task_num = json_data.get('request_task_num', 100)
-        result = taskService.get_task_list_x100(task_id, user_choice_area, view_width, view_height, target_num_WBC,
-                                                target_num_MEG, index_offset, request_task_num)
+        result = taskService.get_task_list_x100(task_id, user_choice_area, view_width, view_height, target_list,
+                                                index_offset, request_task_num)
         return make_response(jsonify(result), 200)
 
 
@@ -178,7 +180,8 @@ result_x100.add_argument('position_xmax', type=int, required=True, help='右下�
 result_x100.add_argument('position_ymax', type=int, required=True, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 result_x100.add_argument('dpi', type=int, required=True, help='放大倍数', location='form')
-result_x100.add_argument('algorithm_type', type=str, required=True, help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
+result_x100.add_argument('algorithm_type', type=str, required=True,
+                         help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
                          location='form', default=True)
 
