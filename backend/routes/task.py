@@ -35,9 +35,7 @@ upload_tile = task.parser()
 upload_tile.add_argument('task_id', type=str, required=True, help='任务ID，由创建任务接口返回', location='form')
 upload_tile.add_argument('row_index', type=int, required=True, help='拼图块行索引', location='form')
 upload_tile.add_argument('col_index', type=int, required=True, help='拼图块列索引', location='form')
-upload_tile.add_argument('position_x', type=int, required=False, help='拼图块在全图中的x坐标', location='form')
-upload_tile.add_argument('position_y', type=int, required=False, help='拼图块在全图中的y坐标', location='form')
-upload_tile.add_argument('tile_image', type=FileStorage, required=False, help='图像文件（.jpg格式）', location='files')
+upload_tile.add_argument('tile_image', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 
 
 @task.route('/upload_tile')
@@ -49,10 +47,33 @@ class UploadImage(Resource):
         task_id = args.get('task_id')
         row_index = args.get('row_index')
         col_index = args.get('col_index')
-        position_x = args.get('position_x')
-        position_y = args.get('position_y')
         tile_image = args.get('tile_image')
-        result = taskService.upload_image(task_id, row_index, col_index, position_x, position_y, tile_image)
+        result = taskService.upload_image(task_id, row_index, col_index, tile_image)
+        return make_response(jsonify(result), 200)
+
+
+tiles_msg_model = task.model('tiles_msg', {
+    'row_index': fields.Integer(required=True, description='拼图块行索引'),
+    'col_index': fields.Integer(required=True, description='拼图块列索引'),
+    'position_x': fields.Integer(required=True, description='拼图块在全图中的左上角x坐标'),
+    'position_y': fields.Integer(required=True, description='拼图块在全图中的左上角y坐标')
+})
+
+coordinates_model = task.model('update_coordinates', {
+    'task_id': fields.String(required=True, description='任务ID，由创建任务接口返回'),
+    'tiles_msg': fields.List(fields.Nested(tiles_msg_model), required=True, description='拼图块坐标信息列表')
+})
+
+
+@task.route('/update_coordinates')
+class UpdateCoordinates(Resource):
+    @task.doc(description='更新拼图块坐标信息')
+    @task.expect(coordinates_model)
+    def post(self):
+        json_data = request.json
+        task_id = json_data.get('task_id')
+        tiles_msg = json_data.get('tiles_msg')
+        result = taskService.update_coordinates(task_id, tiles_msg)
         return make_response(jsonify(result), 200)
 
 
@@ -86,10 +107,12 @@ class TaskStatus(Resource):
 
 get_task_result = task.model('get_task_result', {
     'task_id': fields.String(required=True, description='任务ID'),
-    'min_row': fields.Integer(required=True, description="用户框选的扫描区域行号(最小)"),
-    'min_col': fields.Integer(required=True, description="用户框选的扫描区域列号(最小)"),
-    'max_row': fields.Integer(required=True, description="用户框选的扫描区域行号(最大)"),
-    'max_col': fields.Integer(required=True, description="用户框选的扫描区域列号(最大)"),
+    'roi_xmin': fields.Integer(required=False, description="结果区域左上角x坐标，默认为0"),
+    'roi_ymin': fields.Integer(required=False, description="结果区域左上角y坐标，默认为0"),
+    'roi_xmax': fields.Integer(required=False, description="结果区域右下角x坐标，默认为图像宽度"),
+    'roi_ymax': fields.Integer(required=False, description="结果区域右下角y坐标，默认为图像高度"),
+    'index_offset': fields.Integer(required=False, description="结果索引偏移，默认为0"),
+    'request_task_num': fields.Integer(required=False, description="请求结果数量，默认为100")
 })
 
 
@@ -104,7 +127,9 @@ class GetResult(Resource):
         roi_ymin = args.get('roi_ymin', 0)
         roi_xmax = args.get('roi_xmax')
         roi_ymax = args.get('roi_ymax')
-        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        index_offset = args.get('index_offset', 0)
+        request_task_num = args.get('request_task_num', 100)
+        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num)
         return make_response(jsonify(result), 200)
 
 
@@ -121,8 +146,8 @@ get_task_x100 = task.model('get_task_x100', {
     'view_height': fields.Integer(required=True, description='拍摄视图高度'),
     'target_num_WBC': fields.Integer(required=True, description='目标白细胞数量'),
     'target_num_MEG': fields.Integer(required=True, description='目标巨核细胞数量'),
-    'index_offset': fields.Integer(required=True, description='拍摄任务索引偏移，默认为0'),
-    'request_task_num': fields.Integer(required=True, description='请求生成的拍摄任务数量，默认为100', default=100),
+    'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0'),
+    'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
 })
 
 
@@ -146,13 +171,14 @@ class GetTaskListX100(Resource):
 
 
 result_x100 = task.parser()
-result_x100.add_argument('task_id', type=str, required=False, help='任务ID，由创建任务接口返回，可不填', location='form')
+result_x100.add_argument('task_id', type=str, required=True, help='任务ID，由创建任务接口返回，可不填', location='form')
+result_x100.add_argument('position_xmin', type=int, required=True, help='左上角在全图中的x坐标', location='form')
+result_x100.add_argument('position_ymin', type=int, required=True, help='左上角在全图中的y坐标', location='form')
+result_x100.add_argument('position_xmax', type=int, required=True, help='右下角在全图中的x坐标', location='form')
+result_x100.add_argument('position_ymax', type=int, required=True, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
-result_x100.add_argument('smear_type', type=str, required=True, help='涂片类型，取值范围：BM, PB, CF', location='form')
-result_x100.add_argument('magnification', type=int, required=True, help='放大倍数', location='form')
-result_x100.add_argument('task_type', type=str, required=True, help='任务类型，取值范围: WBC, RBC, MEG', location='form')
-result_x100.add_argument('camera_type', type=str, required=True, help='相机类型，取值范围：TYPE_A, TYPE_B',
-                         location='form')
+result_x100.add_argument('dpi', type=int, required=True, help='放大倍数', location='form')
+result_x100.add_argument('algorithm_type', type=str, required=True, help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
                          location='form', default=True)
 
@@ -165,11 +191,14 @@ class GetTaskResultX100(Resource):
         args = result_x100.parse_args()
         task_id = args.get('task_id')
         image_file = args.get('image_file')
-        smear_type = args.get('smear_type')
-        magnification = args.get('magnification')
-        task_type = args.get('task_type')
-        camera_type = args.get('camera_type')
-        edge_cell_filter = args.get('edge_cell_filter')
-        result = taskService.get_task_result_x100(task_id, image_file, smear_type, magnification, task_type,
-                                                  camera_type, edge_cell_filter)
+        dpi = args.get('dpi')
+        algorithm_type = args.get('algorithm_type')
+        edge_cell_filter = args.get('edge_cell_filter', True)
+        position_xmin = args.get('position_xmin', None)
+        position_ymin = args.get('position_ymin', None)
+        position_xmax = args.get('position_xmax', None)
+        position_ymax = args.get('position_ymax', None)
+        result = taskService.get_task_result_x100(task_id, image_file, algorithm_type, dpi,
+                                                  edge_cell_filter, position_xmin, position_ymin,
+                                                  position_xmax, position_ymax)
         return make_response(jsonify(result), 200)

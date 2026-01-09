@@ -8,53 +8,42 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Deque, Dict, List, Optional
 from collections import deque
+from backend.tools.MESSAGE_DICT import CELL_TYPES_X40
 
 import numpy as np
 import cv2
 
-from cells import MagnificationLevel, Cell
+from project.cells import Cell
 from project.smear_project import SmearProject
-from tiles import Tile
+from project.tiles import Tile
 
 
 @dataclass
 class TileModelTask:
     project_task_id: str
-    magnification: MagnificationLevel
-    row_index: int
-    col_index: int
-
+    dpi: int
+    image_uid: str
     tile_bytes: bytes
     tile_meta: dict = field(default_factory=dict)
-    extra: dict = field(default_factory=dict)
 
 
 @dataclass
 class ModelAdapter:
-    magnification: MagnificationLevel
+    dpi: int
     parse_result_fn: Callable[[dict, SmearProject, "TileModelTask", Tile], List[Cell]]
 
 
 def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileModelTask, tile: Tile) -> List[Cell]:
-    layer_name = project.get_layer(job.magnification).name
-
     cells: List[Cell] = []
-    position_x = int(job.tile_meta["position_x"])
-    position_y = int(job.tile_meta["position_y"])
     for item in result.get("haveCellCenterPoints", []):
         cells.append(
             Cell(
-                id=uuid.uuid4().hex,
-                magnification=job.magnification,
-                layer_name=layer_name,
-                tile_row=job.row_index,
-                tile_col=job.col_index,
-                x_min=int(item[0] + position_x),
-                y_min=int(item[1] + position_y),
-                x_max=int(item[2] + position_x),
-                y_max=int(item[3] + position_y),
-                cell_type=0,
-                cell_type_name="有核细胞",
+                cell_xmin=int(item[0]),
+                cell_ymin=int(item[1]),
+                cell_xmax=int(item[2]),
+                cell_ymax=int(item[3]),
+                cell_type=100000,
+                cell_type_name=CELL_TYPES_X40[100000][1],
                 class_confidence=float(item[4]),
                 bbox_confidence=float(1.0),
             )
@@ -63,17 +52,12 @@ def parse_result_as_cell_list(result: dict, project: SmearProject, job: TileMode
     for item in result.get("bigCellRects", []):
         cells.append(
             Cell(
-                id=uuid.uuid4().hex,
-                magnification=job.magnification,
-                layer_name=layer_name,
-                tile_row=job.row_index,
-                tile_col=job.col_index,
-                x_min=int(item[0] + position_x),
-                y_min=int(item[1] + position_y),
-                x_max=int(item[2] + position_x),
-                y_max=int(item[3] + position_y),
-                cell_type=1,
-                cell_type_name="巨核细胞",
+                cell_xmin=int(item[0]),
+                cell_ymin=int(item[1]),
+                cell_xmax=int(item[2]),
+                cell_ymax=int(item[3]),
+                cell_type=100001,
+                cell_type_name=CELL_TYPES_X40[100001][1],
                 class_confidence=float(item[4]),
                 bbox_confidence=float(1.0),
             )
@@ -130,10 +114,8 @@ def _inference_process_main(
             try:
                 result = model.get_result(model_task_id)
             except Exception as e:
-                print(f'[InferenceProcess ERROR]{job.row_index}{job.col_index}', repr(e))
                 out_q.put({"type": "ERROR", "project_task_id": job.project_task_id,
-                           "row_index": job.row_index, "col_index": job.col_index,
-                           "magnification": job.magnification, "error": repr(e)})
+                           "image_uid": job.image_uid, "error": repr(e)})
                 continue
 
             if result:
@@ -141,12 +123,10 @@ def _inference_process_main(
                     {
                         "type": "RESULT",
                         "project_task_id": job.project_task_id,
-                        "magnification": job.magnification,
-                        "row_index": job.row_index,
-                        "col_index": job.col_index,
+                        "dpi": job.dpi,
+                        "image_uid": job.image_uid,
                         "result": result,
                         "tile_meta": job.tile_meta,
-                        "extra": job.extra,
                     }
                 )
             else:
@@ -165,7 +145,7 @@ class TileInferenceQueueManager:
         self._projects: Dict[str, SmearProject] = project_registry if project_registry is not None else {}
         self._poll_interval = float(poll_interval)
 
-        self._adapters: Dict[MagnificationLevel, ModelAdapter] = {}
+        self._adapters: Dict[int, ModelAdapter] = {}
         self.register_default_x40_adapter()
 
         self._mp = mp_ctx if mp_ctx is not None else mp.get_context("spawn")
@@ -194,8 +174,8 @@ class TileInferenceQueueManager:
         self._cv = threading.Condition()
         self.write_count = 0
 
-    def register_project(self, project: SmearProject) -> None:
-        self._projects[project.task_id] = project
+    def register_project(self, project: SmearProject, project_id: str) -> None:
+        self._projects[project_id] = project
 
     def unregister_project(self, task_id: str) -> None:
         self._projects.pop(task_id, None)
@@ -204,29 +184,25 @@ class TileInferenceQueueManager:
         return self._projects.get(task_id)
 
     def register_default_x40_adapter(self) -> None:
-        self._adapters[MagnificationLevel.X40] = ModelAdapter(
-            magnification=MagnificationLevel.X40,
+        self._adapters[40] = ModelAdapter(
+            dpi=40,
             parse_result_fn=parse_result_as_cell_list,
         )
 
     def submit_tile_bytes(
             self,
             project_task_id: str,
-            magnification: MagnificationLevel,
-            row_index: int,
-            col_index: int,
+            dpi: int,
             tile_bytes: bytes,
+            image_uid: str,
             tile_meta: Optional[dict] = None,
-            extra: Optional[dict] = None,
     ) -> None:
         job = TileModelTask(
             project_task_id=project_task_id,
-            magnification=magnification,
-            row_index=int(row_index),
-            col_index=int(col_index),
+            dpi=dpi,
             tile_bytes=tile_bytes,
+            image_uid=image_uid,
             tile_meta=tile_meta or {},
-            extra=extra or {},
         )
         self._in_q.put({"type": "SUBMIT", "job": job})
         self.mark_submitted(project_task_id, 1)
@@ -265,7 +241,7 @@ class TileInferenceQueueManager:
                     )
                 self._cv.wait(timeout=0.2)
 
-    def finish_tile(self, project_task_id: str, magnification: MagnificationLevel) -> None:
+    def finish_tile(self, project_task_id: str) -> None:
         self._in_q.put({"type": "SYNC", "project_task_id": project_task_id})
 
     def stop(self) -> None:
@@ -290,9 +266,8 @@ class TileInferenceQueueManager:
         self.write_count += 1
         if mtype == "RESULT":
             project_task_id = msg["project_task_id"]
-            magnification = msg["magnification"]
-            row_index = msg["row_index"]
-            col_index = msg["col_index"]
+            dpi = msg["dpi"]
+            image_uid = msg["image_uid"]
             result = msg["result"]
 
             project = self.get_project(project_task_id)
@@ -300,39 +275,37 @@ class TileInferenceQueueManager:
                 print("[DROP] project None", project_task_id)
                 return
 
-            layer = project.get_layer(magnification)
+            layer = project.get_layer(dpi)
             if layer is None:
-                print("[DROP] layer None", project_task_id, magnification)
+                print("[DROP] layer None", project_task_id, dpi)
                 return
 
-            tile = layer.get_tile(row_index, col_index)
+            tile = layer.get_tile(image_uid)
             if tile is None:
-                print("[DROP] tile None", project_task_id, magnification, row_index, col_index)
+                print("[DROP] tile None", project_task_id, dpi, image_uid)
                 return
 
-            adapter = self._adapters.get(magnification)
+            adapter = self._adapters.get(40)
             if adapter is None:
-                print("[DROP] adapter None", magnification, type(magnification))
+                print("[DROP] adapter None", project_task_id, dpi)
                 return
 
             job = TileModelTask(
                 project_task_id=project_task_id,
-                magnification=magnification,
-                row_index=row_index,
-                col_index=col_index,
+                dpi=dpi,
                 tile_bytes=b"",
+                image_uid=image_uid,
                 tile_meta=msg.get("tile_meta", {}),
-                extra=msg.get("extra", {}),
             )
 
             try:
                 cells = adapter.parse_result_fn(result, project, job, tile)
             except Exception:
                 return
-            areaScoreInfo = result.get("areaScoreInfo", [])
-            project.set_meta_quality_score_to_tile(magnification, row_index, col_index, areaScoreInfo)
+            areaScoreInfo = result.get("areaScoreInfo").astype(float).tolist()
+            tile.meta["scores"] = areaScoreInfo
             if cells:
-                project.add_cells_to_tile(magnification, row_index, col_index, cells)
+                tile.add_cells(cells)
 
             with self._cv:
                 self._written[project_task_id] = self._written.get(project_task_id, 0) + 1

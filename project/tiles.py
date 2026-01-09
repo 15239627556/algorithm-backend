@@ -2,52 +2,48 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Dict
 
-from cells import MagnificationLevel, Cell
-
-
-@dataclass
-class TileMeta:
-    """
-    瓦片级别的附加信息（可扩展）
-
-    举例：
-    - image_uid: 图像唯一 ID（接口里有）
-    - quality_score: 质量分数
-    - stain_type: 染色类型
-    - extra: 任何自定义字段
-    """
-    image_uid: Optional[str] = None
-    quality_score: List[List[float]] = field(default_factory=list)
-    stain_type: Optional[str] = None
-    extra: dict = field(default_factory=dict)
+from .cells import Cell
 
 
 @dataclass
 class Tile:
     """
     表示某一倍率层上的一个瓦片（拼图块）
-
-    对应接口 /api/v1/smear_analysis/upload_tile:
-    - row_index / col_index
-    - position_x / position_y
+    - x: int
+    - y: int
+    - w: int
+    - h: int
+    - image_path: Optional[str]
+    - image_data: Optional[bytes]
+    - meta:
+     {
+        "scores": list[list[float]],
+        "num_rows": Optional[int],
+        "num_cols": Optional[int],
+        "row_index": Optional[int],
+        "col_index": Optional[int]
+    }
+    - cells: List[Cell]  瓦片上的所有细胞检测结果（全局坐标）
     """
-    magnification: MagnificationLevel
-    row_index: int
-    col_index: int
-
     # 瓦片在全局坐标中的左上角位置
-    global_x: int
-    global_y: int
+    image_uid: str
+    w: int
+    h: int
+    x: Optional[int] = None
+    y: Optional[int] = None
+    image_path: Optional[str] = None
+    image_data: Optional[bytes] = None
+    meta: Dict[str, list | int | str] = field(default_factory=dict)
+    cells: List[Cell] = field(default_factory=list, repr=False)
 
-    width: int
-    height: int
-
-    meta: TileMeta = field(default_factory=TileMeta)
-
-    # 当前瓦片上的所有细胞（坐标已经是全局坐标）
-    cells: List[Cell] = field(default_factory=list)
+    # ---------- 细胞管理 ----------
+    def add_cells(self, cells: List[Cell]) -> None:
+        """
+        将一批细胞添加到指定瓦片中
+        """
+        self.cells.extend(cells)
 
     def add_cell(self, cell: Cell) -> None:
         """
@@ -55,28 +51,52 @@ class Tile:
         """
         self.cells.append(cell)
 
-    def set_meta_quality_score(self, score: list) -> None:
+    def release_image_data(self) -> None:
         """
-        设置当前瓦片的质量分数。
+        释放瓦片的图像数据，节省内存。
         """
-        self.meta.quality_score = score
+        self.image_data = None
 
-    def get_meta_quality_score(self) -> List[List[float]]:
+    def load_image_data(self) -> Dict[str, str]:
         """
-        获取当前瓦片的质量分数。
+        加载瓦片的图像数据（如果 image_path 可用）。
         """
-        return self.meta.quality_score
+        try:
+            with open(self.image_path, 'rb') as f:
+                self.image_data = f.read()
+            msg = {'msg': 'image data loaded success'}
+        except Exception as e:
+            msg = {'msg': 'image data loaded failed', 'reason': str(e)}
+        return msg
 
-    def as_api_dict(self) -> dict:
+    def to_dict(self) -> dict:
         """
         转换为通用接口字段，便于未来需要返回瓦片信息时使用。
         """
         return {
-            "row_index": self.row_index,
-            "col_index": self.col_index,
-            "position_x": self.global_x,
-            "position_y": self.global_y,
-            "tile_width": self.width,
-            "tile_height": self.height,
-            "image_uid": self.meta.image_uid,
+            "image_uid": self.image_uid,
+            "x": self.x,
+            "y": self.y,
+            "w": self.w,
+            "h": self.h,
+            "image_path": self.image_path,
+            "meta": self.meta,
+            "cells": [cell.to_dict() for cell in self.cells]
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Tile":
+        """
+        从通用接口字段的字典创建 Tile 实例。
+        """
+        tile = cls(
+            image_uid=data["image_uid"],
+            x=data["x"],
+            y=data["y"],
+            w=data["w"],
+            h=data["h"],
+            image_path=data.get("image_path"),
+            meta=data.get("meta", {}),
+        )
+        tile.cells = [Cell.from_dict(cell_data) for cell_data in data.get("cells", [])]
+        return tile

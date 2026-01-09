@@ -8,15 +8,13 @@ import cv2
 import numpy as np
 from itertools import chain
 
-from algorithms.SelectArea.x40_BoneMarrow_SelectArea import select_and_generate_bestArea_capture_tasks
-from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles
 from algorithms.x100model import X100ImageModels
-from backend.tools.MESSAGE_DICT import RET_CODE, RET_DESC
+from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from project.smear_project import SmearProject
+from project.cells import Cell
 from project.inference_queue_manager import TileInferenceQueueManager
-from project.smear_project import MagnificationLevel, TaskStatus
 from project.tile_queue import TileQueueRouter, TileMsg
 
 # -----------------------------
@@ -45,30 +43,19 @@ dispatcher = X100ImageModels.X100ImageModels(num_workers=1)
 def _on_tile_factory(task_service):
     def on_tile(msg: TileMsg):
         task_id = msg.task_id
-        project = task_service.project[task_id]
-
-        position_x = int(msg.tile_meta["position_x"])
-        position_y = int(msg.tile_meta["position_y"])
-        image_uid = msg.tile_meta["image_uid"]
-
-        # 先创建 tile，确保结果回来能找到 tile
-        project.add_tile(
-            magnification=MagnificationLevel.X40,
-            row_index=msg.row_index,
-            col_index=msg.col_index,
-            position_x=position_x,
-            position_y=position_y,
-            image_uid=image_uid,
-        )
+        image_uid = msg.image_uid
+        msg.tile_meta['position_x'] = msg.position_x
+        msg.tile_meta['position_y'] = msg.position_y
         # B方案：只提交 bytes，不在 Flask 进程 decode / 不触碰模型
+        project = task_service.project[task_id]
+        layer = project.list_layers()[0]
+        dpi = layer.dpi
         get_queue_manager().submit_tile_bytes(
             project_task_id=task_id,
-            magnification=MagnificationLevel.X40,
-            row_index=msg.row_index,
-            col_index=msg.col_index,
+            dpi=dpi,
+            image_uid=image_uid,
             tile_bytes=msg.tile_bytes,
             tile_meta=msg.tile_meta,
-            extra=None,
         )
 
     return on_tile
@@ -77,17 +64,20 @@ def _on_tile_factory(task_service):
 class TaskService:
     def __init__(self):
         self.project = {}
-        self.project_x100 = {}
+        self.project_info = {}
         self.grids = {}
+        self.grids_position = {}
         self.project_lock = {}
-        self.task_id = None
+        self.X100_results = {}
+        self.roi_cache = {}
+        self.roi_cache_lock = threading.Lock()
 
     def load_data(self, task_id):
         os.makedirs(upload_folder, exist_ok=True)
         file_path = os.path.join(upload_folder, f"{task_id}.smear.pkl")
         if not os.path.exists(file_path):
-            return {"ret_code": RET_CODE.CLIENT_ERROR.value,
-                    "ret_desc": RET_DESC.CLIENT_ERROR.value,
+            return {"ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
                     'reason': '任务ID不存在',
                     'msg': f"file for task_id '{task_id}' not found."
                     }
@@ -96,21 +86,13 @@ class TaskService:
     def create_task(self, task_info: dict) -> dict:
         # B+预热：确保 inference 进程已 READY
         get_queue_manager()
-
         task_id = uuid.uuid4().hex
-        self.task_id = task_id
-        task_info['task_id'] = task_id
-        task_info['task_status'] = 101  # 101: 进行中, 100: 已完成
         task_info['smear_type'] = task_info.get('smear_type', 'BM')  # bm为骨髓
+        task_info['task_status'] = RetCode.TASK_RUNNING.value
         num_rows = task_info.get('num_rows')
         num_cols = task_info.get('num_cols')
-        tile_width = task_info.get('tile_width', 2448)
-        tile_height = task_info.get('pixel_height', 2048)
-
-        project = SmearProject(task_id=task_id, smear_type=task_info['smear_type'],
-                               dpi=task_info['dpi'], num_rows=num_rows, num_cols=num_cols,
-                               tile_width=tile_width, tile_height=tile_height)
-
+        project = SmearProject(smear_type=task_info['smear_type'])
+        project.add_layer(task_info['dpi'])
         tile_router.create_task(
             task_id,
             on_tile_callback=_on_tile_factory(self),
@@ -122,131 +104,246 @@ class TaskService:
         self.project[task_id] = project
         self.project_lock[task_id] = threading.Lock()
         self.grids[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
-
+        self.grids_position[task_id] = np.full((num_rows, num_cols), False, dtype=bool)
+        self.project_info[task_id] = task_info
         print('创建任务成功：', task_id)
-        get_queue_manager().register_project(project)
+        get_queue_manager().register_project(project, task_id)
         get_queue_manager().set_expected_tiles(task_id, num_rows * num_cols)
-
         return {
             'task_id': task_id,
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value
         }
 
-    def upload_image(self, task_id, row_index, col_index, position_x, position_y, tile_image):
-        if self.task_id is None:
-            self.task_id = task_id
-        if task_id != self.task_id:
-            return {
-                'ret_code': RET_CODE.TASK_IN_PROGRESS.value,
-                'ret_desc': RET_DESC.TASK_IN_PROGRESS.value,
-            }
+    def update_coordinates(self, task_id, tiles_msg):
+        if task_id not in self.project:
+            result = self.load_data(task_id)
+            if result:
+                return result
+        project = self.project[task_id]
+        layer = project.list_layers()[0]
+        project_info = self.project_info[task_id]
+        with self.project_lock[task_id]:
+            matcher = project_info.get('matcher')
+            if not matcher:
+                matcher = {}
+                project_info['matcher'] = matcher
+        failed_tiles = []
+        for tile_info in tiles_msg:
+            row_index = int(tile_info['row_index'])
+            col_index = int(tile_info['col_index'])
+            position_x = int(tile_info['position_x'])
+            position_y = int(tile_info['position_y'])
+            image_uid = matcher.get((row_index, col_index))
+            if image_uid is None:
+                tile = layer.add_tile(
+                    x=position_x,
+                    y=position_y,
+                    w=project_info.get('tile_width'),
+                    h=project_info.get('tile_height'),
+                    image_data=None,
+                    extra_meta={
+                        'num_rows': project_info.get('num_rows'),
+                        'num_cols': project_info.get('num_cols'),
+                        'row_index': row_index,
+                        'col_index': col_index,
+                    }
+                )
+                matcher[(row_index, col_index)] = tile.image_uid
+            else:
+                try:
+                    tiles = layer.get_tile(image_uid)
+                    tiles.x = position_x
+                    tiles.y = position_y
+                except Exception as e:
+                    tile_info['reason'] = str(e)
+                    failed_tiles.append(tile_info)
+        project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+        return {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'failed_tiles': failed_tiles
+        }
+
+    def upload_image(self, task_id, row_index, col_index, tile_image):
+        row_index, col_index = int(row_index), int(col_index)
+        with self.project_lock[task_id]:
+            matcher = self.project_info[task_id].get('matcher')
+            if not matcher:
+                matcher = {}
+                self.project_info[task_id]['matcher'] = matcher
+        image_uid = matcher.get((row_index, col_index))
+        project = self.project[task_id]
+        layer = project.list_layers()[0]
+        # 先创建 tile，确保结果回来能找到 tile
+        task_info = self.project_info[task_id]
         image_bytes = tile_image.read()
-        if len(image_bytes) == 0:
-            return {
-                'ret_code': RET_CODE.CLIENT_ERROR.value,
-                'ret_desc': RET_DESC.CLIENT_ERROR.value,
-            }
-        row_index, col_index, position_x, position_y = int(row_index), int(col_index), int(position_x), int(position_y)
         with self.project_lock[task_id]:
             grid = self.grids[task_id]
-            if grid[row_index, col_index]:
-                return {
-                    'ret_code': RET_CODE.IMAGE_ALREADY_UPLOADED.value,
-                    'ret_desc': RET_DESC.IMAGE_ALREADY_UPLOADED.value,
-                }
             grid[row_index, col_index] = True
             finished = grid.all()
-            image_uid = uuid.uuid4().hex
-            tile_router.push_tile(
-                task_id=task_id,
-                row_index=row_index,
-                col_index=col_index,
-                tile_bytes=image_bytes,
-                tile_meta={
-                    "position_x": position_x,
-                    "position_y": position_y,
-                    "image_uid": image_uid
+        if not image_uid:
+            tile = layer.add_tile(
+                x=None,
+                y=None,
+                w=task_info['tile_width'],
+                h=task_info['tile_height'],
+                image_data=None,
+                extra_meta={
+                    'num_rows': task_info['num_rows'],
+                    'num_cols': task_info['num_cols'],
+                    'row_index': row_index,
+                    'col_index': col_index,
                 }
             )
-            # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
-            if finished:
-                self._finish_task_async(task_id)
-            return {
-                'ret_code': RET_CODE.API_SUCCESS.value,
-                'ret_desc': RET_DESC.API_SUCCESS.value,
-                'image_uid': image_uid
+            matcher[(row_index, col_index)] = tile.image_uid
+        tile_router.push_tile(
+            task_id=task_id,
+            image_uid=image_uid,
+            position_x=None,
+            position_y=None,
+            tile_bytes=image_bytes,
+            tile_meta={
+                'row_index': row_index,
+                'col_index': col_index
             }
+        )
+        # 不要在接口线程里 join（会卡住接口）。把收尾全部放后台线程。
+        if finished:
+            self._finish_task_async(task_id)
+        return {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'image_uid': image_uid
+        }
 
     @thread_decorator
     def _finish_task_async(self, task_id: str):
         try:
             tile_router.finish_task(task_id)
             tile_router.join_task(task_id)
-
             project = self.project[task_id]
-            get_queue_manager().finish_tile(task_id, MagnificationLevel.X40)
-            print('等待所有图像处理完成：============================================', task_id)
+            get_queue_manager().finish_tile(task_id)
             get_queue_manager().wait_written_all(task_id, timeout=300.0)
-            print('所有图像处理完成，开始选区：============================================', task_id)
-            project.set_task_status(TaskStatus.COMPLETED)  # 100: 已完成
-            print('准备pickle保存：============================================', task_id)
-            project.save_pickle(upload_folder)
+            self.project_info[task_id]['task_status'] = RetCode.TASK_FINISHED.value  # 100: 已完成
+            project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
             print('任务完成：============================================', task_id)
         except Exception as e:
+            self.project_info[task_id]['task_status'] = RetCode.TASK_TIMEOUT.value  # 200: 失败
             print("[finish_task_async ERROR]", task_id, repr(e))
 
     def check_image(self, task_id: str) -> dict:
-        if task_id not in self.project:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        project = self.project[task_id]
-        missing_tiles = project.check_missing_tiles()
-        return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
-            'missing_tiles': missing_tiles
-        }
-
-    @staticmethod
-    def get_desc(code_value: int) -> str:
         try:
-            code_enum = RET_CODE(code_value)  # 反查枚举
-            desc_enum = RET_DESC[code_enum.name]  # 名称映射
-            return desc_enum.value
-        except Exception:
-            return "未知状态码"
+            if task_id not in self.project:
+                result = self.load_data(task_id)
+                if result:
+                    return result
+            project = self.project[task_id]
+            grid = self.grids.get(task_id)
+            if grid is None:
+                layer = project.list_layers()[0]
+                tiles = layer.iter_tiles()
+                tile0 = tiles[0]
+                num_rows = tile0.meta.get('num_rows', 0)
+                num_cols = tile0.meta.get('num_cols', 0)
+                grid = np.full((num_rows, num_cols), False, dtype=bool)
+                for tile in tiles:
+                    row_index = tile.meta.get('row_index')
+                    col_index = tile.meta.get('col_index')
+                    grid[row_index, col_index] = True
+            rows, cols = np.where(~grid)
+            missing_tiles = []
+            for r, c in zip(rows, cols):
+                missing_tiles.append({
+                    'row_index': int(r),
+                    'col_index': int(c),
+                    'position_missing': True,
+                    'image_missing': True
+                })
+            return {
+                'ret_code': RetCode.API_SUCCESS.value,
+                'ret_desc': RetDesc.API_SUCCESS.value,
+                'missing_tiles': missing_tiles
+            }
+        except Exception as e:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': str(e)
+            }
 
     def task_status(self, task_id: str) -> dict:
-        if task_id not in self.project:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        project = self.project[task_id]
-        task_status = project.task_status
+        task_info = self.project_info.get(task_id)
+        if not task_info:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': '任务ID不存在'
+            }
+        task_status = task_info.get('task_status')
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
-            'task_status': self.get_desc(task_status.value)
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'task_status': task_status
         }
 
-    def get_result(self, task_id: str, roi_xmin, roi_ymin, roi_xmax, roi_ymax) -> dict:
+    def get_result(self, task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num):
         if task_id not in self.project:
             result = self.load_data(task_id)
             if result:
                 return result
         project = self.project[task_id]
-        if not roi_xmax or not roi_ymax:
-            layer = project.get_layer(MagnificationLevel.X40)
-            roi_xmax = layer.num_rows
-            roi_ymax = layer.num_cols
-        cell_list = project.get_cells_in_roi(MagnificationLevel.X40, roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        layer = project.list_layers()[0]
+
+        # 统一默认值（和 Layer 保持一致）
+        roi_xmin = 0 if roi_xmin is None else int(roi_xmin)
+        roi_ymin = 0 if roi_ymin is None else int(roi_ymin)
+        roi_xmax = float("inf") if roi_xmax is None else int(roi_xmax)
+        roi_ymax = float("inf") if roi_ymax is None else int(roi_ymax)
+
+        offset = max(0, int(index_offset or 0))
+        limit = max(0, int(request_task_num or 0))
+
+        roi_key = (roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+
+        # ---- 读缓存 / 构建缓存 ----
+        with self.roi_cache_lock:
+            task_cache = self.roi_cache.setdefault(task_id, {})
+            hit = task_cache.get(roi_key)
+
+        if hit is None:
+            # 第一次：遍历一次，拿到全量 Cell（只存对象，分页时再 to_dict）
+            cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax,
+                                                is_Cell=True)  # :contentReference[oaicite:5]{index=5}
+            total = len(cells_all)
+            hit = (total, cells_all)
+            with self.roi_cache_lock:
+                task_cache[roi_key] = hit
+                # 可选：限制每个 task 的 ROI 缓存数量，避免内存爆
+                if len(task_cache) > 8:
+                    task_cache.pop(next(iter(task_cache)))
+        else:
+            total, cells_all = hit
+
+        total, cells_all = hit
+        page_cells = cells_all[offset: offset + limit]
+        page_dicts = [c.to_dict() for c in page_cells]
+        has_more = (offset + limit) < total
+        if not has_more:
+            # 最后一页，释放缓存
+            with self.roi_cache_lock:
+                task_cache = self.roi_cache.get(task_id)
+                if task_cache and roi_key in task_cache:
+                    task_cache.pop(roi_key)
+
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
-            'cell_count': len(cell_list),
-            'cell_list': cell_list
+            "ret_code": RetCode.API_SUCCESS.value,
+            "ret_desc": RetDesc.API_SUCCESS.value,
+            "cell_count": total,  # ✅ 总量必有
+            "cell_list": page_dicts,  # ✅ 分页结果
+            "index_offset": offset,
+            # "request_task_num": limit,
+            # "has_more": (offset + limit) < total
         }
 
     def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_num_WBC,
@@ -256,7 +353,7 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        layer = project.get_layer(MagnificationLevel.X40)
+        layer = project.list_layers()[0]
         if not user_choice_area:
             print('user_choice_area is None, use full area')
             user_choice_area = {
@@ -267,7 +364,13 @@ class TaskService:
             }
         x_min, y_min, x_max, y_max = user_choice_area['x_min'], user_choice_area['y_min'], \
             user_choice_area['x_max'], user_choice_area['y_max']
-        if not self.project_x100[task_id]:
+        user_choose_area = {
+            'min_row': y_min,
+            'max_row': y_max,
+            'min_col': x_min,
+            'max_col': x_max
+        }
+        if not self.project_x100.get(task_id):
             infos_40xtile = []
             for row in range(y_min, y_max + 1):
                 for col in range(x_min, y_min + 1):
@@ -307,7 +410,7 @@ class TaskService:
             save_dir = os.path.join(images_folder, task_id)
             os.makedirs(save_dir, exist_ok=True)
             task_list = select_and_generate_bestArea_capture_tasks(infos_40xtile,
-                                                                   user_choice_area,
+                                                                   user_choose_area,
                                                                    2,
                                                                    target_num_WBC,
                                                                    rect_width=view_width,  # 百倍视野的宽
@@ -320,21 +423,54 @@ class TaskService:
         else:
             new_task_list = self.project_x100[task_id]
         return {
-            'ret_code': RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'task_list_num': len(new_task_list),
             'task_list': serialize_non_json_fields(new_task_list[index_offset:index_offset + request_task_num])
         }
 
-    @staticmethod
-    def get_task_result_x100(task_id, image_file, smear_type, magnification, task_type,
-                             camera_type, edge_cell_filter):
+    def get_task_result_x100(self, task_id, image_file, algorithm_type, dpi,
+                             edge_cell_filter, *args):
+        if None in args:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value
+            }
+        try:
+            task_type = TaskType[algorithm_type].value
+        except KeyError:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+            }
+        if task_id not in self.project:
+            result = self.load_data(task_id)
+            if result:
+                return result
+        project = self.project[task_id]
+        layer = project.get_layer(dpi)
+        position_xmin, position_ymin, position_xmax, position_ymax = args
+        x, y, w, h = position_xmin, position_ymin, position_xmax - position_xmin, position_ymax - position_ymin
+        tiles = layer.iter_tiles()
+        tile = None
+        for one in tiles:
+            if one.x == w and one.y == y and one.w == w and one.h == h:
+                tile = one
+                break
+        if tile is None:
+            tile = layer.add_tile(
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+            )
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR_BGR)
         new_dispatcher = dispatcher
         task_id = new_dispatcher.enqueue_task(image, task_type)
         cell_list = []
+        cells = []
         for _ in range(7200000):  # 最多等待2小时
             new_result = new_dispatcher.get_result(task_id)
             if new_result:
@@ -342,19 +478,44 @@ class TaskService:
                 cellTypes = new_result['cellTypes'].astype(int).tolist()
                 cellRatios = new_result['cellRatios'].astype(float).tolist()
                 for i in range(len(cellRects)):
-                    one_data = {'cell_pos': {'x': cellRects[i][0], 'y': cellRects[i][1], 'width': cellRects[i][2],
-                                             'height': cellRects[i][3]},
-                                'cell_types': {
-                                    f"top{j + 1}": {'type': int(cellTypes[i][j]), 'pecent': float(cellRatios[i][j])}
-                                    for j in range(len(cellTypes[i]))
-                                }}
-                    cell_list.append(one_data)
+                    x, y, w, h, *o = cellRects[i]
+                    cell_type = cellTypes[i][0] + 200000
+                    new_cell_type = CELL_TYPES_X100.get(cell_type)
+                    if not new_cell_type:
+                        cell_type_name = '未知细胞'
+                    else:
+                        cell_type_name = new_cell_type[1]
+                    class_confidence = cellRatios[i][0]
+                    new_one_data = {
+                        "cell_xmin": x,
+                        "cell_ymin": y,
+                        'cell_xmax': x + w,
+                        'cell_ymax': y + h,
+                        'cell_type': cell_type,
+                        'cell_type_name': cell_type_name,
+                        'class_confidence': class_confidence,
+                        'bbox_confidence': 1
+
+                    }
+                    cell = Cell(
+                        cell_xmin=x,
+                        cell_ymin=y,
+                        cell_xmax=x + w,
+                        cell_ymax=y + h,
+                        cell_type=cell_type,
+                        cell_type_name=cell_type_name,
+                        class_confidence=class_confidence,
+                        bbox_confidence=1
+                    )
+                    cell_list.append(new_one_data)
+                    cells.append(cell)
                 break
             else:
                 time.sleep(0.001)
+        tile.add_cells(cells)
         return {
-            "ret_code": RET_CODE.API_SUCCESS.value,
-            'ret_desc': RET_DESC.API_SUCCESS.value,
+            "ret_code": RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
             'cell_count': len(cell_list),
             'cell_list': serialize_non_json_fields(cell_list)
         }
