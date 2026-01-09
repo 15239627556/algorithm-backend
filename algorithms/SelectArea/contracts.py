@@ -1,7 +1,15 @@
 # contracts.py
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parents[2] 
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+from project.tiles import Tile
+
 from typing import Optional, Iterable, List, Any
-from data_structure import Tile, ScoreRegion
+from data_structure import ScoreRegion
 from config import BM40Config
 
 class TileContractError(ValueError):

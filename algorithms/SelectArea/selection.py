@@ -1,11 +1,19 @@
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parents[2] 
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+from project.tiles import Tile
+
 import cv2
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 
 from heatmaps import HeatmapGrid
 from config import BM40Config
-from data_structure import SelectionResult, Tile, Rect
+from data_structure import SelectionResult, Rect
 
 
 

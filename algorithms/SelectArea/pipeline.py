@@ -3,8 +3,9 @@ import numpy as np
 from typing import List, Optional
 
 # 导入自定义模块与数据结构
+from project.smear_project import SmearProject
 from config import BM40Config
-from data_structure import Tile, SelectionResult, TaskOutput
+from data_structure import SelectionResult, TaskOutput
 from heatmaps import build_score_heatmap, build_cell_count_grid
 from geometry import compute_head_crop, generate_search_window_sizes
 from selection import (
@@ -31,10 +32,26 @@ class WBCSamplingPipeline:
         self.task_rects = None     # 存储网格坐标任务区域 
         self.forbidden_mask = None # 存储禁区掩码 
 
-    def run(self, tiles: List[Tile]) -> List[TaskOutput]:
+
+    def run(self, project: SmearProject) -> List[TaskOutput]:
         """
-        执行有核细胞（WBC）采样任务生成全流程
+        执行有核细胞采样任务。
+        输入改为 SmearProject 对象。
         """
+        # 1. 从项目中提取 40x 扫描层
+        layer_40x_id = 0
+        layer_40x = project.layers[layer_40x_id]
+        if not layer_40x:
+            print("[ERROR] 项目中缺少 40x 扫描层数据")
+            return []
+
+        # 获取该层所有的 tiles
+        # layer.tiles 是一个 Dict[str, Tile] 或提供迭代器
+        tiles = list(layer_40x.tiles.values()) 
+
+        if not tiles:
+            print("[ERROR] 40x 层中没有找到有效的 Tile 数据")
+            return []
         # 1. 基础数据准备
         self.grid = build_score_heatmap(tiles, config=self.cfg)
         self.cell_matrix = build_cell_count_grid(tiles, self.grid) 

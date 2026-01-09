@@ -1,6 +1,13 @@
 # heatmaps.py ：热力图算法只调用 adapter，不直接解析 meta
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parents[2] 
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+from project.tiles import Tile
+
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -9,7 +16,7 @@ import numpy as np
 
 from adapters import TileAdapter, DefaultScoresAdapter
 from config import BM40Config
-from data_structure import Rect, Tile, ScoreRegion
+from data_structure import Rect, ScoreRegion
 
 
 

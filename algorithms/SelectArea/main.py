@@ -1,7 +1,15 @@
 # main.py
 from __future__ import annotations
 
-import json
+import sys
+from pathlib import Path
+
+
+root_dir = Path(__file__).resolve().parents[2] 
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+from project.smear_project import SmearProject
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -11,9 +19,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # 导入核心组件
-from data_structure import Tile, SelectionResult, TaskOutput
+from data_structure import SelectionResult, TaskOutput
 from config import BM40Config
 from pipeline import WBCSamplingPipeline
+
 
 # ===================== 可视化配置 =====================
 @dataclass(frozen=True)
@@ -46,14 +55,13 @@ class VizConfig:
 
 # ===================== 可视化绘制核心 =====================
 def visualize_results(
-    tiles: List["Tile"], 
     best_res: "SelectionResult", 
     tasks: List["TaskOutput"], 
-    grid_info: Any, # HeatmapGrid
+    grid_info: Any, 
     save_path_base: Path
 ):
     """
-    根据要求生成三张独立的可视化结果图。
+    可视化结果，内部解包数据。
     """
     if not tasks:
         print("[WARNING] 无采样任务，跳过可视化生成。")
@@ -169,63 +177,33 @@ def visualize_results(
 
 
 
-# ===================== 数据加载适配 =====================
-def _build_tiles_from_json(obj: Dict[str, Any]) -> List[Tile]:
-    """
-    从 JSON 对象解析 Tile 列表
-    """
-    layers = obj.get("layers", [])
-    if not layers:
-        raise KeyError("JSON 数据中缺少 'layers' 层级")
 
-    tiles_dict = layers[0].get("tiles", {})
-    tiles: List[Tile] = []
-    for tile_id, d in tiles_dict.items():
-        if "image_uid" not in d:
-            d["image_uid"] = tile_id
-        tiles.append(Tile.from_dict(d))
-
-    # 按坐标排序
-    tiles.sort(key=lambda t: ((t.y or 0), (t.x or 0)))
-    return tiles
-
-# ===================== 主程序执行 =====================
+# main.py 修改后的主逻辑部分
 def main() -> None:
     viz_cfg = VizConfig()
     json_path = Path(viz_cfg.json_path)
 
-    if not json_path.exists():
-        print(f"[ERROR] 找不到指定的 JSON 文件: {json_path}")
-        return
+    # 1. 加载项目 (SmearProject 结构)
+    project = SmearProject.load_json(str(json_path))
+    print(f"[INFO] 成功加载项目: {project.smear_type}")
 
-    # 1. 加载数据
-    with open(json_path, "r", encoding="utf-8") as f:
-        obj = json.load(f)
-    tiles = _build_tiles_from_json(obj)
-    print(f"[INFO] 成功加载 {len(tiles)} 个 Tiles")
-
-    # 2. 初始化配置与 Pipeline
+    # 2. 初始化 Pipeline 并执行核心算法
     bm_cfg = BM40Config(cell_size=896)
     pipeline = WBCSamplingPipeline(bm_cfg)
-
-    # 3. 运行算法流程
-    # run() 方法返回 TaskOutput 列表
-    # 同时在检查模式下，pipeline 实例会持有中间结果（grid, best_res 等）
-    final_task_list = pipeline.run(tiles)
+    
+    # 直接传入 project
+    final_task_list = pipeline.run(project) 
     print(f"[INFO] 算法执行完成，生成了 {len(final_task_list)} 个拍摄视野")
 
-    # 4. 执行可视化
-    # 此时直接通过 pipeline 实例获取中间结果进行绘图
+    # 3. 执行可视化：同样直接传入 project
     if pipeline.best_res and pipeline.grid:
         visualize_results(
-            tiles=tiles,
             best_res=pipeline.best_res,
             tasks=final_task_list,
             grid_info=pipeline.grid,
-            save_path_base=Path(VizConfig.out_dir) # 传入输出目录 Path
+            save_path_base=Path(viz_cfg.out_dir)
         )
-    else:
-        print("[WARNING] Pipeline 未能生成有效的中间结果，跳过可视化。")
+
 
 if __name__ == "__main__":
     main()
