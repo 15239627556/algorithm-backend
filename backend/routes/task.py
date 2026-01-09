@@ -151,7 +151,7 @@ get_task_x100 = task.model('get_task_x100', {
 })
 
 
-@task.route('/generate_100x_task_list_bm')
+@task.route('/roi_selection')
 class GetTaskListX100(Resource):
     @task.doc(description='获取X100任务列表')
     @task.expect(get_task_x100)
