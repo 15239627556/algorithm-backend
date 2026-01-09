@@ -76,14 +76,14 @@ class TaskService:
 
     def load_data(self, task_id):
         os.makedirs(upload_folder, exist_ok=True)
-        file_path = os.path.join(upload_folder, f"{task_id}.smear.pkl")
+        file_path = os.path.join(upload_folder, f"{task_id}.json")
         if not os.path.exists(file_path):
             return {"ret_code": RetCode.CLIENT_ERROR.value,
                     "ret_desc": RetDesc.CLIENT_ERROR.value,
                     'reason': '任务ID不存在',
                     'msg': f"file for task_id '{task_id}' not found."
                     }
-        self.project[task_id] = SmearProject.load_pickle(task_id, upload_folder)
+        self.project[task_id] = SmearProject.load_json(file_path)
 
     def create_task(self, task_info: dict) -> dict:
         # B+预热：确保 inference 进程已 READY
@@ -138,20 +138,32 @@ class TaskService:
             position_y = int(tile_info['position_y'])
             image_uid = matcher.get((row_index, col_index))
             if image_uid is None:
-                tile = layer.add_tile(
-                    x=position_x,
-                    y=position_y,
-                    w=project_info.get('tile_width'),
-                    h=project_info.get('tile_height'),
-                    image_data=None,
-                    extra_meta={
-                        'num_rows': project_info.get('num_rows'),
-                        'num_cols': project_info.get('num_cols'),
-                        'row_index': row_index,
-                        'col_index': col_index,
-                    }
-                )
-                matcher[(row_index, col_index)] = tile.image_uid
+                tiles = layer.iter_tiles()
+                flag = 0
+                for tile in tiles:
+                    if tile.meta.get('row_index') == row_index and tile.meta.get('col_index') == col_index:
+                        tile.x = position_x
+                        tile.y = position_y
+                        flag = 1
+                        break
+                if flag == 0:
+                    tile_info['reason'] = 'tile not found'
+                    failed_tiles.append(tile_info)
+                # tile = layer.add_tile(
+                #     x=position_x,
+                #     y=position_y,
+                #     w=project_info.get('tile_width'),
+                #     h=project_info.get('tile_height'),
+                #     image_data=None,
+                #     extra_meta={
+                #         'num_rows': project_info.get('num_rows'),
+                #         'num_cols': project_info.get('num_cols'),
+                #         'row_index': row_index,
+                #         'col_index': col_index,
+                #     }
+                # )
+                # image_uid = tile.image_uid
+                # matcher[(row_index, col_index)] = image_uid
             else:
                 try:
                     tiles = layer.get_tile(image_uid)
@@ -184,7 +196,7 @@ class TaskService:
             grid = self.grids[task_id]
             grid[row_index, col_index] = True
             finished = grid.all()
-        if not image_uid:
+        if image_uid is None:
             tile = layer.add_tile(
                 x=None,
                 y=None,
@@ -198,7 +210,8 @@ class TaskService:
                     'col_index': col_index,
                 }
             )
-            matcher[(row_index, col_index)] = tile.image_uid
+            image_uid = tile.image_uid
+            matcher[(row_index, col_index)] = image_uid
         tile_router.push_tile(
             task_id=task_id,
             image_uid=image_uid,
@@ -355,37 +368,28 @@ class TaskService:
             if result:
                 return result
         project = self.project[task_id]
-        layer = project.list_layers()[0]
-        if not user_choice_area:
-            print('user_choice_area is None, use full area')
-            user_choice_area = {
-                'x_min': 0,
-                'y_min': 0,
-                'x_max': layer.num_cols - 1,
-                'y_max': layer.num_rows - 1
-            }
-        x_min, y_min, x_max, y_max = user_choice_area['x_min'], user_choice_area['y_min'], \
-            user_choice_area['x_max'], user_choice_area['y_max']
-        user_choose_area = {
-            'min_row': y_min,
-            'max_row': y_max,
-            'min_col': x_min,
-            'max_col': x_max
-        }
-        if not self.project_x100.get(task_id):
-            bm_cfg = BM40Config(target_cell_num=target_num_WBC, x100_rect_width=view_width,
-                                x100_rect_height=view_height, )
+        x100_key = f"{task_id}_{user_choice_area}_{view_width}_{view_height}_{target_num_WBC}"
+        if not self.project_x100.get(x100_key):
+            bm_cfg = BM40Config(user_choice_area=user_choice_area,
+                                target_cell_num=target_num_WBC,
+                                x100_rect_width=view_width,
+                                x100_rect_height=view_height)
             pipeline = WBCSamplingPipeline(bm_cfg)
             final_task_list = pipeline.run(project)
-            self.project_x100[task_id] = final_task_list
+            final_task_list = [task.to_dict() for task in final_task_list]
+            self.project_x100[x100_key] = final_task_list
             pass
         else:
-            final_task_list = self.project_x100[task_id]
+            final_task_list = self.project_x100[x100_key]
+        task_list = final_task_list[index_offset:index_offset + request_task_num]
+        if (index_offset + request_task_num) >= len(final_task_list):
+            print('删除缓存：', x100_key)
+            self.project_x100.pop(x100_key)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
             'task_list_num': len(final_task_list),
-            'task_list': serialize_non_json_fields(final_task_list[index_offset:index_offset + request_task_num])
+            'task_list': task_list
         }
 
     def get_task_result_x100(self, task_id, image_file, algorithm_type, dpi,
