@@ -1,0 +1,66 @@
+"""
+作者：znx
+功能描述：40倍骨髓选区
+日期：2025-06-04
+版本：1.0.0
+所需参数：
+用户需要的有核细胞数量：target_cell_num
+热力图朝向（0头右 1头左）: heatmap_orientation
+"user_choose_area": {    // 用户框选的X100有核采集区域(40倍图的行列号)，不指定则给全图
+    "min_row": 2,          // 有核采集区域行号（最小）
+    "min_col": 2,          // 有核采集区域列号（最小）
+    "max_row": 20,         // 有核采集区域行号（最大）
+    "max_col": 20          // 有核采集区域列号（最大）
+  },
+
+40x平扫图信息：40xtile_info：[{},{},{}...]
+{
+    40x 图像 X 索引: index_40xtile_x
+    40x 图像 Y 索引: index_40xtile_y
+    拼图后40x图像左上角 X 坐标: abs_40xtile_x
+    拼图后40x图像左上角 Y 坐标: abs_40xtile_y
+    拼图前细胞中心点坐标：local_cell_centers  [[local_cell_centers_x, local_cell_centers_y], ...]
+    拼图后细胞中心点坐标：global_cell_centers [[global_cell_centers_x, global_cell_centers_y], ...]
+    四宫格评分:scores {leftPiont1-x_leftPiont1-y:score1, 
+                     leftPiont2-x_leftPiont2-y:score2, 
+                     leftPiont3-x_leftPiont3-y:score3, 
+                     leftPiont4-x_leftPiont4-y:score4}
+
+                
+
+
+}
+输出参数："task_list"
+  格式如下：
+  [
+    [
+      {
+        "sort_id": 1,                // 任务点的顺序编号
+        "row_index": 0,              // 任务点所在X40图布图的行索引
+        "col_index": 0,              // 任务点所在X40图布图的列索引
+        "view_pos_x": 0,             // 任务点在X40图里的像素X坐标
+        "view_pos_y": 0,             // 任务点在X40图里的像素Y坐标
+        "view_width": 20,            // 任务点在X40图里的图像宽度（像素）
+        "view_height": 20,           // 任务点在X40图里的图像高度（像素）
+        "cell_list":                 // 任务点内的细胞列表
+        [               
+            {
+            "cell_x": 0,             // 细胞在X40图里的像素X坐标
+            "cell_y": 0,             // 细胞在X40图里的像素Y坐标
+            "cell_width": 20,        // 细胞在X40图里的图像宽度（像素）
+            "cell_height": 20        // 细胞在X40图里的图像高度（像素）
+            }
+        ]
+      }
+    ]
+    [补拍1任务列表]
+    [补拍2任务列表]
+    .
+    .
+    .
+    [补拍n任务列表]
+  ]
+
+
+
+"""
