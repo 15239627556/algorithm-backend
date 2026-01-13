@@ -22,7 +22,7 @@ class BM40Config:
     tile_h: int = field(default=2048, init=False)
     
     # --- 热力图核心配置 ---
-    cell_size: float = field(default=896.0, init=False)               # 热力图每个格子的物理跨度 (单位：像素，需与 Tile 坐标单位一致)
+    cell_size: float = field(default=224.0, init=False)               # 热力图每个格子的物理跨度 (单位：像素，需与 Tile 坐标单位一致)
     heatmap_penalty_value: float = field(default=-100.0, init=False)  # 热力图无效区域（无数据覆盖）的默认填充值
     scale: float = field(default=4.0, init=False)                     # x 坐标放大倍数
   
@@ -55,3 +55,4 @@ class BM40Config:
     # --- 输出配置 ---
     Initial_name: str = field(default="Initial", init=False) # 初始选区名称
     Extra_name: str = field(default="Extra", init=False)     # 补拍选区名称
+    View_type: str = field(default="BM_WBC", init=False)      # 视野类型标识

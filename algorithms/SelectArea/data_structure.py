@@ -83,6 +83,7 @@ class TaskOutput:
             "view_xmax": self.view_xmax,
             "view_ymax": self.view_ymax,
             "region_name": self.region_name,
-            # 核心修改：通过列表推导式将 CellOutput 对象转换为 [x1, y1, x2, y2] 格式
+            # 通过列表推导式将 CellOutput 对象转换为 [x1, y1, x2, y2] 格式
             "cell_list": [cell.to_list() for cell in self.cell_list]
         }
+    

@@ -28,7 +28,7 @@ from .pipeline import WBCSamplingPipeline
 @dataclass(frozen=True)
 class VizConfig:
     # 输入与输出路径配置
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063001.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     out_png_name: str = "sampling_result_viz.png"
 
@@ -194,7 +194,7 @@ def main() -> None:
     print(f"[INFO] 成功加载项目: {project.smear_type}")
 
 
-    user_choice_area = {"x_min": 100000, "y_min": 30000, "x_max": 200000, "y_max": 60000}  # 示例用户选区
+    user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
     bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
     # bm_cfg = BM40Config(target_cell_num=300)
     pipeline = WBCSamplingPipeline(bm_cfg)
