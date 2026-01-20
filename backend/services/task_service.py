@@ -405,90 +405,90 @@ class TaskService:
             'task_list': task_list
         }
 
-    def get_task_result_x100(self, task_id, image_file, algorithm_type, dpi,
+    def get_task_result_x100(self, task_id, image_file, algorithm_types, dpi,
                              edge_cell_filter, *args):
         if None in args:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value
             }
-        try:
-            task_type = TaskType[algorithm_type].value
-        except KeyError:
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
-            }
-        if task_id not in self.project:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        project = self.project[task_id]
-        layer = project.get_layer(dpi)
-        position_xmin, position_ymin, position_xmax, position_ymax = args
-        x, y, w, h = position_xmin, position_ymin, position_xmax - position_xmin, position_ymax - position_ymin
-        tiles = layer.iter_tiles()
-        tile = None
-        for one in tiles:
-            if one.x == w and one.y == y and one.w == w and one.h == h:
-                tile = one
-                break
-        if tile is None:
-            tile = layer.add_tile(
-                x=x,
-                y=y,
-                w=w,
-                h=h,
-            )
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR_BGR)
         new_dispatcher = dispatcher
-        task_id = new_dispatcher.enqueue_task(image, task_type)
         cell_list = []
         cells = []
-        for _ in range(7200000):  # 最多等待2小时
-            new_result = new_dispatcher.get_result(task_id)
-            if new_result:
-                cellRects = new_result['cellRects'].astype(int).tolist()
-                cellTypes = new_result['cellTypes'].astype(int).tolist()
-                cellRatios = new_result['cellRatios'].astype(float).tolist()
-                for i in range(len(cellRects)):
-                    x, y, w, h, *o = cellRects[i]
-                    cell_type = cellTypes[i][0] + 200000
-                    new_cell_type = CELL_TYPES_X100.get(cell_type)
-                    if not new_cell_type:
-                        cell_type_name = '未知细胞'
-                    else:
-                        cell_type_name = new_cell_type[1]
-                    class_confidence = cellRatios[i][0]
-                    new_one_data = {
-                        "cell_xmin": x,
-                        "cell_ymin": y,
-                        'cell_xmax': x + w,
-                        'cell_ymax': y + h,
-                        'cell_type': cell_type,
-                        'cell_type_name': cell_type_name,
-                        'class_confidence': class_confidence,
-                        'bbox_confidence': 1
+        done_list = []
+        for algorithm_type in algorithm_types:
+            if algorithm_type in done_list:
+                continue
+            done_list.append(algorithm_type)
+            task_type = TaskType[algorithm_type].value
+            taskid = new_dispatcher.enqueue_task(image, task_type)
+            for _ in range(7200000):  # 最多等待2小时
+                new_result = new_dispatcher.get_result(taskid)
+                if new_result:
+                    cellRects = new_result['cellRects'].astype(int).tolist()
+                    cellTypes = new_result['cellTypes'].astype(int).tolist()
+                    cellRatios = new_result['cellRatios'].astype(float).tolist()
+                    for i in range(len(cellRects)):
+                        x, y, w, h, *o = cellRects[i]
+                        cell_type = cellTypes[i][0] + 200000
+                        new_cell_type = CELL_TYPES_X100.get(cell_type)
+                        if not new_cell_type:
+                            cell_type_name = '未知细胞'
+                        else:
+                            cell_type_name = new_cell_type[1]
+                        class_confidence = cellRatios[i][0]
+                        new_one_data = {
+                            "cell_xmin": x,
+                            "cell_ymin": y,
+                            'cell_xmax': x + w,
+                            'cell_ymax': y + h,
+                            'cell_type': cell_type,
+                            'cell_type_name': cell_type_name,
+                            'class_confidence': class_confidence,
+                            'bbox_confidence': 1
 
-                    }
-                    cell = Cell(
-                        cell_xmin=x,
-                        cell_ymin=y,
-                        cell_xmax=x + w,
-                        cell_ymax=y + h,
-                        cell_type=cell_type,
-                        cell_type_name=cell_type_name,
-                        class_confidence=class_confidence,
-                        bbox_confidence=1
-                    )
-                    cell_list.append(new_one_data)
-                    cells.append(cell)
-                break
-            else:
-                time.sleep(0.001)
-        tile.add_cells(cells)
+                        }
+                        cell = Cell(
+                            cell_xmin=x,
+                            cell_ymin=y,
+                            cell_xmax=x + w,
+                            cell_ymax=y + h,
+                            cell_type=cell_type,
+                            cell_type_name=cell_type_name,
+                            class_confidence=class_confidence,
+                            bbox_confidence=1
+                        )
+                        cell_list.append(new_one_data)
+                        cells.append(cell)
+                    break
+                else:
+                    time.sleep(0.001)
+        if task_id:
+            if task_id not in self.project:
+                result = self.load_data(task_id)
+                if result:
+                    return result
+            project = self.project[task_id]
+            layer = project.get_layer(dpi)
+            position_xmin, position_ymin, position_xmax, position_ymax = args
+            x, y, w, h = position_xmin, position_ymin, position_xmax - position_xmin, position_ymax - position_ymin
+            tiles = layer.iter_tiles()
+            tile = None
+            for one in tiles:
+                if one.x == w and one.y == y and one.w == w and one.h == h:
+                    tile = one
+                    break
+            if tile is None:
+                tile = layer.add_tile(
+                    x=x,
+                    y=y,
+                    w=w,
+                    h=h,
+                )
+            tile.add_cells(cells)
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
