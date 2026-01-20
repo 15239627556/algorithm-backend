@@ -407,11 +407,6 @@ class TaskService:
 
     def get_task_result_x100(self, task_id, image_file, algorithm_types, dpi,
                              edge_cell_filter, *args):
-        if None in args:
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value
-            }
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR_BGR)
