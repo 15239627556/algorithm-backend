@@ -180,7 +180,7 @@ result_x100.add_argument('position_xmax', type=int, required=False, help='右下
 result_x100.add_argument('position_ymax', type=int, required=False, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 result_x100.add_argument('dpi', type=int, required=True, help='放大倍数', location='form')
-result_x100.add_argument('algorithm_types', type=list, required=True,
+result_x100.add_argument('algorithm_types', type=str, required=True,
                          help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
                          location='form', default=True)

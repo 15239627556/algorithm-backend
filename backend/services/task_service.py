@@ -419,10 +419,14 @@ class TaskService:
         cell_list = []
         cells = []
         done_list = []
+        algorithm_types = algorithm_types.split(',')
         for algorithm_type in algorithm_types:
+            if algorithm_type is '':
+                continue
             if algorithm_type in done_list:
                 continue
             done_list.append(algorithm_type)
+            algorithm_type = algorithm_type.strip()
             task_type = TaskType[algorithm_type].value
             taskid = new_dispatcher.enqueue_task(image, task_type)
             for _ in range(7200000):  # 最多等待2小时
