@@ -58,8 +58,12 @@ class Layer:
             for cell in tile.cells:
                 position_x = tile.x
                 position_y = tile.y
-                if not ((cell.cell_xmax + position_x) < xmin or (cell.cell_xmin + position_x) > xmax or
-                        (cell.cell_ymax + position_y) < ymin or (cell.cell_ymin + position_y) > ymax):
+                cell.cell_xmin = cell.cell_xmin + position_x
+                cell.cell_ymin = cell.cell_ymin + position_y
+                cell.cell_xmax = cell.cell_xmax + position_x
+                cell.cell_ymax = cell.cell_ymax + position_y
+                if not (cell.cell_xmax < xmin or cell.cell_xmin > xmax or
+                        cell.cell_ymax < ymin or cell.cell_ymin > ymax):
                     if is_Cell:
                         result.append(cell)
                     else:
