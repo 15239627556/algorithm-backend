@@ -140,9 +140,11 @@ class TaskService:
         layer = project.list_layers()[0]
         tiles = layer.iter_tiles()
         tiles = dedup_cells_across_tiles(tiles)
+        logger.info(f"Dedup completed for task {task_id}. Saving project.")
         for one_tile in tiles:
             layer.tiles[one_tile.image_uid] = one_tile
         project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+        logger.info(f"Saving project success...")
 
     def update_coordinates(self, task_id, tiles_msg):
         if task_id not in self.project:
