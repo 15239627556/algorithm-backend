@@ -145,6 +145,7 @@ class TaskService:
             layer.tiles[one_tile.image_uid] = one_tile
         project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
         logger.info(f"Saving project success...")
+        print('Dedup completed and Saving project success')
 
     def update_coordinates(self, task_id, tiles_msg):
         if task_id not in self.project:
@@ -201,6 +202,7 @@ class TaskService:
                 except Exception as e:
                     tile_info['reason'] = str(e)
                     failed_tiles.append(tile_info)
+        self._dedup_cells(task_id)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
