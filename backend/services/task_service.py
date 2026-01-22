@@ -3,7 +3,7 @@ import threading
 import multiprocessing as mp
 import time
 import uuid
-
+import logging
 import cv2
 import numpy as np
 from itertools import chain
@@ -12,11 +12,14 @@ from algorithms.x100model import X100ImageModels
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc, TaskType, CELL_TYPES_X100
 from backend.tools.public_methods import thread_decorator, upload_folder, images_folder
 from backend.tools.json_safe_writer import serialize_non_json_fields
+from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
 from project.smear_project import SmearProject
 from project.cells import Cell
 from project.inference_queue_manager import TileInferenceQueueManager
 from project.tile_queue import TileQueueRouter, TileMsg
 from algorithms.SelectArea.main import *
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------
 # B方案：QueueManager 懒加载 + 预热
@@ -117,6 +120,30 @@ class TaskService:
             'ret_desc': RetDesc.API_SUCCESS.value
         }
 
+    @thread_decorator
+    def _dedup_cells(self, task_id):
+        task_info = self.project_info[task_id]
+        # 等待任务完成（最多等待 1 小时，避免死循环）
+        max_wait_seconds = 3600
+        waited = 0
+        poll_interval = 1  # 秒
+        while waited < max_wait_seconds:
+            if task_info.get('task_status') == RetCode.TASK_FINISHED.value:
+                break
+            time.sleep(poll_interval)
+            waited += poll_interval
+        else:
+            logger.warning(f"Task {task_id} did not finish within timeout. Skipping dedup.")
+            return  # 或 raise 异常
+        # 执行去重
+        project = self.project[task_id]
+        layer = project.list_layers()[0]
+        tiles = layer.iter_tiles()
+        tiles = dedup_cells_across_tiles(tiles)
+        for one_tile in tiles:
+            layer.tiles[one_tile.image_uid] = one_tile
+        project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+
     def update_coordinates(self, task_id, tiles_msg):
         if task_id not in self.project:
             result = self.load_data(task_id)
@@ -166,13 +193,12 @@ class TaskService:
                 # matcher[(row_index, col_index)] = image_uid
             else:
                 try:
-                    tiles = layer.get_tile(image_uid)
-                    tiles.x = position_x
-                    tiles.y = position_y
+                    tile = layer.get_tile(image_uid)
+                    tile.x = position_x
+                    tile.y = position_y
                 except Exception as e:
                     tile_info['reason'] = str(e)
                     failed_tiles.append(tile_info)
-        project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -416,7 +442,7 @@ class TaskService:
         done_list = []
         algorithm_types = algorithm_types.split(',')
         for algorithm_type in algorithm_types:
-            if algorithm_type is '':
+            if algorithm_type == '':
                 continue
             if algorithm_type in done_list:
                 continue
