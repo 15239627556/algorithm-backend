@@ -56,8 +56,8 @@ class Layer:
         result: List[Dict | Cell] = []
         for tile in self.tiles.values():
             for cell in tile.cells:
-                position_x = tile.meta.get('position_x', 0)
-                position_y = tile.meta.get('position_y', 0)
+                position_x = tile.x
+                position_y = tile.y
                 if not ((cell.cell_xmax + position_x) < xmin or (cell.cell_xmin + position_x) > xmax or
                         (cell.cell_ymax + position_y) < ymin or (cell.cell_ymin + position_y) > ymax):
                     if is_Cell:
