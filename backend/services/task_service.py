@@ -94,6 +94,7 @@ class TaskService:
         task_id = uuid.uuid4().hex
         task_info['smear_type'] = task_info.get('smear_type', 'BM')  # bm为骨髓
         task_info['task_status'] = RetCode.TASK_RUNNING.value
+        task_info['finished'] = False
         num_rows = task_info.get('num_rows')
         num_cols = task_info.get('num_cols')
         project = SmearProject(smear_type=task_info['smear_type'])
@@ -128,7 +129,7 @@ class TaskService:
         waited = 0
         poll_interval = 1  # 秒
         while waited < max_wait_seconds:
-            if task_info.get('task_status') == RetCode.TASK_FINISHED.value:
+            if task_info.get('finished'):
                 break
             time.sleep(poll_interval)
             waited += poll_interval
@@ -144,6 +145,7 @@ class TaskService:
         for one_tile in tiles:
             layer.tiles[one_tile.image_uid] = one_tile
         project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+        self.project_info[task_id]['task_status'] = RetCode.TASK_FINISHED.value  # 100: 已完成
         logger.info(f"Saving project success...")
         print('Dedup completed and Saving project success')
 
@@ -222,6 +224,7 @@ class TaskService:
         # 先创建 tile，确保结果回来能找到 tile
         task_info = self.project_info[task_id]
         image_bytes = tile_image.read()
+        file_name = tile_image.filename
         with self.project_lock[task_id]:
             grid = self.grids[task_id]
             grid[row_index, col_index] = True
@@ -233,6 +236,7 @@ class TaskService:
                 w=task_info['tile_width'],
                 h=task_info['tile_height'],
                 image_data=None,
+                image_path=file_name,
                 extra_meta={
                     'num_rows': task_info['num_rows'],
                     'num_cols': task_info['num_cols'],
@@ -270,11 +274,11 @@ class TaskService:
             project = self.project[task_id]
             get_queue_manager().finish_tile(task_id)
             get_queue_manager().wait_written_all(task_id, timeout=300.0)
-            self.project_info[task_id]['task_status'] = RetCode.TASK_FINISHED.value  # 100: 已完成
+            self.project_info[task_id]['finished'] = True  # 100: 已完成
             project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
             print('任务完成：============================================', task_id)
         except Exception as e:
-            self.project_info[task_id]['task_status'] = RetCode.TASK_TIMEOUT.value  # 200: 失败
+            self.project_info[task_id]['task_status'] = RetCode.TASK_TIMEOUT.value  # 102  # 任务超时
             print("[finish_task_async ERROR]", task_id, repr(e))
 
     def check_image(self, task_id: str) -> dict:
