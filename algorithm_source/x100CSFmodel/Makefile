@@ -9,7 +9,7 @@ PYTHON_SUFFIX := $(shell python$(PYTHON_VERSION)-config --extension-suffix)
 # === Paths ===
 SRC_DIR = src
 INC_DIR = include
-BIN_DIR = ../../algorithms/x40enhance
+BIN_DIR = ../../algorithms/x100CSFmodel
 
 # === Source Files ===
 PYBIND_SRC = $(SRC_DIR)/main.cpp
@@ -20,8 +20,8 @@ CONSUMER_SRC = $(SRC_DIR)/consumer.cpp
 # X40TEST_TARGET = $(BIN_DIR)/x40_task_test
 
 
-PYBIND_TARGET = $(BIN_DIR)/X40ImageEnhanceModels$(PYTHON_SUFFIX)
-CONSUMER_TARGET = $(BIN_DIR)/X40ImageEnhanceModelsWorker
+PYBIND_TARGET = $(BIN_DIR)/X100CSFImageModels$(PYTHON_SUFFIX)
+CONSUMER_TARGET = $(BIN_DIR)/X100CSFImageModelsWorker
 
 # === cuda 设置 ===
 CUDA_DIR = /usr/local/cuda

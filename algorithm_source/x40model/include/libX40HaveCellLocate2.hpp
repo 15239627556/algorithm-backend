@@ -1,186 +1,65 @@
-#pragma once
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "logger.h"
-#include "parserOnnxConfig.h"
-#include "NvInfer.h"
-#include <cuda_runtime.h>
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include <cmath>
 #include <opencv2/opencv.hpp>
-#include "opencv2/cudawarping.hpp"
-#include <type_traits>
-using namespace cv;
-using namespace std;
+#include <cuda_runtime_api.h>
+#include "NvInfer.h"
+#include "NvInferPlugin.h"
+#include "logger.h"
+#include "publicTRT.hpp"
 
-// struct itemX40HaveLocateInfo
-// {
-//     std::vector<cv::Rect> cellrects;
-//     std::vector<float> scores;
-//     std::vector<int> types; //0-有核
-// };
 struct itemX40HaveLocateInfo {
     cv::Mat boxes;
     std::vector<float> scores;
     std::vector<int>   labels;//0-有核
 };
 
-class CellLocateOnnx
+class CellLocateOnnx : public PublicTRT 
 {
-	template <typename T>
-	using SampleUniquePtr = std::unique_ptr<T, samplesCommon::InferDeleter>;
-
 public:
+    static inline const int INPUTC     = 3;
+    static inline const int INPUTH     = 1056;
+    static inline const int INPUTW     = 1248;
+    static inline const int BATCH      = 4;
+    static inline const int OUTPUTNUM  = 6;
+    static inline const int N          = 109395; // box 数（或通道数），请以实际为准
+    static inline const float conf     = 0.40f;// 置信度阈值
+    static inline const float iou      = 0.60f;// IoU 阈值
+    static inline const int   maxd     = 2000;// 每图最多检测数
+    static inline const bool  agn      = true; // 类无关 NMS 与导出 onnx 的 agnostic_nms=True 一致
+
+
 	CellLocateOnnx(int gpu_id)
 	{
-		mParams.inputTensorNames.push_back("images");
-		mParams.batchSize = 9;
-		mParams.outputTensorNames.push_back("output0");
-		mParams.dlaCore = -1;
-		mParams.int8 = false;
-		mParams.fp16 = false;
-		initLibNvInferPlugins(nullptr, "");
-        // cudaDeviceProp deviceProp;
-		// cudaGetDeviceProperties(&deviceProp, gpu_id);
-		// string diviceName = deviceProp.name;
-        string diviceName = GPU_NAMES[gpu_id];
-		size_t index_2080 = diviceName.find("2080");
-		size_t index_3080 = diviceName.find("3080");
-		size_t index_4070 = diviceName.find("4070");
-		size_t index_4090 = diviceName.find("4090");
-		std::string engine = "";
-		if(index_2080 != string::npos)
-			engine = "engines/2080/x40_have_locate_.trt";
-		else if(index_3080 != string::npos)
-			engine = "engines/3080/x40_have_locate_.trt";
-		else if(index_4070 != string::npos)
-			engine = "engines/4070/x40_have_locate_.trt";
-		else if(index_4090 != string::npos)
-			engine = "engines/4070/x40_have_locate_.trt";
-		else
-			std::cout << "cannot find correct trt" << std::endl;
-
-		// std::string engine = "engines/x40_have_locate_.trt";
-        // std::string engine = "engines/4070/x40_have_locate_.trt";
-		std::ifstream engineFile(engine, std::ios::binary);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error opening engine file: " << engine << std::endl;
-			return ;
-		}
-		engineFile.seekg(0, engineFile.end);
-		long int fsize = engineFile.tellg();
-		engineFile.seekg(0, engineFile.beg);
-
-		std::vector<char> engineData(fsize);
-		engineFile.read(engineData.data(), fsize);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error loading engine file: " << engine << std::endl;
-			return ;
-		}
-		sample::gLogger.setReportableSeverity(nvinfer1::ILogger::Severity::kERROR);  // 设置日志级别
-		mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
-		mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(engineData.data(), fsize, nullptr));
+        initTRT();
+        std::string enginePath = selectEnginePath(gpu_id, "x40_have_locate_");
+        if (!loadEngine(enginePath)) {
+            sample::gLogError << "Failed to load engine: " << enginePath << std::endl;
+        }
 	}
 	
-
-	~CellLocateOnnx()
-	{}
-	
-	bool infer(std::vector<cv::Mat> uImgs, std::vector<itemX40HaveLocateInfo>& uOutX40HaveCellLocates)
+	bool infer(std::vector<cv::Mat> uImgs, std::vector<itemX40HaveLocateInfo>& out)
 	{
-		samplesCommon::BufferManager buffers(mEngine);
-    	auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-		if (!context)
-		{
-			return false;
-		}
-		// Read the input data into the managed buffers
-		assert(mParams.inputTensorNames.size() == 1);
+        rs.clear();
+        pads.clear();
+		std::vector<float> inputData = processInput(uImgs);
+        
+        // 调用基类执行推理
+        if (!doInference({{"images", inputData}})) return false;
 
-		//double time1 = static_cast<double>(cv::getTickCount());
-		std::vector<float> rs;
-        std::vector<cv::Point> pads;
-		if (!processInput(buffers, uImgs, rs, pads))
-		{
-			return false;
-		}
-		// cudaSetDevice(device);
-        buffers.copyInputToDevice();
+        // 获取输出
+        float* ptr_data = mHostOutputs["output0"].data();
 
-		bool status = context->executeV2(buffers.getDeviceBindings().data());
-		
-		if (!status)
-		{
-			return false;
-		}
-		buffers.copyOutputToHost();
-		const int batchSize = 4;
-        const int class_num = 6;
-		float* data = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[0]));
-        int B = 4;                 // 你的 batch
-        int A = 6;                 // 通道维（或 N），请以实际为准
-        int N = 109395;            // box 数（或通道数），请以实际为准
-
-        const float conf = 0.40f;
-        const float iou  = 0.60f;
-        const int   maxd = 2000;
-        const bool  agn  = true;   // 与导出 onnx 的 agnostic_nms=True 一致
-
-        cv::Mat pred_mat = makePredMatView(data, B, A, N);
-
-        uOutX40HaveCellLocates = postprocess_no_nms_cpp(
-            pred_mat,           // 预测
-            conf,           // 置信度阈值
-            iou,            // IoU 阈值
-            maxd,           // 每图最多检测数
-            agn,            // 类无关 NMS
-            /*num_classes=*/2,
-            /*apply_sigmoid=*/false,
-            rs,
-            pads,
-            /*classes=*/nullptr
-        );
-
-        const auto& det = uOutX40HaveCellLocates[0];
-
-        for (int r = 0; r < det.boxes.rows; ++r) {
-            float score = det.scores[r];
-
-            const float* b = det.boxes.ptr<float>(r); // [x1,y1,x2,y2]
-            int label = det.labels[r];
-
-            // 组装 "[x1, y1, x2, y2]" 字符串，box 一位小数
-            std::ostringstream box_ss;
-            box_ss << "["
-                   << std::fixed << std::setprecision(1) << b[0] << ", "
-                   << std::fixed << std::setprecision(1) << b[1] << ", "
-                   << std::fixed << std::setprecision(1) << b[2] << ", "
-                   << std::fixed << std::setprecision(1) << b[3] << "]";
-
-            // 打印一行：文件名 -> Box: [...], Score: xx.xx, Label: x
-            std::cout << "name"
-                      << " -> Box: " << box_ss.str()
-                      << ", Score: " << std::fixed << std::setprecision(2) << score
-                      << ", Label: " << label
-                      << '\n';
-        }
-        			
-		return true;
+        postprocess(ptr_data, out);
+        return true;
 	}
 
 
 private:
-	samplesCommon::OnnxSampleParams mParams; 
-	std::shared_ptr<nvinfer1::IRuntime> mRuntime; 
-    std::shared_ptr<nvinfer1::ICudaEngine> mEngine;
-	nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-	nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
-	int mNumber{ 0 };             //!< The number to classify
+    std::vector<float> rs;
+    std::vector<cv::Point> pads;
 
     struct LetterboxResult {
         cv::Mat img;   // 处理后图像 (H x W x 3, uint8)
@@ -191,7 +70,7 @@ private:
         int sizes[3]  = {B, A, N};
         // 若为标准 C 连续布局（最后一维最连续），显式 steps 更安全：
         size_t steps[3] = {
-            (size_t)A * N * sizeof(float),  // 步长：跨 batch
+            (size_t)A * N * sizeof(float),  // 步长：跨 BATCH
             (size_t)N * sizeof(float),      // 跨通道/第二维
             sizeof(float)                   // 跨最后一维
         };
@@ -206,7 +85,7 @@ private:
     // 返回：
     //   IoU ∈ [0, 1]，并对并集加了 1e-7f 防止除零。
     // 注意：假定 x2>=x1 且 y2>=y1（若存在数值噪声，std::max(0, w/h) 已做保护）。
-    static inline float iou_xyxy(const float* a, const float* b) {
+    inline float iou_xyxy(const float* a, const float* b) {
         float ax1=a[0], ay1=a[1], ax2=a[2], ay2=a[3];
         float bx1=b[0], by1=b[1], bx2=b[2], by2=b[3];
 
@@ -228,7 +107,7 @@ private:
 
         return inter / uni;
     }
-    static std::vector<int> nms_singleclass(const cv::Mat& boxes_xyxy,
+    std::vector<int> nms_singleclass(const cv::Mat& boxes_xyxy,
                                         const std::vector<float>& scores,
                                         float iou_thr,
                                         int max_det) {
@@ -261,7 +140,7 @@ private:
         }
         return keep;
     }
-    static std::vector<int> yolov_like_nms_cpp(cv::Mat boxes_xyxy,           // copy
+    std::vector<int> yolov_like_nms_cpp(cv::Mat boxes_xyxy,           // copy
                                            std::vector<float> conf,
                                            std::vector<int> cls,
                                            float iou_thr,
@@ -332,7 +211,7 @@ private:
         // (4) 调用单类贪心 NMS
         return nms_singleclass(boxes_xyxy, conf, iou_thr, max_det);
     }
-    static std::vector<itemX40HaveLocateInfo> postprocess_no_nms_cpp(const cv::Mat& pred,
+    std::vector<itemX40HaveLocateInfo> postprocess_no_nms_cpp(const cv::Mat& pred,
                                                     float conf_thr,
                                                     float iou_thr,
                                                     int   max_det,
@@ -525,7 +404,7 @@ private:
 
         return LetterboxResult{std::move(out), r, cv::Point(left, top)};
     }
-    static void scale_boxes(cv::Mat& boxes_xyxy, float r, const cv::Point& pad,
+    void scale_boxes(cv::Mat& boxes_xyxy, float r, const cv::Point& pad,
                  int orig_w, int orig_h) {
         // boxes_xyxy: CV_32F, Nx4 (x1,y1,x2,y2)
         if (boxes_xyxy.empty()) return;
@@ -555,15 +434,14 @@ private:
             if (y2 < y1) y2 = y1;
         }
     }
-	bool processInput(const samplesCommon::BufferManager& buffers, vector<cv::Mat> uImgs, std::vector<float>& rs, std::vector<cv::Point>& pads)
+    //前处理
+	std::vector<float> processInput(const std::vector<cv::Mat> uImgs)
 	{
-		
-		const int inputC = 3;
-		const int inputH = 1056;
-		const int inputW = 1248;
-		const int batchSize = 4;
-        float* hostDataBuffer = static_cast<float*>(buffers.getHostBuffer(mParams.inputTensorNames[0]));
-		for (int m = 0; m < batchSize; m++)
+        // HWC -> CHW
+        int len = BATCH * INPUTC * INPUTW * INPUTH;
+        std::vector<float> chw(len);
+        float* data = chw.data();
+		for (int m = 0; m < BATCH; m++)
 		{
             cv::Size new_shape(1248, 1248);
 			auto lb = letterbox(uImgs[m], new_shape,
@@ -583,17 +461,60 @@ private:
             rgb.convertTo(blob, CV_32FC3);
 			blob = blob / 255.0;
 
-            for (int i = 0; i < inputH; i++) {
-				float* data = blob.ptr<float>(i);
-				for (int j = 0; j < inputW; j++) {
-					for (int k = 0; k < inputC; k++) {
-                        // std::cout << i << " " << j << " " << k << std::endl;
-						hostDataBuffer[m*inputH*inputW*inputC + k * inputW*inputH + i * inputW + j] = data[j*inputC + k];					
-					}
-				}
+            std::vector<cv::Mat> channels(INPUTC);
+            
+			for (int c = 0; c < INPUTC; ++c)
+			{
+				// 每个通道指向 chw 向量中对应的平面起始位置
+				channels[c] = cv::Mat(INPUTH, INPUTW, CV_32FC1, data + m * INPUTC * INPUTH * INPUTW + c * INPUTH * INPUTW);
 			}
+			// 将 HWC 的 image 拆分并直接拷贝到 channels 指向的 chw 内存中
+			cv::split(blob, channels);
 		}
         
-		return true;
+		return chw;
 	}
+    //后处理
+    void postprocess(float* data, std::vector<itemX40HaveLocateInfo>& uOutX40HaveCellLocates)
+    {
+        cv::Mat pred_mat = makePredMatView(data, BATCH, OUTPUTNUM, N);
+
+        uOutX40HaveCellLocates = postprocess_no_nms_cpp(
+            pred_mat,           // 预测
+            conf,           // 置信度阈值
+            iou,            // IoU 阈值
+            maxd,           // 每图最多检测数
+            agn,            // 类无关 NMS
+            /*num_classes=*/2,
+            /*apply_sigmoid=*/false,
+            rs,
+            pads,
+            /*classes=*/nullptr
+        );
+
+        const auto& det = uOutX40HaveCellLocates[0];
+
+        for (int r = 0; r < det.boxes.rows; ++r) {
+            float score = det.scores[r];
+
+            const float* b = det.boxes.ptr<float>(r); // [x1,y1,x2,y2]
+            int label = det.labels[r];
+
+            // 组装 "[x1, y1, x2, y2]" 字符串，box 一位小数
+            std::ostringstream box_ss;
+            box_ss << "["
+                   << std::fixed << std::setprecision(1) << b[0] << ", "
+                   << std::fixed << std::setprecision(1) << b[1] << ", "
+                   << std::fixed << std::setprecision(1) << b[2] << ", "
+                   << std::fixed << std::setprecision(1) << b[3] << "]";
+
+            // 打印一行：文件名 -> Box: [...], Score: xx.xx, Label: x
+            std::cout << "name"
+                      << " -> Box: " << box_ss.str()
+                      << ", Score: " << std::fixed << std::setprecision(2) << score
+                      << ", Label: " << label
+                      << '\n';
+        }        			
+		return;
+    }
 };

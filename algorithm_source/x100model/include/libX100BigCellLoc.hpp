@@ -1,138 +1,94 @@
-#pragma once
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "parserOnnxConfig.h"
-#include "NvInfer.h"
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include <cmath>
 #include <opencv2/opencv.hpp>
-#include <opencv2/highgui.hpp>
-#include <cuda_runtime.h>
-
-using namespace cv;
-using namespace std;
-
-typedef std::pair<float, float> ratio_;
-typedef std::tuple<float, int, int> class_conf_idx_label;
+#include <cuda_runtime_api.h>
+#include "NvInfer.h"
+#include "NvInferPlugin.h"
+#include "logger.h"
+#include "publicTRT.hpp"
 
 
-class X100BigLocateOnnx
+class X100BigLocateOnnx: public PublicTRT
 {
-	template <typename T>
-	using SampleUniquePtr = std::unique_ptr<T, samplesCommon::InferDeleter>;
-
 public:
-	vector<vector<float> > anchor_boxes;
-	X100BigLocateOnnx(int gpu_id) :sortThreadValue(0.5)
+	static inline const int INPUTC = 3;
+	static inline const int INPUTH = 256;
+	static inline const int INPUTW = 320;
+	static inline const int BATCH = 1;
+	X100BigLocateOnnx(int gpu_id)
 	{
-		mParams.inputTensorNames.push_back("input.1");
-		mParams.batchSize = 1;
-	
-		mParams.outputTensorNames.push_back("330");//292
-		mParams.outputTensorNames.push_back("329");//292
-		mParams.outputTensorNames.push_back("325");//287
-		mParams.outputTensorNames.push_back("328");//290
-		mParams.dlaCore = 1;
-		mParams.int8 = false;
-		mParams.fp16 = false;
-		initLibNvInferPlugins(nullptr, "");
-		// cudaDeviceProp deviceProp;
-		// cudaGetDeviceProperties(&deviceProp, gpu_id);
-		// string diviceName = deviceProp.name;
-		string diviceName = GPU_NAMES[gpu_id];
-		size_t index_2080 = diviceName.find("2080");
-		size_t index_3080 = diviceName.find("3080");
-		size_t index_4070 = diviceName.find("4070");
-		size_t index_4090 = diviceName.find("4090");
-		std::string engine = "";
-		if(index_2080 != string::npos)
-			engine = "engines/2080/x100_big_locate.trt";
-		else if(index_3080 != string::npos)
-			engine = "engines/3080/x100_big_locate.trt";
-		else if(index_4070 != string::npos)
-			engine = "engines/4070/x100_big_locate.trt";
-		else if(index_4090 != string::npos)
-			engine = "engines/4070/x100_big_locate.trt";
-		else
-			std::cout << "cannot find correct trt" << std::endl;
-
-		// std::string engine = "engines/x100_big_locate.trt";
-		std::ifstream engineFile(engine, std::ios::binary);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error opening engine file: " << engine << std::endl;
-			return ;
-		}
-		engineFile.seekg(0, engineFile.end);
-		long int fsize = engineFile.tellg();
-		engineFile.seekg(0, engineFile.beg);
-
-		std::vector<char> engineData(fsize);
-		engineFile.read(engineData.data(), fsize);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error loading engine file: " << engine << std::endl;
-			return ;
-		}
-		sample::gLogger.setReportableSeverity(nvinfer1::ILogger::Severity::kERROR);  // 设置日志级别
-		mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
-		mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(engineData.data(), fsize, nullptr));
-		
+		initTRT();
+        std::string enginePath = selectEnginePath(gpu_id, "x100_big_locate");
+        if (!loadEngine(enginePath)) {
+            sample::gLogError << "Failed to load engine: " << enginePath << std::endl;
+        }	
 	}
-	~X100BigLocateOnnx()
-	{}
-	bool infer(cv::Mat& image, vector<cv::Rect>& out)
+	bool infer(cv::Mat& image, std::vector<cv::Rect>& out)
 	{
-		samplesCommon::BufferManager buffers(mEngine);
-    	auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-		if (!context)
-		{
-			return false;
+		org_w = image.cols;
+		org_h = image.rows;
+		std::vector<cv::Mat> uImgs;
+		uImgs.push_back(image);
+		std::vector<float> inputData = processInput(uImgs);
+        
+        // 调用基类执行推理
+        if (!doInference({{"input.1", inputData}})) return false;
+
+        // 获取输出
+        float* ptr_pool_cls = mHostOutputs["330"].data();
+		float* ptr_pred_cls = mHostOutputs["329"].data();
+		float* ptr_pred_size = mHostOutputs["325"].data();
+		float* ptr_pred_offset = mHostOutputs["328"].data();
+
+        postprocess(ptr_pool_cls, ptr_pred_cls, ptr_pred_size, ptr_pred_offset, out);
+        return true;
+	}
+private:
+	int org_w = 2448;
+	int org_h = 2048;
+	std::vector<float> processInput(std::vector<cv::Mat> srclist)
+	{
+		int len = BATCH * INPUTC * INPUTW * INPUTH;
+        std::vector<float> chw(len);
+		float* data = chw.data();
+
+		for (int m = 0; m < BATCH; m++)
+		{	
+			cv::Mat image;
+			cv::resize(srclist[m], image, cv::Size(306, 256), 0.0, 0.0, cv::INTER_NEAREST);
+			cv::Mat image_(INPUTH, INPUTW, CV_8UC3, cv::Scalar(255, 255, 255));
+			image_(cv::Rect(0, 0, image.cols, image.rows)) = image + 0;
+			image_.convertTo(image_, CV_32FC3);
+			image_ = image_ / 255.0;
+
+			std::vector<cv::Mat> channels(INPUTC);
+			for (int c = 0; c < INPUTC; ++c)
+			{
+				// 每个通道指向 chw 向量中对应的平面起始位置
+				channels[c] = cv::Mat(INPUTH, INPUTW, CV_32FC1, data + m * INPUTC * INPUTH * INPUTW + c * INPUTH * INPUTW);
+			}
+			// 将 HWC 的 image 拆分并直接拷贝到 channels 指向的 chw 内存中
+			cv::split(image_, channels);
 		}
 
-		// Read the input data into the managed buffers
-		assert(mParams.inputTensorNames.size() == 1);
-		if (!processInput(buffers, vector<cv::Mat>{image}))
-		{
-			return false;
-		}
-
-		buffers.copyInputToDevice();
-
-
-
-		/*double time = static_cast<double>(cv::getTickCount());*/
-
-		bool status = context->executeV2(buffers.getDeviceBindings().data());
-		/*time1 = ((double)cv::getTickCount() - time1) / cv::getTickFrequency();
-		sample::gLogInfo << "copy + executeV2	" << time1 << std::endl;*/
-		if (!status)
-		{
-			return false;
-		}
-
-		// Memcpy from device output buffers to host output buffers
-		buffers.copyOutputToHost();
-
-		float* pred_cls = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[1]));
-		float* pool_cls = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[0]));
-		float* pred_size = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[2]));
-		float* pred_offset = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[3]));
-
+		return chw;
+	}
+	//后处理
+	void postprocess(float* pool_cls, float* pred_cls, float* pred_size, float* pred_offset, std::vector<cv::Rect>& out) 
+	{
 		float* ptr_cls = pred_cls;
 		float* ptr_pool_cls = pool_cls;
 
-		const int img_width = image.cols;
-		const int img_height = image.rows;
-		int batchSize = 1;
-		// 每张图片单独处理
-		for (int i = 0; i < batchSize; i++) {
+		const int img_width = org_w;
+		const int img_height = org_h;
+
+		for (int i = 0; i < BATCH; i++) {
 			// 用于 NMS
-			vector<Rect> localBoxes;
-			vector<float> localConfidences;
+			std::vector<cv::Rect> localBoxes;
+			std::vector<float> localConfidences;
 			for (int j = 0; j < 64 * 80; j++) {
 				// cout << *ptr_cls << " " << *ptr_pool_cls << endl;
 				if (*ptr_cls == *ptr_pool_cls && (*ptr_cls) >= 0.3)
@@ -154,7 +110,7 @@ public:
 						+ pred_size[(center_x)+(80 * center_y) + (80 * 64 * 1) + (80 * 64 * 2 * i)] * 64 / 2) / 256 * img_height;
 
 
-					Rect box = Rect(x_min, y_min, x_max - x_min, y_max - y_min);
+					cv::Rect box = cv::Rect(x_min, y_min, x_max - x_min, y_max - y_min);
 					localBoxes.push_back(box);
 					localConfidences.push_back(*ptr_cls);
 
@@ -162,66 +118,15 @@ public:
 				ptr_cls++;
 				ptr_pool_cls++;
 			}
-			std::cout << "localBoxes.size() --->>> " << localBoxes.size() << std::endl;
-			vector<int> nmsIndices;
+			std::vector<int> nmsIndices;
 			cv::dnn::NMSBoxes(localBoxes, localConfidences, 0.6f, 0.3f, nmsIndices);
-
-			//vector<Rect> out_boxes;  // 本张图片最终输出结果
-			//vector<int> scores;    // 上面那些框的预测值
-			std::cout << "nmsIndices.size() --->>> " << nmsIndices.size() << std::endl;
 			for (int ii = 0; ii < nmsIndices.size(); ii++) 
 			{
 				int idx_ = nmsIndices[ii];
 				cv::Rect rect(0, 0, img_width, img_height);
 				cv::Rect cell_rect = localBoxes[idx_] & rect;
 				out.push_back(cell_rect);
-			}
-	
+			}	
 		}
-		return true;
-	}
-private:
-	samplesCommon::OnnxSampleParams mParams; //!< The parameters for the sample.
-	nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-	nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
-	int mNumber{ 0 };             //!< The number to classify
-	// std::shared_ptr<nvinfer1::ICudaEngine> mEngine; !< The TensorRT engine used to run the network
-	std::shared_ptr<nvinfer1::IRuntime> mRuntime; 
-	std::shared_ptr<nvinfer1::ICudaEngine> mEngine;
-	float sortThreadValue; // 用于筛选框选结果是否有效的判断值
-	bool processInput(const samplesCommon::BufferManager& buffers, vector<cv::Mat> srclist)
-	{
-		const int inputC = 3;
-		const int inputH = 256;
-		const int inputW = 320;
-		const int batchSize = 1;
-
-	
-		cv::Scalar mean_(0.597, 0.519, 0.521);
-		cv::Scalar std_(0.311, 0.329, 0.327);
-		float* hostDataBuffer = static_cast<float*>(buffers.getHostBuffer(mParams.inputTensorNames[0]));
-		for (int m = 0; m < batchSize; m++)
-		{
-			
-			cv::Mat image;
-			cv::resize(srclist[m], image, cv::Size(306, 256), 0.0, 0.0, cv::INTER_NEAREST);
-			cv::Mat image_(inputH, inputW, CV_8UC3, cv::Scalar(255, 255, 255));
-			image_(cv::Rect(0, 0, image.cols, image.rows)) = image + 0;
-			image_.convertTo(image_, CV_32FC3);
-
-
-			image_ = image_ / 255;
-
-			for (int i = 0; i < inputH; i++) {
-				float* data = image_.ptr<float>(i);
-				for (int j = 0; j < inputW; j++) {
-					for (int k = 0; k < inputC; k++) {
-						hostDataBuffer[m*inputH*inputW*inputC + k * inputW*inputH + i * inputW + j] = data[j*inputC + k];
-					}
-				}
-			}
-		}
-
-		return true;
 	}
 };

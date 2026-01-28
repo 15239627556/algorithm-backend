@@ -1,100 +1,51 @@
-#pragma once
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "parserOnnxConfig.h"
-#include "NvInfer.h"
-#include <cuda_runtime.h>
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include <cmath>
 #include <opencv2/opencv.hpp>
-#include <opencv2/highgui.hpp>
+#include <cuda_runtime_api.h>
+#include "NvInfer.h"
+#include "NvInferPlugin.h"
+#include "logger.h"
+#include "publicTRT.hpp"
 
-using namespace cv;
-using namespace std;
-
-
-typedef std::pair<float, float> ratio_;
-typedef std::tuple<float, int, int> class_conf_idx_label;
-
-const std::string gSampleName = "TensorRT.sample_onnx_mnist";
-
-class X100HaveLocateOnnx
+class X100HaveLocateOnnx: public PublicTRT
 {
-	template <typename T>
-	using SampleUniquePtr = std::unique_ptr<T, samplesCommon::InferDeleter>;
-
 public:
-	X100HaveLocateOnnx(int gpu_id) :sortThreadValue(0.5)
+	static inline const int INPUTC = 3;
+	static inline const int INPUTH = 384;
+	static inline const int INPUTW = 512;
+	static inline const int BATCH = 1;
+	static inline const int CLASSNUM = 1;
+	static inline const float THRESHOLD = 0.3f;
+	static inline const float CONFTHRESHOLD = 0.3f;
+	static inline const float NMSTHRESHOLD = 0.2f;
+	static inline const cv::Scalar mean_ = cv::Scalar(0.485, 0.456, 0.406);
+	static inline const cv::Scalar std_ = cv::Scalar(0.229, 0.224, 0.225);
+	
+	X100HaveLocateOnnx(int gpu_id)
 	{
-		mParams.inputTensorNames.push_back("data");
-		mParams.batchSize = 1;
-		mParams.outputTensorNames.push_back("1228");
-		mParams.outputTensorNames.push_back("1392");
-		mParams.dlaCore = -1;
-		mParams.int8 = false;
-		mParams.fp16 = false;
-
-		initLibNvInferPlugins(nullptr, "");
-		// cudaDeviceProp deviceProp;
-		// cudaGetDeviceProperties(&deviceProp, gpu_id);
-		// string diviceName = deviceProp.name;
-		string diviceName = GPU_NAMES[gpu_id];
-		size_t index_2080 = diviceName.find("2080");
-		size_t index_3080 = diviceName.find("3080");
-		size_t index_4070 = diviceName.find("4070");
-		size_t index_4090 = diviceName.find("4090");
-		std::string engine = "";
-		if(index_2080 != string::npos)
-			engine = "engines/2080/x100_have_locate.trt";
-		else if(index_3080 != string::npos)
-			engine = "engines/3080/x100_have_locate.trt";
-		else if(index_4070 != string::npos)
-			engine = "engines/4070/x100_have_locate.trt";
-		else if(index_4090 != string::npos)
-			engine = "engines/4070/x100_have_locate.trt";
-		else
-			std::cout << "cannot find correct trt" << std::endl;
-
-		// std::string engine = "engines/x100_have_locate.trt";
-		std::ifstream engineFile(engine, std::ios::binary);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error opening engine file: " << engine << std::endl;
-			return ;
-		}
-		engineFile.seekg(0, engineFile.end);
-		long int fsize = engineFile.tellg();
-		engineFile.seekg(0, engineFile.beg);
-
-		std::vector<char> engineData(fsize);
-		engineFile.read(engineData.data(), fsize);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error loading engine file: " << engine << std::endl;
-			return ;
-		}
-		sample::gLogger.setReportableSeverity(nvinfer1::ILogger::Severity::kERROR);  // 设置日志级别
-		mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
-		mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(engineData.data(), fsize, nullptr));
+		initTRT();
+        std::string enginePath = selectEnginePath(gpu_id, "x100_have_locate");
+        if (!loadEngine(enginePath)) {
+            sample::gLogError << "Failed to load engine: " << enginePath << std::endl;
+        }	
 
 		float anchor_scale = 2;  
-
-		vector<float> pyramid_levels{ 4, 5, 6 }; 
-		vector<float> strides;
+		std::vector<float> pyramid_levels{ 4, 5, 6 }; 
+		std::vector<float> strides;
 		for (size_t i = 0; i < pyramid_levels.size(); i++) {
 			int pow_ = pow(2, pyramid_levels[i]);
 			strides.push_back(pow_);
 		}
-		vector<float> scales{ 1, 1.4142135623730951f }; 
-		vector<ratio_> ratios{ make_pair(1.0, 1.0), make_pair(1.2, 0.8), make_pair(0.8, 1.2) };
+		std::vector<float> scales{ 1, 1.4142135623730951f }; 
+		std::vector<ratio_> ratios{ std::make_pair(1.0, 1.0), std::make_pair(1.2, 0.8), std::make_pair(0.8, 1.2) };
 		for (size_t i = 0; i < strides.size(); i++) {
-			int index_m = ceil((image_shape[1] - strides[i] / 2) / strides[i]);
-			int index_n = ceil((image_shape[0] - strides[i] / 2) / strides[i]);
-			vector<vector<int> > xv(index_n, vector<int>(index_m));
-			vector<vector<int> > yv(index_n, vector<int>(index_m));
+			int index_m = ceil((INPUTW - strides[i] / 2) / strides[i]);
+			int index_n = ceil((INPUTH - strides[i] / 2) / strides[i]);
+			std::vector<std::vector<int> > xv(index_n, std::vector<int>(index_m));
+			std::vector<std::vector<int> > yv(index_n, std::vector<int>(index_m));
 			for (size_t n = 0; n < index_n; n++) {
 				for (size_t m = 0; m < index_m; m++) {
 					for (size_t j = 0; j < scales.size(); j++) {
@@ -104,7 +55,7 @@ public:
 							float anchor_size_y_2 = base_anchor_size * ratios[k].second / 2;
 							xv[n][m] = strides[i] / 2 + m * strides[i];
 							yv[n][m] = strides[i] / 2 + n * strides[i];
-							vector<float> box{ yv[n][m] - anchor_size_y_2, xv[n][m] - anchor_size_x_2,
+							std::vector<float> box{ yv[n][m] - anchor_size_y_2, xv[n][m] - anchor_size_x_2,
 								yv[n][m] + anchor_size_y_2, xv[n][m] + anchor_size_x_2 };
 							anchor_boxes.push_back(box);
 
@@ -115,37 +66,62 @@ public:
 		}
 	}
 
-	~X100HaveLocateOnnx()
-	{}
-
-	bool infer(cv::Mat& image, vector<cv::Rect>& out)
+	bool infer(cv::Mat& image, std::vector<cv::Rect>& out)
 	{
-		out.clear();
-		samplesCommon::BufferManager buffers(mEngine);
-    	auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-		if (!context)
+		org_w = image.cols;
+		org_h = image.rows;
+		std::vector<cv::Mat> uImgs;
+		uImgs.push_back(image);
+		std::vector<float> inputData = processInput(uImgs);
+        
+        // 调用基类执行推理
+        if (!doInference({{"data", inputData}})) return false;
+
+        // 获取输出
+        float* regression = mHostOutputs["1228"].data();
+		float* classification = mHostOutputs["1392"].data();
+
+        postprocess(regression, classification, out);
+        return true;
+	}
+
+private:
+	std::vector<std::vector<float> > anchor_boxes;
+	typedef std::tuple<float, int, int> class_conf_idx_label;
+	typedef std::pair<float, float> ratio_;
+	int org_w = 2048;
+	int org_h = 1536;
+	
+	std::vector<float> processInput(std::vector<cv::Mat>& srcs)
+	{
+		int len = BATCH * INPUTC * INPUTW * INPUTH;
+        std::vector<float> chw(len);
+		float* data = chw.data();
+		for(int b = 0; b < BATCH; b++)
 		{
-			return false;
+			cv::Mat image;
+			cv::resize(srcs[b], image, cv::Size(INPUTW, INPUTH));
+			cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+
+			image.convertTo(image, CV_32FC3);
+			image = image / 255.0;
+			cv::subtract(image, mean_, image);
+			cv::divide(image, std_, image);
+
+			std::vector<cv::Mat> channels(INPUTC);
+			for (int c = 0; c < INPUTC; ++c)
+			{
+				// 每个通道指向 chw 向量中对应的平面起始位置
+				channels[c] = cv::Mat(INPUTH, INPUTW, CV_32FC1, data + b * INPUTC * INPUTH * INPUTW + c * INPUTH * INPUTW);
+			}
+			// 将 HWC 的 image 拆分并直接拷贝到 channels 指向的 chw 内存中
+			cv::split(image, channels);
 		}
-
-		assert(mParams.inputTensorNames.size() == 1);
-		if (!processInput(buffers, image))
-		{
-			return false;
-		}
-		buffers.copyInputToDevice();
-
-		bool status = context->executeV2(buffers.getDeviceBindings().data());
-		if (!status)
-		{
-			return false;
-		}
-
-		buffers.copyOutputToHost();
-
-		float* regression = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[0]));
-		float* classification = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[1]));
-
+		return chw;
+	}
+	//后处理
+	void postprocess(float* regression, float* classification, std::vector<cv::Rect>& out) 
+	{
 		auto max_index = [](const float* start, const float* end) -> int {
 			float max_val = start[0];
 			int max_pos = 0;
@@ -159,24 +135,23 @@ public:
 			return max_pos;
 		};
 
-		vector<class_conf_idx_label> class_conf_idx_labels;
-		int class_num = 1;
-		float threshold = 0.3f, confThreshold = 0.3f, nmsThreshold = 0.2f;
+		std::vector<class_conf_idx_label> class_conf_idx_labels;
+		
 
 		for (size_t i = 0; i < anchor_boxes.size(); i++) {
-			auto max_idx = max_index(classification + i * class_num, classification + (i + 1)*class_num);
-			if (classification[i*class_num + max_idx] > threshold)
-				class_conf_idx_labels.push_back(make_tuple(classification[i*class_num + max_idx], i, max_idx));
+			auto max_idx = max_index(classification + i * CLASSNUM, classification + (i + 1)*CLASSNUM);
+			if (classification[i*CLASSNUM + max_idx] > THRESHOLD)
+				class_conf_idx_labels.push_back(std::make_tuple(classification[i*CLASSNUM + max_idx], i, max_idx));
 		}
 
-		for (size_t i = 0; i < class_num; i++) {
-			vector<Rect> localBoxes;
-			vector<float> localConfidences;
+		for (size_t i = 0; i < CLASSNUM; i++) {
+			std::vector<cv::Rect> localBoxes;
+			std::vector<float> localConfidences;
 			for (size_t j = 0; j < class_conf_idx_labels.size(); j++) {
-				if (get<2>(class_conf_idx_labels[j]) == i) {
+				if (std::get<2>(class_conf_idx_labels[j]) == i) {
 
-					int idx = get<1>(class_conf_idx_labels[j]);
-					float conf = get<0>(class_conf_idx_labels[j]);
+					int idx = std::get<1>(class_conf_idx_labels[j]);
+					float conf = std::get<0>(class_conf_idx_labels[j]);
 
 					float y_centers_a = (anchor_boxes[idx][0] + anchor_boxes[idx][2]) / 2;
 					float x_centers_a = (anchor_boxes[idx][1] + anchor_boxes[idx][3]) / 2;
@@ -190,74 +165,28 @@ public:
 					float x_centers = regression[idx * 4 + 1] * ha + x_centers_a;
 					float zero = 0;
 
-					Rect box = Rect(int(std::max(x_centers - w / 2, zero)), int(std::max(y_centers - h / 2, zero)),
-						int(std::min(w, image_shape[0] - 1)), int(std::min(h, image_shape[1] - 1)));
+					cv::Rect box = cv::Rect(int(std::max(x_centers - w / 2, zero)), int(std::max(y_centers - h / 2, zero)),
+						int(std::min(w, float(INPUTH - 1))), int(std::min(h, float(INPUTW - 1))));
 					localBoxes.push_back(box);
 					localConfidences.push_back(conf);
 				}
 			}
-			vector<int> nmsIndices;
-			cv::dnn::NMSBoxes(localBoxes, localConfidences, confThreshold, nmsThreshold, nmsIndices);
+			std::vector<int> nmsIndices;
+			cv::dnn::NMSBoxes(localBoxes, localConfidences, CONFTHRESHOLD, NMSTHRESHOLD, nmsIndices);
 
 			for (size_t idx = 0; idx < nmsIndices.size(); idx++)
 			{
 				size_t idx_ = nmsIndices[idx];
 				{
-					Rect rctOut = localBoxes.at(idx_);
-					int left = rctOut.x * image.cols / 512;
-					int top = rctOut.y * image.rows / 384;
-					int right = (rctOut.x + rctOut.width) * image.cols / 512;
-					int bottom = (rctOut.y + rctOut.height) * image.rows / 384;
-					out.push_back(Rect(left, top, right - left, bottom - top));
+					cv::Rect rctOut = localBoxes.at(idx_);
+					int left = rctOut.x * org_w / INPUTW;
+					int top = rctOut.y * org_h / INPUTH;
+					int right = (rctOut.x + rctOut.width) * org_w / INPUTW;
+					int bottom = (rctOut.y + rctOut.height) * org_h / INPUTH;
+					out.push_back(cv::Rect(left, top, right - left, bottom - top));
 				}
 			}
 		}
-
-		return true;
-	}
-
-private:
-	samplesCommon::SampleParams mParams; //!< The parameters for the sample.
-	nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-	nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
-	int mNumber{ 0 };             //!< The number to classify
-	std::shared_ptr<nvinfer1::IRuntime> mRuntime; 
-	std::shared_ptr<nvinfer1::ICudaEngine> mEngine;
-	float sortThreadValue;
-	vector<vector<float> > anchor_boxes;
-	vector<float> image_shape{ 384,512 };
-	
-	bool processInput(const samplesCommon::BufferManager& buffers, cv::Mat& src)
-	{
-		const int inputC = 3;
-		const int inputH = 384;
-		const int inputW = 512;
-		const int batchSize = 1;
-
-		cv::Scalar mean_(0.485, 0.456, 0.406);
-		cv::Scalar std_(0.229, 0.224, 0.225);
-		cv::Mat image;
-		cv::resize(src, image, cv::Size(inputW, inputH));
-		cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
-
-		image.convertTo(image, CV_32FC3);
-		image = image / 255;
-		cv::subtract(image, mean_, image);
-		cv::divide(image, std_, image);
-
-	
-		float* hostDataBuffer = static_cast<float*>(buffers.getHostBuffer(mParams.inputTensorNames[0]));
-
-		for (int i = 0; i < inputH; i++) {
-			float* data = image.ptr<float>(i);
-			for (int j = 0; j < inputW; j++) {
-				for (int k = 0; k < inputC; k++) {
-					hostDataBuffer[k*inputW*inputH + i * inputW + j] = data[j*inputC + k];
-				}
-			}
-		}
-
-		return true;
 	}
 };
 

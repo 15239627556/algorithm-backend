@@ -203,7 +203,7 @@ private:
     /*
         *************************************图片前处理*********************************
     */
-    void imageProcessing1(vector<cv::Mat> uPicMatlist, vector<cv::Mat>& outPicMatlist)
+    void imageProcessing1(std::vector<cv::Mat> uPicMatlist, std::vector<cv::Mat>& outPicMatlist)
     {
         outPicMatlist.clear();
         for(size_t i = 0; i < uPicMatlist.size(); i++)
@@ -213,7 +213,7 @@ private:
             outPicMatlist.push_back(src);
         }
     }
-    void imageProcessing2(vector<cv::Mat> uPicMatlist, vector<cv::Mat>& outPicMatlist)
+    void imageProcessing2(std::vector<cv::Mat> uPicMatlist, std::vector<cv::Mat>& outPicMatlist)
     {
         const int inputH = 512;
         const int inputW = 640;
@@ -550,7 +550,9 @@ private:
                     return !t->flag_x40BigLocate_inferred;
                 },
                 [this](const std::shared_ptr<X40Task>& t) {
+                    std::cout << "X40BigLocate start" << std::endl;
                     t->flag_x40BigLocate_inferred = lpLocation40xBig->infer(t->resize_images, t->result_x40Big);
+                    std::cout << "X40BigLocate" << std::endl;
                 },
                 [&]() { cv_result.notify_one(); },
                 stop_all
@@ -566,7 +568,10 @@ private:
                     return !t->flag_cellAnalysis_inferred;
                 },
                 [this](const std::shared_ptr<X40Task>& t) {
+                    std::cout << "CellAnalysis start" << std::endl;
                     t->flag_cellAnalysis_inferred = lpCellAnalysis->infer(t->white_balance_images, t->result_cellAnalysis);
+                    // t->flag_cellAnalysis_inferred = true;
+                    std::cout << "CellAnalysis" << std::endl;
                 },
                 [&]() { cv_result.notify_one(); },
                 stop_all
@@ -582,7 +587,10 @@ private:
                     return !t->flag_x40HaveLocate_inferred;
                 },
                 [this](const std::shared_ptr<X40Task>& t) {
+                    std::cout << "x40HaveLocate start" << std::endl;
                     t->flag_x40HaveLocate_inferred = lpLocation40xHave->infer(t->images, t->result_x40HaveCellLocate);
+                    // t->flag_x40HaveLocate_inferred = true;
+                    std::cout << "x40HaveLocate" << std::endl;
                 },
                 [&]() { cv_result.notify_one(); },
                 stop_all
@@ -598,7 +606,9 @@ private:
                     return !t->flag_blockScore_inferred;
                 },
                 [this](const std::shared_ptr<X40Task>& t) {
+                    std::cout << "BlockScore start" << std::endl;
                     t->flag_blockScore_inferred = lpConstituency->infer(t->resize_images, t->result_blockScore);
+                    std::cout << "BlockScore" << std::endl;
                 },
                 [&]() { cv_result.notify_one(); },
                 stop_all

@@ -1,164 +1,111 @@
-
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "logger.h"
-#include "parserOnnxConfig.h"
-#include "NvInfer.h"
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include <cmath>
 #include <opencv2/opencv.hpp>
-#include "opencv2/cudawarping.hpp"
-#include <type_traits>
-#include <cuda_runtime.h>
-using namespace cv;
-using namespace std;
+#include <cuda_runtime_api.h>
+#include "NvInfer.h"
+#include "NvInferPlugin.h"
+#include "logger.h"
+#include "publicTRT.hpp"
 
-class EnhanceOnnx
+class EnhanceOnnx: public PublicTRT
 {
-	template <typename T>
-	using SampleUniquePtr = std::unique_ptr<T, samplesCommon::InferDeleter>;
-
 public:
+	static inline const int BATCH = 1;
+	static inline const int INPUTC = 3;
+	static inline const int INPUTH = 1024;
+	static inline const int INPUTW = 1224;
 
-	int device;
 	EnhanceOnnx(int gpu_id)
 	{
-		mParams.inputTensorNames.push_back("x");
-		mParams.batchSize = 1;
-		mParams.outputTensorNames.push_back("1448");
-		mParams.dlaCore = 1;
-		mParams.int8 = false;
-		mParams.fp16 = false;
-		initLibNvInferPlugins(nullptr, "");
-		// cudaDeviceProp deviceProp;
-		// cudaGetDeviceProperties(&deviceProp, gpu_id);
-		// string diviceName = deviceProp.name;
-		string diviceName = GPU_NAMES[gpu_id];
-		size_t index_2080 = diviceName.find("2080");
-		size_t index_3080 = diviceName.find("3080");
-		size_t index_4070 = diviceName.find("4070");
-		size_t index_4090 = diviceName.find("4090");
-		std::string engine = "";
-		if(index_2080 != string::npos)
-			engine = "engines/2080/x40_enhance.trt";
-		else if(index_3080 != string::npos)
-			engine = "engines/3080/x40_enhance.trt";
-		else if(index_4070 != string::npos)
-			engine = "engines/4070/x40_enhance.trt";
-		else if(index_4090 != string::npos)
-			engine = "engines/4070/x40_enhance.trt";
-		else
-			std::cout << "cannot find correct trt" << std::endl;
-
-		// std::string engine = "engines/x40_enhance.trt";
-		std::ifstream engineFile(engine, std::ios::binary);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error opening engine file: " << engine << std::endl;
-			return ;
-		}
-		engineFile.seekg(0, engineFile.end);
-		long int fsize = engineFile.tellg();
-		engineFile.seekg(0, engineFile.beg);
-
-		std::vector<char> engineData(fsize);
-		engineFile.read(engineData.data(), fsize);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error loading engine file: " << engine << std::endl;
-			return ;
-		}
-		sample::gLogger.setReportableSeverity(nvinfer1::ILogger::Severity::kERROR);  // 设置日志级别
-		mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
-		mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(engineData.data(), fsize, nullptr));
+		initTRT();
+        std::string enginePath = selectEnginePath(gpu_id, "x40_enhance");
+        if (!loadEngine(enginePath)) {
+            sample::gLogError << "Failed to load engine: " << enginePath << std::endl;
+        }		
 	}
-	~EnhanceOnnx()
-	{};
 
-	bool infer(cv::Mat uImg, cv::Mat& uOutImg)
+	bool infer(const cv::Mat uImg, cv::Mat& uOutImg)
 	{
-		samplesCommon::BufferManager buffers(mEngine);
-    	auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-		if (!context)
-		{
-			return false;
-		}
-		// Read the input data into the managed buffers
-		assert(mParams.inputTensorNames.size() == 1);
+		std::vector<cv::Mat> uImgs;
+		uImgs.push_back(uImg);
+		std::vector<float> inputData = processInput(uImgs);
+        
+        // 调用基类执行推理
+        if (!doInference({{"x", inputData}})) return false;
 
-		//double time1 = static_cast<double>(cv::getTickCount());
-		
-		if (!processInput(buffers, uImg))
-		{
-			return false;
-		}
-		buffers.copyInputToDevice();
-		bool status = context->executeV2(buffers.getDeviceBindings().data());
+        // 获取输出
+        float* ptr_data = mHostOutputs["1448"].data();
 
-		
-		if (!status)
-		{
-			return false;
-		}
-		buffers.copyOutputToHost();
-
-		const int batchSize = 1;
-		const int inputC = 3;
-		float* output = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[0]));
-	
-		const int inputH = 2048;
-		const int inputW = 2448;
-		const int outputSize = inputH * inputW;
-	
-		for (int b = 0; b < batchSize; b++)
-		{
-			cv::Mat result = cv::Mat::zeros(cv::Size(inputW, inputH), CV_32FC3);
-			std::vector<cv::Mat> chw{
-			cv::Mat(inputH, inputW, CV_32F, &output[2 * outputSize]),
-			cv::Mat(inputH, inputW, CV_32F, &output[1 * outputSize]),
-			cv::Mat(inputH, inputW, CV_32F, &output[0 * outputSize])
-			};
-			cv::merge(chw, result);
-			result.convertTo(result, CV_8UC3, 255);
-			uOutImg = result + 0;
-		}	
-		return true;
+        postprocess(ptr_data, uOutImg);
+        return true;
 	}
 
 
 private:
-	samplesCommon::OnnxSampleParams mParams; 
-	std::shared_ptr<nvinfer1::IRuntime> mRuntime; 
-    std::shared_ptr<nvinfer1::ICudaEngine> mEngine;
-	nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-	nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
-	int mNumber{ 0 };             //!< The number to classify
-
-	bool processInput(const samplesCommon::BufferManager& buffers, cv::Mat uImg)
+	std::vector<float> processInput(const std::vector<cv::Mat> uImgs)
 	{
-		const int inputC = 3;
-		const int inputH = 1024;
-		const int inputW = 1224;
-		float* hostDataBuffer = static_cast<float*>(buffers.getHostBuffer(mParams.inputTensorNames[0]));
-		cv::resize(uImg, uImg, cv::Size(), .5, .5);
-		cv::Mat rgb;
-		cv::cvtColor(uImg, rgb, cv::COLOR_BGR2RGB);
-		rgb.convertTo(rgb, CV_32FC3);
-		uImg = rgb / 255;
+		int len = BATCH * INPUTC * INPUTW * INPUTH;
+        std::vector<float> chw(len);
+		float* data = chw.data();
 
-		for (int i = 0; i < inputH; i++) {
-				float* data = uImg.ptr<float>(i);
+		for(int b = 0; b < BATCH; b++)
+		{
+			cv::Mat uImg;
+			cv::resize(uImgs[b], uImg, cv::Size(), .5, .5);
+			cv::Mat rgb, imgF32;
+			cv::cvtColor(uImg, rgb, cv::COLOR_BGR2RGB);
+			rgb.convertTo(imgF32, CV_32FC3);
+			imgF32 = imgF32 / 255.0;
 
-				for (int j = 0; j < inputW; j++) {
-					for (int k = 0; k < inputC; k++) {
-						hostDataBuffer[0*inputH*inputW*inputC + k * inputW*inputH + i * inputW + j] = data[j*inputC + k];
-					}
-				}
+			std::vector<cv::Mat> channels(INPUTC);
+			for (int c = 0; c < INPUTC; ++c)
+			{
+				// 每个通道指向 chw 向量中对应的平面起始位置
+				channels[c] = cv::Mat(INPUTH, INPUTW, CV_32FC1, data + b * INPUTC * INPUTH * INPUTW + c * INPUTH * INPUTW);
 			}
-		return true;
+			// 将 HWC 的 image 拆分并直接拷贝到 channels 指向的 chw 内存中
+			cv::split(imgF32, channels);
+		}
+		return chw;
+	}
+
+	//后处理
+	void postprocess(float* output, cv::Mat& out)
+	{
+		// 1. 严格对应模型的输出尺寸
+		const int outH = 2048;
+		const int outW = 2448;
+		const size_t planeSize = static_cast<size_t>(outH) * outW; // 单个通道的大小
+
+		if (output == nullptr) {
+			std::cerr << "Error: Output pointer is null!" << std::endl;
+			return;
+		}
+
+		// 2. 按照 CHW 格式从 output 缓冲区提取数据
+		// 假设模型输出顺序是 R, G, B (索引 0, 1, 2)
+		// OpenCV 需要 BGR 顺序
+		cv::Mat channelR(outH, outW, CV_32FC1, output + 0 * planeSize);
+		cv::Mat channelG(outH, outW, CV_32FC1, output + 1 * planeSize);
+		cv::Mat channelB(outH, outW, CV_32FC1, output + 2 * planeSize);
+
+		std::vector<cv::Mat> channels = { channelB, channelG, channelR };
+		
+		cv::Mat merged;
+		cv::merge(channels, merged);
+
+		// 3. 数值缩放与溢出保护
+		// 很多增强模型输出已经是 0-1 范围，乘以 255 转为 8位图
+		// 如果模型输出本身就是 0-255，则去掉 255.0 参数
+		merged.convertTo(out, CV_8UC3, 255.0);
+
+		// // 4. 调试：如果还是黑图，打印一下原始数据的最大值
+		// double minVal, maxVal;
+		// cv::minMaxLoc(channelR, &minVal, &maxVal);
+		// std::cout << "Debug Output Range: [" << minVal << ", " << maxVal << "]" << std::endl;
 	}
 };
 

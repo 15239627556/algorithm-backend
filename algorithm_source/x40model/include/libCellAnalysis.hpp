@@ -1,159 +1,119 @@
-#pragma once
-#include "argsParser.h"
-#include "buffers.h"
-#include "common.h"
-#include "logger.h"
-#include "parserOnnxConfig.h"
-#include "NvInfer.h"
-#include <cuda_runtime_api.h>
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <memory>
+#include <fstream>
+#include <cmath>
 #include <opencv2/opencv.hpp>
-#include "opencv2/cudawarping.hpp"
-#include <type_traits>
-#include <chrono>
-#include <thread>
-#include <cuda_runtime.h>
-using namespace cv;
-using namespace std;
+#include <cuda_runtime_api.h>
+#include "NvInfer.h"
+#include "NvInferPlugin.h"
+#include "logger.h"
+#include "publicTRT.hpp"
 
 struct PicCellAnalysisResult{
 	cv::Mat uOutPic;
 	std::vector<cv::Point> cellCenterPoints;
 };
 
-class CellAnalysisOnnx
-{
-	template <typename T>
-	using SampleUniquePtr = std::unique_ptr<T, samplesCommon::InferDeleter>;
-
+class CellAnalysisOnnx : public PublicTRT {
 public:
-	// int device;
-	CellAnalysisOnnx(int gpu_id)
-	{
-		// cudaSetDevice(setdevice); 
-		// device = setdevice;
-		mParams.inputTensorNames.push_back("input");
-		mParams.batchSize = 4;
-		mParams.outputTensorNames.push_back("center");
-		mParams.outputTensorNames.push_back("center_pool");
-		mParams.outputTensorNames.push_back("size");
-		mParams.outputTensorNames.push_back("sem_seg");
-		mParams.dlaCore = -1;
-		mParams.int8 = false;
-		mParams.fp16 = false;
-		initLibNvInferPlugins(nullptr, "");
-		// cudaDeviceProp deviceProp;
-		// cudaGetDeviceProperties(&deviceProp, gpu_id);
-		// string diviceName = deviceProp.name;
-		string diviceName = GPU_NAMES[gpu_id];
-		size_t index_2080 = diviceName.find("2080");
-		size_t index_3080 = diviceName.find("3080");
-		size_t index_4070 = diviceName.find("4070");
-		size_t index_4090 = diviceName.find("4090");
-		std::string engine = "";
-		if(index_2080 != string::npos)
-			engine = "engines/2080/x40_cellAnalysis.trt";
-		else if(index_3080 != string::npos)
-			engine = "engines/3080/x40_cellAnalysis.trt";
-		else if(index_4070 != string::npos)
-			engine = "engines/4070/x40_cellAnalysis.trt";
-		else if(index_4090 != string::npos)
-			engine = "engines/4070/x40_cellAnalysis.trt";
-		else
-			std::cout << "cannot find correct trt" << std::endl;
-		// std::string engine = "engines/x40_cellAnalysis.trt";
-		// std::string engine = "engines/4070/x40_cellAnalysis.trt";
-		std::ifstream engineFile(engine, std::ios::binary);
-		if (!engineFile)
-		{
-			sample::gLogInfo << "Error opening engine file: " << engine << std::endl;
-			return ;
-		}
-		engineFile.seekg(0, engineFile.end);
-		long int fsize = engineFile.tellg();
-		engineFile.seekg(0, engineFile.beg);
+	// 将静态常量定义在类内部
+    static inline const int BATCH  = 4;
+    static inline const int INPUTH = 512;
+    static inline const int INPUTW = 640;
+    static inline const int INPUTC = 4;
 
-		std::vector<char> engineData(fsize);
-		engineFile.read(engineData.data(), fsize);
-		if (!engineFile)
+    CellAnalysisOnnx(int gpu_id) {
+        initTRT();
+        std::string enginePath = selectEnginePath(gpu_id, "x40_cellAnalysis");
+        if (!loadEngine(enginePath)) {
+            sample::gLogError << "Failed to load engine: " << enginePath << std::endl;
+        }
+    }
+
+    bool infer(std::vector<cv::Mat> uImgs, std::vector<PicCellAnalysisResult>& out) {
+        // 预处理
+        std::vector<float> inputData = processInput(uImgs);
+        std::cout << "processInput end " << std::endl;
+        // 组织输入 (即使只有一个输入也用 Map)
+        std::unordered_map<std::string, std::vector<float>> inputs = {{"input", inputData}};
+
+        // 推理
+        if (!doInference(inputs)) return false;
+
+		std::cout << "doInference end " << std::endl;
+
+        // 直接从基类的 mHostOutputs 中取数据，名字对应 ONNX 的 Output Name
+        float* pred_cls = mHostOutputs["center"].data();
+        float* pool_cls = mHostOutputs["center_pool"].data();
+		float* pred_size = mHostOutputs["size"].data();
+        float* mask     = mHostOutputs["sem_seg"].data();
+
+        postprocess(pred_cls, pool_cls, pred_size, mask, out);
+		std::cout << "postprocess end " << std::endl;
+        return true;
+    }
+
+private:
+	//前处理
+	std::vector<float>  processInput(const std::vector<cv::Mat>& uImgs)
+	{
+		if (uImgs.size() < BATCH) {
+        throw std::runtime_error("Input images count is less than BATCH size!");
+    	}
+		int len = BATCH * INPUTC * INPUTW * INPUTH;
+        std::vector<float> chw(len);
+		float* data = chw.data();
+		for (int m = 0; m < BATCH; m++)
 		{
-			sample::gLogInfo << "Error loading engine file: " << engine << std::endl;
-			return ;
-		}
-		sample::gLogger.setReportableSeverity(nvinfer1::ILogger::Severity::kERROR);  // 设置日志级别
-		mRuntime = std::shared_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
-		mEngine = std::shared_ptr<nvinfer1::ICudaEngine>(mRuntime->deserializeCudaEngine(engineData.data(), fsize, nullptr));
+			cv::Mat HSV;
+			cv::cvtColor(uImgs[m], HSV, cv::COLOR_BGR2HSV);
+			std::vector<cv::Mat> channels;
+			cv::split(HSV, channels);
+
+			std::vector<cv::Mat> channels_;
+			cv::split(uImgs[m], channels_);
+			channels_.push_back(channels.at(1));
+			cv::Mat image;
+			cv::merge(channels_, image);
+			image.convertTo(image, CV_32FC4);
+			image = image / 255.0;
+
+			std::vector<cv::Mat> channels2(INPUTC);
+			for (int c = 0; c < INPUTC; ++c)
+			{
+				// 每个通道指向 chw 向量中对应的平面起始位置
+				channels2[c] = cv::Mat(INPUTH, INPUTW, CV_32FC1, data + m * INPUTC * INPUTH * INPUTW + c * INPUTH * INPUTW);
+			}
+			// 将 HWC 的 image 拆分并直接拷贝到 channels2 指向的 chw 内存中
+			cv::split(image, channels2);
+		}		
+		return chw;
 	}
-	~CellAnalysisOnnx()
-	{}
-
-	bool infer(std::vector<cv::Mat> uImg, std::vector<PicCellAnalysisResult>& uOutImg)
+	//后处理
+	void postprocess(float* pred_cls, float* pool_cls, float* pred_size, float* mask, std::vector<PicCellAnalysisResult>& uOutImg)
 	{
-		samplesCommon::BufferManager buffers(mEngine);
-    	auto context = SampleUniquePtr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
-		if (!context)
-		{
-			return false;
-		}
-		// Read the input data into the managed buffers
-		assert(mParams.inputTensorNames.size() == 1);
-
-		//double time1 = static_cast<double>(cv::getTickCount());
-		
-		if (!processInput(buffers, uImg))
-		{
-			return false;
-		}
-		// cudaSetDevice(device); 
-		buffers.copyInputToDevice();
-
-		bool status = context->executeV2(buffers.getDeviceBindings().data());
-		
-		if (!status)
-		{
-			return false;
-		}
-		buffers.copyOutputToHost();
-
-		const int batchSize = 4;
-		float* pred_cls = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[0]));
-		float* pool_cls = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[1]));
-		float* pred_size = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[2]));
-		float *mask = static_cast<float*>(buffers.getHostBuffer(mParams.outputTensorNames[3]));   
-		
-		//cout << buffers->size(mParams.outputTensorNames[0]) << endl;
-
-		const int resH = 512;   // 512
-		const int resW = 640;    // 640
 		float* ptr_cls = pred_cls;
 		float* ptr_pool_cls = pool_cls;
-
-		uOutImg.clear();
-
-		
-		for (int b = 0; b < batchSize; b++)
+		for (int b = 0; b < BATCH; b++)
 		{
 			PicCellAnalysisResult uOutImg_singel;
-			cv::Mat bgMask = cv::Mat(resH, resW, CV_32FC1, mask + b * (3 * resH * resW));
-			cv::Mat whiteMask = cv::Mat(resH, resW, CV_32FC1, mask + b * (3 * resH * resW) + resH * resW);
-			cv::Mat redMask = cv::Mat(resH, resW, CV_32FC1, mask + b * (3 * resH * resW) + 2 * resH * resW);
+			cv::Mat bgMask = cv::Mat(INPUTH, INPUTW, CV_32FC1, mask + b * (3 * INPUTH * INPUTW));
+			cv::Mat whiteMask = cv::Mat(INPUTH, INPUTW, CV_32FC1, mask + b * (3 * INPUTH * INPUTW) + INPUTH * INPUTW);
+			cv::Mat redMask = cv::Mat(INPUTH, INPUTW, CV_32FC1, mask + b * (3 * INPUTH * INPUTW) + 2 * INPUTH * INPUTW);
 
 			cv::Mat bgr;
-			vector<cv::Mat> channels = { whiteMask , bgMask , redMask };
+			std::vector<cv::Mat> channels = { whiteMask , bgMask , redMask };
 			cv::merge(channels, bgr);
 			bgr = bgr * 255;
 			bgr.convertTo(bgr, CV_8UC3);
 
-
-
 			uOutImg_singel.uOutPic = bgr(cv::Rect(0, 0, 612, 512));
 
-			vector<Rect> localBoxes;
-			vector<float> localConfidences;
-			for (int j = 0; j < 512 * 640; j++) {
+			std::vector<cv::Rect> localBoxes;
+			std::vector<float> localConfidences;
+			for (int j = 0; j < INPUTH * INPUTW; j++) 
+			{
 				
 				if (*ptr_cls == *ptr_pool_cls && (*ptr_cls) >= 0.2) {
 
@@ -167,18 +127,6 @@ public:
 						continue;
 					}
 
-					
-					// int size_offset_index_x = (center_x)+(640 * center_y) + (640 * 512 * 0) + (640 * 512 * 2 * b);
-					// int size_offset_index_y = (center_x)+(640 * center_y) + (640 * 512 * 1) + (640 * 512 * 2 * b);
-
-					/*int x_min = (center_x  - pred_size[size_offset_index_x] / 2);
-																				
-					int y_min = (center_y  - pred_size[size_offset_index_y] / 2);
-																				
-					int x_max = (center_x  + pred_size[size_offset_index_x] / 2);
-																				
-					int y_max = (center_y  + pred_size[size_offset_index_y] / 2);*/
-
 					int x_min = (center_x - 25 / 2);
 											
 					int y_min = (center_y - 25 / 2);
@@ -188,7 +136,7 @@ public:
 					int y_max = (center_y + 25 / 2);
 
 
-					Rect box = Rect(x_min, y_min, x_max - x_min, y_max - y_min);
+					cv::Rect box = cv::Rect(x_min, y_min, x_max - x_min, y_max - y_min);
 					localBoxes.push_back(box);
 					localConfidences.push_back(*ptr_cls);
 
@@ -197,8 +145,8 @@ public:
 				ptr_pool_cls++;
 
 			}		
-			vector<Rect> out_boxes;  
-			vector<double> scores;  
+			std::vector<cv::Rect> out_boxes;  
+			std::vector<double> scores;  
 			for (size_t idx = 0; idx < localBoxes.size(); idx++) {
 				
 				out_boxes.push_back(localBoxes[idx]/* + cv::Point(28,0)*/);
@@ -219,51 +167,7 @@ public:
 					uOutImg_singel.cellCenterPoints.push_back(cv::Point(c_x, c_y));
 			}			
 			uOutImg.push_back(uOutImg_singel);
-		}
-		return true;
-	}
-
-
-
-private:
-	samplesCommon::OnnxSampleParams mParams; //!< The parameters for the sample.
-	nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
-	nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
-	int mNumber{ 0 };             //!< The number to classify
-	std::shared_ptr<nvinfer1::IRuntime> mRuntime; 
-	std::shared_ptr<nvinfer1::ICudaEngine> mEngine;
-	bool processInput(const samplesCommon::BufferManager& buffers, std::vector<cv::Mat> uImg)
-	{
-		const int inputC = 4;
-		const int inputH = 512;
-		const int inputW = 640;
-		const int batchSize = 4;
-		// cudaSetDevice(device); 
-		float* hostDataBuffer = static_cast<float*>(buffers.getHostBuffer(mParams.inputTensorNames[0]));
-		for (int m = 0; m < batchSize; m++)
-		{
-			cv::Mat HSV;
-			cv::cvtColor(uImg[m], HSV, cv::COLOR_BGR2HSV);
-			std::vector<cv::Mat> channels;
-			cv::split(HSV, channels);
-
-			std::vector<cv::Mat> channels_;
-			cv::split(uImg[m], channels_);
-			channels_.push_back(channels.at(1));
-			cv::merge(channels_, uImg[m]);
-			uImg[m].convertTo(uImg[m], CV_32FC4);
-			uImg[m] = uImg[m] / 255;
-
-			for (int i = 0; i < inputH; i++) {
-				float* data = uImg[m].ptr<float>(i);
-
-				for (int j = 0; j < inputW; j++) {
-					for (int k = 0; k < inputC; k++) {
-						hostDataBuffer[m*inputH*inputW*inputC + k * inputW*inputH + i * inputW + j] = data[j*inputC + k];
-					}
-				}
-			}
-		}		
-		return true;
+		}	
+		return;
 	}
 };

@@ -44,14 +44,14 @@ OPENCV_LIBS = -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_dnn -lo
 BOOST_LIBS = -lboost_system -lboost_filesystem -lboost_thread -lboost_program_options
 
 # === TensorRT 配置 ===
-TENSORRT_DIR  = ../../TensorRT-8.6.1.6
+TENSORRT_DIR  = ../../TensorRT-10.13.3
 TENSORRT_INC  = -I$(TENSORRT_DIR)/include
 TENSORRT_COMMON = -I$(TENSORRT_DIR)/samples/common
 TENSORRT_COMMON_SRC = \
 	$(TENSORRT_DIR)/samples/common/logger.cpp 
 
 TENSORRT_LIB  = -L$(TENSORRT_DIR)/lib
-TENSORRT_LIBS = -lnvinfer -lnvonnxparser -lnvparsers -lnvinfer_plugin
+TENSORRT_LIBS = -lnvinfer -lnvonnxparser -lnvinfer_plugin
 
 # === RPATH ===
 RPATH := -Wl,-rpath,$(realpath $(OPENCV_DIR)/lib):$(realpath $(TENSORRT_DIR)/lib)
@@ -74,10 +74,26 @@ $(QUERY_GPU): $(SRC_DIR)/query_gpu.cu | $(BIN_DIR)
 	$(NVCC) -o $@ $< $(CUDA_INC) $(CUDA_LIB)
 
 # 生成 gpu_info.h
+# $(GPU_INFO_H): $(QUERY_GPU)
+# 	$< | awk 'BEGIN{print "static const std::string GPU_NAMES[] = {"} \
+# 	{id=$$1; $$1=""; sub(/^ /,""); print "    \""$$0"\","} \
+# 	END{print "};\n#define GPU_COUNT " NR}' > $(GPU_INFO_H)
 $(GPU_INFO_H): $(QUERY_GPU)
-	$< | awk 'BEGIN{print "static const std::string GPU_NAMES[] = {"} \
-	{id=$$1; $$1=""; sub(/^ /,""); print "    \""$$0"\","} \
-	END{print "};\n#define GPU_COUNT " NR}' > $(GPU_INFO_H)
+	$< | awk 'BEGIN { \
+	    print "#ifndef GPU_INFO_H"; \
+	    print "#define GPU_INFO_H"; \
+	    print "#include <string>\n"; \
+	    print "static const std::string GPU_NAMES[] = {" \
+	} \
+	{ \
+	    id=$$1; $$1=""; sub(/^ /,""); \
+	    print "    \""$$0"\"," \
+	} \
+	END { \
+	    print "};\n"; \
+	    print "#define GPU_COUNT " NR; \
+	    print "#endif // GPU_INFO_H" \
+	}' > $(GPU_INFO_H)
 
 # $(X40TASK_TARGET): $(X40TASK_SRC)
 # 	$(CXX) $(CXXFLAGS) $(OPENCV_INC) -o $@ $^ \
