@@ -44,7 +44,7 @@ OPENCV_LIBS = -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_dnn -lo
 BOOST_LIBS = -lboost_system -lboost_filesystem -lboost_thread -lboost_program_options
 
 # === TensorRT 配置 ===
-TENSORRT_DIR  = ../../TensorRT-10.13.3
+TENSORRT_DIR  = ../../TensorRT-10.13.3.9
 TENSORRT_INC  = -I$(TENSORRT_DIR)/include
 TENSORRT_COMMON = -I$(TENSORRT_DIR)/samples/common
 TENSORRT_COMMON_SRC = \
