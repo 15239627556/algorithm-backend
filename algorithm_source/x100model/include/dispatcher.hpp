@@ -5,10 +5,13 @@
 #include <condition_variable>
 #include <queue>
 #include <map>
+#include <atomic>
 #include "common.hpp"
 #include "workerwrapper.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+
+#define ENABLE_LOGGING 1
 
 namespace py = pybind11;
 
@@ -52,6 +55,7 @@ public:
         task_id_counter_ = task_id_counter_ % INT_MAX;
         py::buffer_info info = image.request();
         cv::Mat mat(info.shape[0], info.shape[1], CV_8UC3, info.ptr);
+        pending_tasks_++;  // 增加待处理任务计数
         { 
             std::lock_guard<std::mutex> lock(queue_mutex_);
             TaskTypes ttype;
@@ -71,20 +75,23 @@ public:
     /* 终止传图，目前不满 Batch Size 的也立即全部处理 */
     void synchronize() {
         /* 等待所有任务全部分发完 */
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        cv_task_queue_empty_.wait(lock, [this]() { return task_queue_.empty(); });
-        for (auto& worker : workers_) {
-            WorkerSharedBuffer *buffer = worker->get_buffer();
-            buffer->force_ready();
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            cv_task_queue_empty_.wait(lock, [this]() { return task_queue_.empty(); });
         }
-        while (true) {
-            bool all_done = true;
+        
+        /* 持续调用 force_ready 直到所有任务都被处理 */
+        while (pending_tasks_.load() > 0) {
             for (auto& worker : workers_) {
                 WorkerSharedBuffer *buffer = worker->get_buffer();
-                if (!buffer->all_filling()) { all_done = false; }
+                buffer->force_ready();
             }
-            if (all_done) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            
+            /* 等待一小段时间，让任务有机会被处理 */
+            std::unique_lock<std::mutex> lock(result_mutex_);
+            cv_all_results_ready_.wait_for(lock, std::chrono::milliseconds(10), [this]() {
+                return pending_tasks_.load() == 0;
+            });
         }
         // printf("[dispatcher.hpp synchronize] All tasks have been dispatched and processed.\n");
     }
@@ -121,8 +128,8 @@ private:
             }
             int slot_id = buffer->wait_next_available_block();
             buffer->upload_task(task, slot_id);
-            // LOGF("Worker Wrapper Loop %d will upload task ID: %d to slot ID: %d",
-            //     index, task.task_id, slot_id);
+            if (ENABLE_LOGGING)
+                LOGF("Worker Wrapper Loop %d will upload task ID: %d to slot ID: %d",index, task.task_id, slot_id);
         }
     }
 
@@ -136,8 +143,8 @@ private:
             for (int i = 0; i < BATCH_SIZE; ++i) {
                 if (buffer->blocks[slot_id].task_batch_[i].data_filled) {
                     TaskResult result = buffer->blocks[slot_id].task_batch_[i].result;
-                    // LOGF("Worker Loop %d received result of task ID: %d",
-                    //        index, buffer->blocks[slot_id].task_batch_[i].task_id);
+                    if (ENABLE_LOGGING)
+                        LOGF("Worker Loop %d received result of task ID: %d",index, buffer->blocks[slot_id].task_batch_[i].task_id);
                     buffer->blocks[slot_id].task_batch_[i].data_filled = false;
                     {
                         std::lock_guard<std::mutex> result_lock(result_mutex_);
@@ -147,6 +154,8 @@ private:
                         }
                         task_results_[buffer->blocks[slot_id].task_batch_[i].task_id] = result;
                     }
+                    pending_tasks_--;  // 减少待处理任务计数
+                    cv_all_results_ready_.notify_all();  // 通知可能在等待的 synchronize()
                 }
             }
             buffer->blocks[slot_id].task_status = FILLING;
@@ -167,6 +176,8 @@ private:
     std::mutex                          result_mutex_;
     std::condition_variable             cv_new_task_;
     std::condition_variable             cv_task_queue_empty_;
+    std::condition_variable             cv_all_results_ready_;
     int                                 task_id_counter_ = 0;
+    std::atomic<int>                    pending_tasks_{0};      // 已提交但未完成的任务数
 
 };
