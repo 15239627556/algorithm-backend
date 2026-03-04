@@ -24,7 +24,8 @@ class BM40Config:
     # --- 热力图核心配置 ---
     cell_size: float = field(default=224.0, init=False)               # 热力图每个格子的物理跨度 (单位：像素，需与 Tile 坐标单位一致)
     heatmap_penalty_value: float = field(default=-100.0, init=False)  # 热力图无效区域（无数据覆盖）的默认填充值
-    scale: float = field(default=4.0, init=False)                     # x 坐标放大倍数
+    # scale: float = field(default=4.0, init=False)                     # x 坐标放大倍数
+    scale: float = field(default=1.0, init=False)
   
     # --- 头部裁剪算法参数 ---
     head_crop_height_threshold_ratio: float = field(default=0.1, init=False)   # 有效列判定阈值：该列有效像素占比 (原 rows // 10 -> 0.1)
