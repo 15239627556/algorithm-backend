@@ -130,6 +130,7 @@ def generate_wbc_view_tasks(
         task_obj = TaskOutput(
             task_index=0,  # 占位
             view_type=config.View_type,
+            smear_type=config.Smear_type,
             view_xmin=int(round(rx)),
             view_ymin=int(round(ry)),
             view_xmax=int(round(rx + rw)),

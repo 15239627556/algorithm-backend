@@ -66,6 +66,7 @@ class TaskOutput:
     """单场百倍视野拍摄任务"""
     task_index: int
     view_type: str  # "WBC", "MEG"
+    smear_type: str
     view_xmin: int
     view_ymin: int
     view_xmax: int
@@ -78,6 +79,7 @@ class TaskOutput:
         return {
             "task_index": self.task_index,
             "view_type": self.view_type,
+            "smear_type": self.smear_type,
             "view_xmin": self.view_xmin,
             "view_ymin": self.view_ymin,
             "view_xmax": self.view_xmax,

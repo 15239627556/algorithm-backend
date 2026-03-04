@@ -1,7 +1,8 @@
 [
   {
     "task_index": 1,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155733,
     "view_ymin": 73882,
     "view_xmax": 156117,
@@ -66,7 +67,8 @@
   },
   {
     "task_index": 2,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155769,
     "view_ymin": 74412,
     "view_xmax": 156153,
@@ -125,7 +127,8 @@
   },
   {
     "task_index": 3,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155802,
     "view_ymin": 73014,
     "view_xmax": 156186,
@@ -172,7 +175,8 @@
   },
   {
     "task_index": 4,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155910,
     "view_ymin": 73737,
     "view_xmax": 156294,
@@ -273,7 +277,8 @@
   },
   {
     "task_index": 5,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156106,
     "view_ymin": 74063,
     "view_xmax": 156490,
@@ -296,7 +301,8 @@
   },
   {
     "task_index": 6,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156123,
     "view_ymin": 72589,
     "view_xmax": 156507,
@@ -331,7 +337,8 @@
   },
   {
     "task_index": 7,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156147,
     "view_ymin": 72219,
     "view_xmax": 156531,
@@ -354,7 +361,8 @@
   },
   {
     "task_index": 8,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156200,
     "view_ymin": 73037,
     "view_xmax": 156584,
@@ -371,7 +379,8 @@
   },
   {
     "task_index": 9,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156329,
     "view_ymin": 74494,
     "view_xmax": 156713,
@@ -412,7 +421,8 @@
   },
   {
     "task_index": 10,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156369,
     "view_ymin": 73443,
     "view_xmax": 156753,
@@ -441,7 +451,8 @@
   },
   {
     "task_index": 11,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156502,
     "view_ymin": 72656,
     "view_xmax": 156886,
@@ -470,7 +481,8 @@
   },
   {
     "task_index": 12,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156764,
     "view_ymin": 72260,
     "view_xmax": 157148,
@@ -505,7 +517,8 @@
   },
   {
     "task_index": 13,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156773,
     "view_ymin": 73453,
     "view_xmax": 157157,
@@ -522,7 +535,8 @@
   },
   {
     "task_index": 14,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156808,
     "view_ymin": 73998,
     "view_xmax": 157192,
@@ -563,7 +577,8 @@
   },
   {
     "task_index": 15,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156814,
     "view_ymin": 72981,
     "view_xmax": 157198,
@@ -622,7 +637,8 @@
   },
   {
     "task_index": 16,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156969,
     "view_ymin": 74320,
     "view_xmax": 157353,
@@ -639,7 +655,8 @@
   },
   {
     "task_index": 17,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157139,
     "view_ymin": 72575,
     "view_xmax": 157523,
@@ -710,7 +727,8 @@
   },
   {
     "task_index": 18,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157174,
     "view_ymin": 74548,
     "view_xmax": 157558,
@@ -733,7 +751,8 @@
   },
   {
     "task_index": 19,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157249,
     "view_ymin": 72816,
     "view_xmax": 157633,
@@ -792,7 +811,8 @@
   },
   {
     "task_index": 20,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157258,
     "view_ymin": 74171,
     "view_xmax": 157642,
@@ -815,7 +835,8 @@
   },
   {
     "task_index": 21,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157276,
     "view_ymin": 73582,
     "view_xmax": 157660,
@@ -898,7 +919,8 @@
   },
   {
     "task_index": 22,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157562,
     "view_ymin": 73615,
     "view_xmax": 157946,
@@ -927,7 +949,8 @@
   },
   {
     "task_index": 23,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157611,
     "view_ymin": 73153,
     "view_xmax": 157995,
@@ -962,7 +985,8 @@
   },
   {
     "task_index": 24,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157644,
     "view_ymin": 74545,
     "view_xmax": 158028,
@@ -1003,7 +1027,8 @@
   },
   {
     "task_index": 25,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157646,
     "view_ymin": 72859,
     "view_xmax": 158030,
@@ -1038,7 +1063,8 @@
   },
   {
     "task_index": 26,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157826,
     "view_ymin": 74154,
     "view_xmax": 158210,
@@ -1109,7 +1135,8 @@
   },
   {
     "task_index": 27,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158090,
     "view_ymin": 72697,
     "view_xmax": 158474,
@@ -1132,7 +1159,8 @@
   },
   {
     "task_index": 28,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158091,
     "view_ymin": 72309,
     "view_xmax": 158475,
@@ -1203,7 +1231,8 @@
   },
   {
     "task_index": 29,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158209,
     "view_ymin": 73064,
     "view_xmax": 158593,
@@ -1232,7 +1261,8 @@
   },
   {
     "task_index": 30,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158345,
     "view_ymin": 72342,
     "view_xmax": 158729,
@@ -1267,7 +1297,8 @@
   },
   {
     "task_index": 31,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158383,
     "view_ymin": 74119,
     "view_xmax": 158767,
@@ -1314,7 +1345,8 @@
   },
   {
     "task_index": 32,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158414,
     "view_ymin": 73676,
     "view_xmax": 158798,
@@ -1331,7 +1363,8 @@
   },
   {
     "task_index": 33,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158465,
     "view_ymin": 72551,
     "view_xmax": 158849,
@@ -1378,7 +1411,8 @@
   },
   {
     "task_index": 34,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158571,
     "view_ymin": 72932,
     "view_xmax": 158955,
@@ -1419,7 +1453,8 @@
   },
   {
     "task_index": 35,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158574,
     "view_ymin": 73300,
     "view_xmax": 158958,
@@ -1454,7 +1489,8 @@
   },
   {
     "task_index": 36,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158631,
     "view_ymin": 72487,
     "view_xmax": 159015,
@@ -1483,7 +1519,8 @@
   },
   {
     "task_index": 37,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158904,
     "view_ymin": 73432,
     "view_xmax": 159288,
@@ -1536,7 +1573,8 @@
   },
   {
     "task_index": 38,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158906,
     "view_ymin": 72802,
     "view_xmax": 159290,
@@ -1595,7 +1633,8 @@
   },
   {
     "task_index": 39,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159181,
     "view_ymin": 74153,
     "view_xmax": 159565,
@@ -1624,7 +1663,8 @@
   },
   {
     "task_index": 40,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159296,
     "view_ymin": 72681,
     "view_xmax": 159680,
@@ -1653,7 +1693,8 @@
   },
   {
     "task_index": 41,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159310,
     "view_ymin": 72398,
     "view_xmax": 159694,
@@ -1694,7 +1735,8 @@
   },
   {
     "task_index": 42,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159368,
     "view_ymin": 74496,
     "view_xmax": 159752,
@@ -1729,7 +1771,8 @@
   },
   {
     "task_index": 43,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159398,
     "view_ymin": 73587,
     "view_xmax": 159782,
@@ -1872,7 +1915,8 @@
   },
   {
     "task_index": 44,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159436,
     "view_ymin": 73025,
     "view_xmax": 159820,
@@ -1901,7 +1945,8 @@
   },
   {
     "task_index": 45,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159607,
     "view_ymin": 74367,
     "view_xmax": 159991,
@@ -1954,7 +1999,8 @@
   },
   {
     "task_index": 46,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159726,
     "view_ymin": 72459,
     "view_xmax": 160110,
@@ -1995,7 +2041,8 @@
   },
   {
     "task_index": 47,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159931,
     "view_ymin": 72725,
     "view_xmax": 160315,
@@ -2048,7 +2095,8 @@
   },
   {
     "task_index": 48,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158195,
     "view_ymin": 72046,
     "view_xmax": 158579,
@@ -2119,7 +2167,8 @@
   },
   {
     "task_index": 49,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159359,
     "view_ymin": 72117,
     "view_xmax": 159743,
@@ -2196,7 +2245,8 @@
   },
   {
     "task_index": 50,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155759,
     "view_ymin": 71861,
     "view_xmax": 156143,
@@ -2225,7 +2275,8 @@
   },
   {
     "task_index": 51,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156402,
     "view_ymin": 71899,
     "view_xmax": 156786,
@@ -2308,7 +2359,8 @@
   },
   {
     "task_index": 52,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157016,
     "view_ymin": 71880,
     "view_xmax": 157400,
@@ -2361,7 +2413,8 @@
   },
   {
     "task_index": 53,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157792,
     "view_ymin": 71906,
     "view_xmax": 158176,
@@ -2426,7 +2479,8 @@
   },
   {
     "task_index": 54,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158308,
     "view_ymin": 71781,
     "view_xmax": 158692,
@@ -2473,7 +2527,8 @@
   },
   {
     "task_index": 55,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158613,
     "view_ymin": 71868,
     "view_xmax": 158997,
@@ -2520,7 +2575,8 @@
   },
   {
     "task_index": 56,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159695,
     "view_ymin": 71823,
     "view_xmax": 160079,
@@ -2615,7 +2671,8 @@
   },
   {
     "task_index": 57,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156344,
     "view_ymin": 71645,
     "view_xmax": 156728,
@@ -2680,7 +2737,8 @@
   },
   {
     "task_index": 58,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156773,
     "view_ymin": 71718,
     "view_xmax": 157157,
@@ -2703,7 +2761,8 @@
   },
   {
     "task_index": 59,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157330,
     "view_ymin": 71632,
     "view_xmax": 157714,
@@ -2744,7 +2803,8 @@
   },
   {
     "task_index": 60,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157562,
     "view_ymin": 71660,
     "view_xmax": 157946,
@@ -2779,7 +2839,8 @@
   },
   {
     "task_index": 61,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159023,
     "view_ymin": 71750,
     "view_xmax": 159407,
@@ -2832,7 +2893,8 @@
   },
   {
     "task_index": 62,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159733,
     "view_ymin": 71571,
     "view_xmax": 160117,
@@ -2861,7 +2923,8 @@
   },
   {
     "task_index": 63,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155794,
     "view_ymin": 71387,
     "view_xmax": 156178,
@@ -2896,7 +2959,8 @@
   },
   {
     "task_index": 64,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157552,
     "view_ymin": 71333,
     "view_xmax": 157936,
@@ -2949,7 +3013,8 @@
   },
   {
     "task_index": 65,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157965,
     "view_ymin": 71475,
     "view_xmax": 158349,
@@ -2972,7 +3037,8 @@
   },
   {
     "task_index": 66,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158352,
     "view_ymin": 71483,
     "view_xmax": 158736,
@@ -3025,7 +3091,8 @@
   },
   {
     "task_index": 67,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158743,
     "view_ymin": 71464,
     "view_xmax": 159127,
@@ -3060,7 +3127,8 @@
   },
   {
     "task_index": 68,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155537,
     "view_ymin": 72815,
     "view_xmax": 155921,
@@ -3107,7 +3175,8 @@
   },
   {
     "task_index": 69,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155537,
     "view_ymin": 73021,
     "view_xmax": 155921,
@@ -3142,7 +3211,8 @@
   },
   {
     "task_index": 70,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155550,
     "view_ymin": 72468,
     "view_xmax": 155934,
@@ -3189,7 +3259,8 @@
   },
   {
     "task_index": 71,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155635,
     "view_ymin": 73644,
     "view_xmax": 156019,
@@ -3242,7 +3313,8 @@
   },
   {
     "task_index": 72,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155706,
     "view_ymin": 74143,
     "view_xmax": 156090,
@@ -3277,7 +3349,8 @@
   },
   {
     "task_index": 73,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155308,
     "view_ymin": 73481,
     "view_xmax": 155692,
@@ -3342,7 +3415,8 @@
   },
   {
     "task_index": 74,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155382,
     "view_ymin": 73848,
     "view_xmax": 155766,
@@ -3395,7 +3469,8 @@
   },
   {
     "task_index": 75,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155398,
     "view_ymin": 72287,
     "view_xmax": 155782,
@@ -3460,7 +3535,8 @@
   },
   {
     "task_index": 76,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155429,
     "view_ymin": 74432,
     "view_xmax": 155813,
@@ -3489,7 +3565,8 @@
   },
   {
     "task_index": 77,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155137,
     "view_ymin": 71838,
     "view_xmax": 155521,
@@ -3566,7 +3643,8 @@
   },
   {
     "task_index": 78,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155187,
     "view_ymin": 71396,
     "view_xmax": 155571,
@@ -3601,7 +3679,8 @@
   },
   {
     "task_index": 79,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155200,
     "view_ymin": 72570,
     "view_xmax": 155584,
@@ -3642,7 +3721,8 @@
   },
   {
     "task_index": 80,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154868,
     "view_ymin": 74273,
     "view_xmax": 155252,
@@ -3695,7 +3775,8 @@
   },
   {
     "task_index": 81,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154894,
     "view_ymin": 73618,
     "view_xmax": 155278,
@@ -3748,7 +3829,8 @@
   },
   {
     "task_index": 82,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154930,
     "view_ymin": 73100,
     "view_xmax": 155314,
@@ -3783,7 +3865,8 @@
   },
   {
     "task_index": 83,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154944,
     "view_ymin": 72218,
     "view_xmax": 155328,
@@ -3824,7 +3907,8 @@
   },
   {
     "task_index": 84,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155021,
     "view_ymin": 72785,
     "view_xmax": 155405,
@@ -3841,7 +3925,8 @@
   },
   {
     "task_index": 85,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154641,
     "view_ymin": 71502,
     "view_xmax": 155025,
@@ -3936,7 +4021,8 @@
   },
   {
     "task_index": 86,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154699,
     "view_ymin": 72768,
     "view_xmax": 155083,
@@ -3971,7 +4057,8 @@
   },
   {
     "task_index": 87,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154706,
     "view_ymin": 72412,
     "view_xmax": 155090,
@@ -4012,7 +4099,8 @@
   },
   {
     "task_index": 88,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154405,
     "view_ymin": 71337,
     "view_xmax": 154789,
@@ -4065,7 +4153,8 @@
   },
   {
     "task_index": 89,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154430,
     "view_ymin": 73825,
     "view_xmax": 154814,
@@ -4154,7 +4243,8 @@
   },
   {
     "task_index": 90,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154446,
     "view_ymin": 73515,
     "view_xmax": 154830,
@@ -4249,7 +4339,8 @@
   },
   {
     "task_index": 91,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154501,
     "view_ymin": 73033,
     "view_xmax": 154885,
@@ -4284,7 +4375,8 @@
   },
   {
     "task_index": 92,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154572,
     "view_ymin": 71849,
     "view_xmax": 154956,
@@ -4337,7 +4429,8 @@
   },
   {
     "task_index": 93,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154212,
     "view_ymin": 73763,
     "view_xmax": 154596,
@@ -4444,7 +4537,8 @@
   },
   {
     "task_index": 94,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154328,
     "view_ymin": 72502,
     "view_xmax": 154712,
@@ -4485,7 +4579,8 @@
   },
   {
     "task_index": 95,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154342,
     "view_ymin": 72298,
     "view_xmax": 154726,
@@ -4520,7 +4615,8 @@
   },
   {
     "task_index": 96,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153944,
     "view_ymin": 72852,
     "view_xmax": 154328,
@@ -4591,7 +4687,8 @@
   },
   {
     "task_index": 97,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153946,
     "view_ymin": 72046,
     "view_xmax": 154330,
@@ -4674,7 +4771,8 @@
   },
   {
     "task_index": 98,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153967,
     "view_ymin": 73141,
     "view_xmax": 154351,
@@ -4739,7 +4837,8 @@
   },
   {
     "task_index": 99,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154047,
     "view_ymin": 74634,
     "view_xmax": 154431,
@@ -4762,7 +4861,8 @@
   },
   {
     "task_index": 100,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154117,
     "view_ymin": 71531,
     "view_xmax": 154501,
@@ -4797,7 +4897,8 @@
   },
   {
     "task_index": 101,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154137,
     "view_ymin": 71777,
     "view_xmax": 154521,
@@ -4916,7 +5017,8 @@
   },
   {
     "task_index": 102,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153759,
     "view_ymin": 71744,
     "view_xmax": 154143,
@@ -4945,7 +5047,8 @@
   },
   {
     "task_index": 103,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153807,
     "view_ymin": 73408,
     "view_xmax": 154191,
@@ -5010,7 +5113,8 @@
   },
   {
     "task_index": 104,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153823,
     "view_ymin": 74453,
     "view_xmax": 154207,
@@ -5051,7 +5155,8 @@
   },
   {
     "task_index": 105,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153867,
     "view_ymin": 72214,
     "view_xmax": 154251,
@@ -5128,7 +5233,8 @@
   },
   {
     "task_index": 106,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153871,
     "view_ymin": 74091,
     "view_xmax": 154255,
@@ -5151,7 +5257,8 @@
   },
   {
     "task_index": 107,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153875,
     "view_ymin": 73834,
     "view_xmax": 154259,
@@ -5252,7 +5359,8 @@
   },
   {
     "task_index": 108,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153901,
     "view_ymin": 72623,
     "view_xmax": 154285,
@@ -5317,7 +5425,8 @@
   },
   {
     "task_index": 109,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153845,
     "view_ymin": 71252,
     "view_xmax": 154229,
@@ -5364,7 +5473,8 @@
   },
   {
     "task_index": 110,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156381,
     "view_ymin": 71292,
     "view_xmax": 156765,
@@ -5387,7 +5497,8 @@
   },
   {
     "task_index": 111,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156992,
     "view_ymin": 71259,
     "view_xmax": 157376,
@@ -5434,7 +5545,8 @@
   },
   {
     "task_index": 112,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158263,
     "view_ymin": 71092,
     "view_xmax": 158647,
@@ -5463,7 +5575,8 @@
   },
   {
     "task_index": 113,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158831,
     "view_ymin": 71130,
     "view_xmax": 159215,
@@ -5486,7 +5599,8 @@
   },
   {
     "task_index": 114,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159245,
     "view_ymin": 71119,
     "view_xmax": 159629,
@@ -5569,7 +5683,8 @@
   },
   {
     "task_index": 115,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159513,
     "view_ymin": 71217,
     "view_xmax": 159897,
@@ -5604,7 +5719,8 @@
   },
   {
     "task_index": 116,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154052,
     "view_ymin": 71030,
     "view_xmax": 154436,
@@ -5627,7 +5743,8 @@
   },
   {
     "task_index": 117,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154714,
     "view_ymin": 71049,
     "view_xmax": 155098,
@@ -5686,7 +5803,8 @@
   },
   {
     "task_index": 118,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155011,
     "view_ymin": 70991,
     "view_xmax": 155395,
@@ -5733,7 +5851,8 @@
   },
   {
     "task_index": 119,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155637,
     "view_ymin": 71040,
     "view_xmax": 156021,
@@ -5768,7 +5887,8 @@
   },
   {
     "task_index": 120,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156471,
     "view_ymin": 70918,
     "view_xmax": 156855,
@@ -5833,7 +5953,8 @@
   },
   {
     "task_index": 121,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157272,
     "view_ymin": 71014,
     "view_xmax": 157656,
@@ -5868,7 +5989,8 @@
   },
   {
     "task_index": 122,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157840,
     "view_ymin": 70982,
     "view_xmax": 158224,
@@ -5933,7 +6055,8 @@
   },
   {
     "task_index": 123,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157935,
     "view_ymin": 71068,
     "view_xmax": 158319,
@@ -5950,7 +6073,8 @@
   },
   {
     "task_index": 124,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159693,
     "view_ymin": 70941,
     "view_xmax": 160077,
@@ -6033,7 +6157,8 @@
   },
   {
     "task_index": 125,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 153872,
     "view_ymin": 70769,
     "view_xmax": 154256,
@@ -6062,7 +6187,8 @@
   },
   {
     "task_index": 126,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 154596,
     "view_ymin": 70692,
     "view_xmax": 154980,
@@ -6097,7 +6223,8 @@
   },
   {
     "task_index": 127,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155273,
     "view_ymin": 70683,
     "view_xmax": 155657,
@@ -6120,7 +6247,8 @@
   },
   {
     "task_index": 128,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 155838,
     "view_ymin": 70763,
     "view_xmax": 156222,
@@ -6185,7 +6313,8 @@
   },
   {
     "task_index": 129,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156747,
     "view_ymin": 70686,
     "view_xmax": 157131,
@@ -6226,7 +6355,8 @@
   },
   {
     "task_index": 130,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 156943,
     "view_ymin": 70772,
     "view_xmax": 157327,
@@ -6255,7 +6385,8 @@
   },
   {
     "task_index": 131,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 157522,
     "view_ymin": 70780,
     "view_xmax": 157906,
@@ -6284,7 +6415,8 @@
   },
   {
     "task_index": 132,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 158842,
     "view_ymin": 70674,
     "view_xmax": 159226,
@@ -6319,7 +6451,8 @@
   },
   {
     "task_index": 133,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159113,
     "view_ymin": 70776,
     "view_xmax": 159497,
@@ -6378,7 +6511,8 @@
   },
   {
     "task_index": 134,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 159851,
     "view_ymin": 70774,
     "view_xmax": 160235,
@@ -6455,7 +6589,8 @@
   },
   {
     "task_index": 135,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160020,
     "view_ymin": 74007,
     "view_xmax": 160404,
@@ -6502,7 +6637,8 @@
   },
   {
     "task_index": 136,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160119,
     "view_ymin": 71935,
     "view_xmax": 160503,
@@ -6597,7 +6733,8 @@
   },
   {
     "task_index": 137,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160159,
     "view_ymin": 71328,
     "view_xmax": 160543,
@@ -6656,7 +6793,8 @@
   },
   {
     "task_index": 138,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160188,
     "view_ymin": 73453,
     "view_xmax": 160572,
@@ -6709,7 +6847,8 @@
   },
   {
     "task_index": 139,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160217,
     "view_ymin": 72094,
     "view_xmax": 160601,
@@ -6744,7 +6883,8 @@
   },
   {
     "task_index": 140,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160218,
     "view_ymin": 72962,
     "view_xmax": 160602,
@@ -6791,7 +6931,8 @@
   },
   {
     "task_index": 141,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160258,
     "view_ymin": 70841,
     "view_xmax": 160642,
@@ -6826,7 +6967,8 @@
   },
   {
     "task_index": 142,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160258,
     "view_ymin": 71659,
     "view_xmax": 160642,
@@ -6873,7 +7015,8 @@
   },
   {
     "task_index": 143,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160314,
     "view_ymin": 74379,
     "view_xmax": 160698,
@@ -6902,7 +7045,8 @@
   },
   {
     "task_index": 144,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160333,
     "view_ymin": 73184,
     "view_xmax": 160717,
@@ -6925,7 +7069,8 @@
   },
   {
     "task_index": 145,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160423,
     "view_ymin": 72527,
     "view_xmax": 160807,
@@ -6990,7 +7135,8 @@
   },
   {
     "task_index": 146,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160483,
     "view_ymin": 73781,
     "view_xmax": 160867,
@@ -7061,7 +7207,8 @@
   },
   {
     "task_index": 147,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160619,
     "view_ymin": 71656,
     "view_xmax": 161003,
@@ -7090,7 +7237,8 @@
   },
   {
     "task_index": 148,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160629,
     "view_ymin": 70990,
     "view_xmax": 161013,
@@ -7125,7 +7273,8 @@
   },
   {
     "task_index": 149,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160648,
     "view_ymin": 72836,
     "view_xmax": 161032,
@@ -7154,7 +7303,8 @@
   },
   {
     "task_index": 150,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160846,
     "view_ymin": 72519,
     "view_xmax": 161230,
@@ -7183,7 +7333,8 @@
   },
   {
     "task_index": 151,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160891,
     "view_ymin": 74127,
     "view_xmax": 161275,
@@ -7200,7 +7351,8 @@
   },
   {
     "task_index": 152,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160951,
     "view_ymin": 71128,
     "view_xmax": 161335,
@@ -7247,7 +7399,8 @@
   },
   {
     "task_index": 153,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 160986,
     "view_ymin": 71384,
     "view_xmax": 161370,
@@ -7318,7 +7471,8 @@
   },
   {
     "task_index": 154,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161076,
     "view_ymin": 72156,
     "view_xmax": 161460,
@@ -7377,7 +7531,8 @@
   },
   {
     "task_index": 155,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161115,
     "view_ymin": 73145,
     "view_xmax": 161499,
@@ -7406,7 +7561,8 @@
   },
   {
     "task_index": 156,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161166,
     "view_ymin": 70750,
     "view_xmax": 161550,
@@ -7429,7 +7585,8 @@
   },
   {
     "task_index": 157,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161194,
     "view_ymin": 71037,
     "view_xmax": 161578,
@@ -7464,7 +7621,8 @@
   },
   {
     "task_index": 158,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161242,
     "view_ymin": 71677,
     "view_xmax": 161626,
@@ -7535,7 +7693,8 @@
   },
   {
     "task_index": 159,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161243,
     "view_ymin": 72406,
     "view_xmax": 161627,
@@ -7588,7 +7747,8 @@
   },
   {
     "task_index": 160,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161248,
     "view_ymin": 73887,
     "view_xmax": 161632,
@@ -7647,7 +7807,8 @@
   },
   {
     "task_index": 161,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161291,
     "view_ymin": 73648,
     "view_xmax": 161675,
@@ -7700,7 +7861,8 @@
   },
   {
     "task_index": 162,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161386,
     "view_ymin": 73001,
     "view_xmax": 161770,
@@ -7729,7 +7891,8 @@
   },
   {
     "task_index": 163,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161397,
     "view_ymin": 74213,
     "view_xmax": 161781,
@@ -7800,7 +7963,8 @@
   },
   {
     "task_index": 164,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161405,
     "view_ymin": 72624,
     "view_xmax": 161789,
@@ -7823,7 +7987,8 @@
   },
   {
     "task_index": 165,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161433,
     "view_ymin": 74358,
     "view_xmax": 161817,
@@ -7846,7 +8011,8 @@
   },
   {
     "task_index": 166,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161434,
     "view_ymin": 71939,
     "view_xmax": 161818,
@@ -7899,7 +8065,8 @@
   },
   {
     "task_index": 167,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161512,
     "view_ymin": 74580,
     "view_xmax": 161896,
@@ -7934,7 +8101,8 @@
   },
   {
     "task_index": 168,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161542,
     "view_ymin": 71151,
     "view_xmax": 161926,
@@ -7993,7 +8161,8 @@
   },
   {
     "task_index": 169,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161591,
     "view_ymin": 73425,
     "view_xmax": 161975,
@@ -8028,7 +8197,8 @@
   },
   {
     "task_index": 170,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161593,
     "view_ymin": 71476,
     "view_xmax": 161977,
@@ -8099,7 +8269,8 @@
   },
   {
     "task_index": 171,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161602,
     "view_ymin": 70790,
     "view_xmax": 161986,
@@ -8140,7 +8311,8 @@
   },
   {
     "task_index": 172,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161658,
     "view_ymin": 71744,
     "view_xmax": 162042,
@@ -8175,7 +8347,8 @@
   },
   {
     "task_index": 173,
-    "view_type": "BM_WBC",
+    "view_type": "WBC",
+    "smear_type": "BM",
     "view_xmin": 161714,
     "view_ymin": 72569,
     "view_xmax": 162098,

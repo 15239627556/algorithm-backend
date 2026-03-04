@@ -55,4 +55,5 @@ class BM40Config:
     # --- 输出配置 ---
     Initial_name: str = field(default="Initial", init=False) # 初始选区名称
     Extra_name: str = field(default="Extra", init=False)     # 补拍选区名称
-    View_type: str = field(default="BM_WBC", init=False)      # 视野类型标识
+    View_type: str = field(default="WBC", init=False)        # 视野类型标识
+    Smear_type: str = field(default="BM", init=False)        # 涂片类型标识

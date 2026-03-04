@@ -64,3 +64,4 @@ Makefile
 /backend/uploads/
 *.ipynb
 *.log
+.vscode/
