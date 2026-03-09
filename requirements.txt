@@ -16,3 +16,4 @@ opencv_python==4.11.0.86
 torch
 torchvision
 pybind11
+tritonclient[grpc]

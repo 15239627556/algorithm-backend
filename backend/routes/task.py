@@ -3,6 +3,7 @@ from flask_restx import Namespace, Resource, reqparse, fields
 from werkzeug.datastructures import FileStorage
 
 from backend.services.task_service import TaskService
+from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 
 taskService = TaskService()
 
@@ -13,11 +14,10 @@ get_create_task.add_argument('task_id', type=str, required=True, help='任务ID'
 
 create_task_x40 = task.model('create_task_x40', {
     'smear_type': fields.String(required=True, description="涂片类型:BM, PB, CF", default='BM'),
-    'dpi': fields.Integer(required=True, description="扫描倍数", default=40),
-    'num_rows': fields.Integer(required=True, description="拼图块行数", default=2),
-    'num_cols': fields.Integer(required=True, description="拼图块列数", default=2),
+    'dpi': fields.Integer(required=True, description="DPI，模型据此选择: 144750/357378/714756", default=144750),
     'tile_width': fields.Integer(required=True, description="拼图块宽度", default=2448),
-    'tile_height': fields.Integer(required=True, description="拼图块高度", default=2048)
+    'tile_height': fields.Integer(required=True, description="拼图块高度", default=2048),
+    'target_cell_types': fields.String(required=False, description="目标细胞类型如 WBC,MEG / WBC,RBC，供任务模式使用", default=''),
 })
 
 
@@ -40,7 +40,7 @@ upload_tile.add_argument('tile_image', type=FileStorage, required=True, help='�
 
 @task.route('/upload_tile')
 class UploadImage(Resource):
-    @task.doc(description='上传图片')
+    @task.doc(description='上传图片（任务模式）：task_id+row_index+col_index必填')
     @task.expect(upload_tile)
     def post(self):
         args = upload_tile.parse_args()
@@ -140,7 +140,8 @@ user_choice_area_mod = task.model('user_choice_area', {
     'y_max': fields.Integer(required=False, description='用户框选区域的y最大值'),
 })
 target_item_mod = task.model('TargetItem', {
-    'type': fields.String(required=True, description='目标类型，如 BM_MEG、BM_WBC 等'),
+    'smear_type': fields.String(required=True, description='目标类型，如 BM等'),
+    'target_cell_type': fields.String(required=True, description='目标细胞类型，如 WBC,MEG / WBC,RBC，供任务模式使用'),
     'count': fields.Integer(required=True, description='该类型目标的数量')
 })
 get_task_x100 = task.model('get_task_x100', {
@@ -179,16 +180,59 @@ result_x100.add_argument('position_ymin', type=int, required=False, help='左上
 result_x100.add_argument('position_xmax', type=int, required=False, help='右下角在全图中的x坐标', location='form')
 result_x100.add_argument('position_ymax', type=int, required=False, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
-result_x100.add_argument('dpi', type=int, required=True, help='放大倍数', location='form')
+result_x100.add_argument('dpi', type=int, required=True, help='DPI，模型据此选择: 144750/357378/714756', location='form')
 result_x100.add_argument('algorithm_types', type=str, required=True,
-                         help='任务类型，取值范围: BM_WBC, BM_MEG, BM_RBC, PB_WBC, PB_RBC, CF_WBC', location='form')
+                         help='目标细胞类型如 WBC,MEG / WBC,RBC / MEG 等，见有效组合表', location='form')
+result_x100.add_argument('smear_type', type=str, required=False, help='涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
                          location='form', default=True)
 
 
+analyze_slide_model = task.model('analyze_slide', {
+    'analyze_names': fields.List(
+        fields.String,
+        required=True,
+        description="分析项列表，目前可选项只有「增生程度」",
+        example=['cellularity']
+    ),
+})
+
+ALLOWED_ANALYZE_NAMES = {'cellularity'}
+
+
+@task.route('/analyze_slide')
+class AnalyzeSlide(Resource):
+    @task.doc(description='玻片分析。实际业务：骨髓玻片增生分析；未来可扩展其他分析项')
+    @task.expect(analyze_slide_model)
+    def post(self):
+        json_data = request.json or {}
+        analyze_names = json_data.get('analyze_names', [])
+        if not isinstance(analyze_names, list):
+            return make_response(jsonify({
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'result': {},
+            }), 200)
+        if not analyze_names:
+            return make_response(jsonify({
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'analyze_names 不能为空',
+                'result': {},
+            }), 200)
+        invalid = [n for n in analyze_names if n not in ALLOWED_ANALYZE_NAMES]
+        if invalid:
+            return make_response(jsonify({
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': f'不支持的分析项: {invalid}，目前仅支持: {list(ALLOWED_ANALYZE_NAMES)}',
+                'result': {},
+            }), 200)
+        result = taskService.analyze_slide(analyze_names)
+        return make_response(jsonify(result), 200)
+
+
 @task.route('/analyze_cell_image')
 class GetTaskResultX100(Resource):
-    @task.doc(description='获取X100任务结果')
+    @task.doc(description='细胞图像分析。任务模式：task_id+position；单张识别：dpi+algorithm_types必填')
     @task.expect(result_x100)
     def post(self):
         args = result_x100.parse_args()
@@ -196,12 +240,13 @@ class GetTaskResultX100(Resource):
         image_file = args.get('image_file')
         dpi = args.get('dpi')
         algorithm_types = args.get('algorithm_types')
+        smear_type = args.get('smear_type')
         edge_cell_filter = args.get('edge_cell_filter', True)
         position_xmin = args.get('position_xmin', None)
         position_ymin = args.get('position_ymin', None)
         position_xmax = args.get('position_xmax', None)
         position_ymax = args.get('position_ymax', None)
         result = taskService.get_task_result_x100(task_id, image_file, algorithm_types, dpi,
-                                                  edge_cell_filter, position_xmin, position_ymin,
-                                                  position_xmax, position_ymax)
+                                                  edge_cell_filter, smear_type,
+                                                  position_xmin, position_ymin, position_xmax, position_ymax)
         return make_response(jsonify(result), 200)

@@ -45,6 +45,7 @@ class Layer:
 
     # ---------- ROI 细胞查询 ----------
     def iter_cells_in_roi(self, xmin, ymin, xmax, ymax, is_Cell: bool = False) -> list[dict | Cell]:
+        """返回在 ROI 内的细胞（全局坐标）。不修改原始 cell 对象。"""
         if xmin is None:
             xmin = 0
         if ymin is None:
@@ -55,19 +56,28 @@ class Layer:
             ymax = float('inf')
         result: List[Dict | Cell] = []
         for tile in self.tiles.values():
+            position_x = 0 if tile.x is None else int(tile.x)
+            position_y = 0 if tile.y is None else int(tile.y)
             for cell in tile.cells:
-                position_x = tile.x
-                position_y = tile.y
-                cell.cell_xmin = cell.cell_xmin + position_x
-                cell.cell_ymin = cell.cell_ymin + position_y
-                cell.cell_xmax = cell.cell_xmax + position_x
-                cell.cell_ymax = cell.cell_ymax + position_y
-                if not (cell.cell_xmax < xmin or cell.cell_xmin > xmax or
-                        cell.cell_ymax < ymin or cell.cell_ymin > ymax):
+                gxmin = cell.cell_xmin + position_x
+                gymin = cell.cell_ymin + position_y
+                gxmax = cell.cell_xmax + position_x
+                gymax = cell.cell_ymax + position_y
+                if not (gxmax < xmin or gxmin > xmax or gymax < ymin or gymin > ymax):
                     if is_Cell:
-                        result.append(cell)
+                        result.append(Cell(
+                            cell_xmin=gxmin, cell_ymin=gymin, cell_xmax=gxmax, cell_ymax=gymax,
+                            cell_type=cell.cell_type, cell_type_name=cell.cell_type_name,
+                            class_confidence=cell.class_confidence, bbox_confidence=cell.bbox_confidence,
+                            extra=cell.extra.copy() if cell.extra else {}
+                        ))
                     else:
-                        result.append(cell.to_dict())
+                        result.append({
+                            "cell_xmin": gxmin, "cell_ymin": gymin, "cell_xmax": gxmax, "cell_ymax": gymax,
+                            "cell_type": cell.cell_type, "cell_type_name": cell.cell_type_name,
+                            "class_confidence": cell.class_confidence, "bbox_confidence": cell.bbox_confidence,
+                            "extra": cell.extra.copy() if cell.extra else {}
+                        })
         return result
 
     def to_dict(self) -> dict:

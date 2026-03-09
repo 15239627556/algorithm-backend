@@ -7,10 +7,10 @@ import cv2
 from io import BytesIO
 import numpy as np
 from flask import send_file
-from algorithms.x40enhance import X40ImageEnhanceModels
+# from algorithms.x40enhance import X40ImageEnhanceModels
 from backend.tools import x100EnhancemModule, x40EnhancemModule
 
-dispatcher = X40ImageEnhanceModels.X40ImageEnhanceModels(num_workers=1)
+# dispatcher = X40ImageEnhanceModels.X40ImageEnhanceModels(num_workers=1)
 
 ImgFilter = Namespace('img_filter', description='图片滤镜接口')
 

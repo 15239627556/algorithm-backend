@@ -1,8 +1,3 @@
-import multiprocessing as mp
-
-# IMPORTANT: must be the very first thing executed in the entry process.
-mp.set_start_method("spawn", force=True)
-
 import os
 import sys
 import logging
@@ -65,22 +60,6 @@ def log_request():
 # ========== 日志配置结束 ==========
 
 
-def _prewarm_models() -> None:
-    """
-    B+预热：启动时拉起 inference 进程并等待模型 READY，避免首次请求加载拖慢接口。
-    注意：这里“加载模型”的进程是 inference 子进程，不是 Flask 主进程。
-    """
-    try:
-        from backend.services.task_service import get_queue_manager  # lazy import to avoid cycles
-        qm = get_queue_manager()
-        _ = qm
-        print("[Prewarm] Inference process is READY.")
-    except Exception as e:
-        print("[Prewarm] FAILED:", repr(e))
-        raise
-
-
 if __name__ == '__main__':
     print("### FLASK MAIN PID =", os.getpid())
-    _prewarm_models()
     app.run(host='0.0.0.0', port=3889, debug=False, threaded=True)
