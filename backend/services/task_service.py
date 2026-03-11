@@ -14,7 +14,8 @@ from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
 from project.smear_project import SmearProject
 from project.cells import Cell
-from project.triton_client import infer
+from project.triton_client import infer, get_model_by_dpi
+from project.model_control import warmup_model
 from algorithms.SelectArea.main import *
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,8 @@ class TaskService:
 
         self.tasks[task_id] = TaskContext(project=project, info=task_info)
         _save_task_info(task_id, task_info)
+        model_name = get_model_by_dpi(dpi, smear_type=task_info.get('smear_type', 'BM'), algorithm_types=task_info.get('target_cell_types', ''))
+        warmup_model(model_name)
         logger.info('创建任务成功：%s', task_id)
 
         return {

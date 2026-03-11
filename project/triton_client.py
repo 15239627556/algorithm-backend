@@ -17,6 +17,7 @@ from typing import List, Optional
 import numpy as np
 
 from project.cells import Cell
+from project.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100
 
 TRITON_URL = os.environ.get("TRITON_URL", "192.168.31.188:18001")
@@ -32,6 +33,8 @@ MODEL_144750 = "DPI147246_BM_PB_pipeline"   # 144750: BM/PB 共用
 MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞
 MODEL_714756_BM = "DPI714756_BM_PB_pipeline"
 MODEL_714756_CF = "DPI714756_CF_WBC_pipeline"
+# 图片增强/滤镜 pipeline（x40 超分辨率滤镜深度学习模式）
+MODEL_IMAGE_ENHANCE = "Image_enhance_pipline"
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
@@ -265,6 +268,9 @@ def infer(
     import tritonclient.grpc as grpcclient
 
     model = get_model_by_dpi(dpi, smear_type=smear_type, algorithm_types=algorithm_types)
+    ok, err = ensure_model_loaded(model, max_models=3)
+    if not ok:
+        raise RuntimeError(f"Model {model} load failed: {err}")
     client = _get_client()
     raw = np.frombuffer(image_bytes, dtype=np.uint8)
 
@@ -438,6 +444,29 @@ def infer(
         return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
     return {"cells": [], "scores": [], "cell_list": []}
+
+
+def infer_image_enhance(image_bytes: bytes) -> bytes:
+    """
+    图片增强/滤镜推理（Triton Image_enhance_pipline）。
+    输入: 原始图片字节（jpg/png）
+    输出: 增强后的图片字节（jpg 编码）
+    """
+    import tritonclient.grpc as grpcclient
+
+    ok, err = ensure_model_loaded(MODEL_IMAGE_ENHANCE, max_models=3)
+    if not ok:
+        raise RuntimeError(f"Model {MODEL_IMAGE_ENHANCE} load failed: {err}")
+    client = _get_client()
+    raw = np.frombuffer(image_bytes, dtype=np.uint8)
+    inp_raw = grpcclient.InferInput("RAW_IMAGE", [len(raw)], "UINT8")
+    inp_raw.set_data_from_numpy(raw)
+    outputs = [grpcclient.InferRequestedOutput("ENHANCED_IMAGE")]
+    result = client.infer(MODEL_IMAGE_ENHANCE, inputs=[inp_raw], outputs=outputs)
+    out = result.as_numpy("ENHANCED_IMAGE")
+    if out is None:
+        raise RuntimeError("模型未返回输出: ENHANCED_IMAGE")
+    return out.tobytes()
 
 
 if __name__ == "__main__":
