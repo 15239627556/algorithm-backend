@@ -189,10 +189,11 @@ result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='�
 
 
 analyze_slide_model = task.model('analyze_slide', {
+    'task_id': fields.String(required=True, description="任务ID，用于获取 info 中的 red_pixel_count/wbc_pixel_count"),
     'analyze_names': fields.List(
         fields.String,
         required=True,
-        description="分析项列表，目前可选项只有「增生程度」",
+        description="分析项列表，目前可选项只有「增生程度」(cellularity)",
         example=['cellularity']
     ),
 })
@@ -202,11 +203,18 @@ ALLOWED_ANALYZE_NAMES = {'cellularity'}
 
 @task.route('/analyze_slide')
 class AnalyzeSlide(Resource):
-    @task.doc(description='玻片分析。实际业务：骨髓玻片增生分析；未来可扩展其他分析项')
+    @task.doc(description='玻片分析。实际业务：骨髓玻片增生分析；增生程度=red_pixel_count/wbc_pixel_count')
     @task.expect(analyze_slide_model)
     def post(self):
         json_data = request.json or {}
+        task_id = json_data.get('task_id')
         analyze_names = json_data.get('analyze_names', [])
+        if not task_id:
+            return make_response(jsonify({
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'task_id 不能为空',
+                'result': {},
+            }), 200)
         if not isinstance(analyze_names, list):
             return make_response(jsonify({
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -226,7 +234,7 @@ class AnalyzeSlide(Resource):
                 'ret_desc': f'不支持的分析项: {invalid}，目前仅支持: {list(ALLOWED_ANALYZE_NAMES)}',
                 'result': {},
             }), 200)
-        result = taskService.analyze_slide(analyze_names)
+        result = taskService.analyze_slide(task_id, analyze_names)
         return make_response(jsonify(result), 200)
 
 

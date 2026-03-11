@@ -305,7 +305,9 @@ def infer(
             if meg_num > 0 and meg is not None:
                 cells.extend(_boxes_to_cells(meg[:meg_num], 100001, CELL_TYPES_X40))
         cell_list = _cells_to_cell_list_single(cells)
-        return {"cells": cells, "scores": constituency_scores_combined, "cell_list": cell_list}
+        wbc_pixel_count = int(result.as_numpy("CELL_ANALYSIS_WBC_PIXEL_COUNT").reshape(-1)[0])
+        red_pixel_count = int(result.as_numpy("CELL_ANALYSIS_RED_PIXEL_COUNT").reshape(-1)[0])
+        return {"cells": cells, "scores": constituency_scores_combined, "cell_list": cell_list, 'wbc_pixel_count': wbc_pixel_count, 'red_pixel_count': red_pixel_count}
 
     if model == MODEL_357378:
         # DPI357378: BOXES(x1,y1,x2,y2), 14 类 → cell_type 200000+class_id

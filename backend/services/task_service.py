@@ -258,6 +258,10 @@ class TaskService:
             cells = result["cells"]
             scores = result.get("scores", [])
             cell_list = result.get("cell_list", [])
+            task_info["wbc_pixel_count"] = result.get("wbc_pixel_count", 0) + task_info.get("wbc_pixel_count", 0)
+            task_info["red_pixel_count"] = result.get("red_pixel_count", 0) + task_info.get("red_pixel_count", 0)
+            # tile.meta["wbc_pixel_count"] = wbc_pixel_count
+            # tile.meta["red_pixel_count"] = red_pixel_count
             tile.meta["scores"] = _ensure_json_serializable(scores)
             if cells:
                 tile.add_cells(cells)
@@ -342,14 +346,38 @@ class TaskService:
             'task_status': ctx.info.get('task_status')
         }
 
-    def analyze_slide(self, analyze_names: list) -> dict:
+    def analyze_slide(self, task_id: str, analyze_names: list) -> dict:
         """
-        玻片分析（骨髓玻片增生分析等）。目前为占位实现，返回固定值。
-        未来可扩展：根据 analyze_names 执行实际分析逻辑。
+        玻片分析（骨髓玻片增生分析等）。
+        cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
         """
+        if task_id not in self.tasks:
+            load_result = self.load_data(task_id)
+            if load_result is not None:
+                return load_result
+            if task_id not in self.tasks:
+                return {
+                    'ret_code': RetCode.CLIENT_ERROR.value,
+                    'ret_desc': RetDesc.CLIENT_ERROR.value,
+                    'reason': '任务ID不存在',
+                    'result': {},
+                }
+        info = self.tasks[task_id].info
+        if not info.get('finished', False):
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': '任务未完成',
+                'result': {},
+            }
         result = {}
         if 'cellularity' in analyze_names:
-            result['cellularity'] = 0.4  # 固定写死，暂无逻辑
+            wbc = info.get('wbc_pixel_count', 0) or 0
+            red = info.get('red_pixel_count', 0) or 0
+            if wbc <= 0:
+                result['cellularity'] = None
+            else:
+                result['cellularity'] = round(red / wbc, 2)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
