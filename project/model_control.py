@@ -14,19 +14,28 @@ from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
-# TRITON_HTTP_URL: 模型加载/卸载用 HTTP API，默认从 TRITON_URL 推导 (端口改为 8000)
+# TRITON_HTTP_URL: 模型加载/卸载用 HTTP API。若未设置则从 TRITON_URL 推导
+# TRITON_URL 为 gRPC 地址。Triton 端口：18000(HTTP)、18001(gRPC)、18002(Metrics)
+# 默认 HTTP: http://192.168.31.188:18000（与测试脚本 model_control.py --url 一致）
+_TRITON_HTTP_URL_DEFAULT = "http://192.168.31.188:18000"
 _TRITON_URL = os.environ.get("TRITON_URL", "192.168.31.188:18001")
 
 
+_http_base_url_logged = False
+
+
 def _get_http_base_url() -> str:
+    global _http_base_url_logged
     url = os.environ.get("TRITON_HTTP_URL")
     if url:
-        return url.rstrip("/")
-    if "://" in _TRITON_URL:
-        base = _TRITON_URL.split("//")[1].split(":")[0]
-        return f"http://{base}:8000"
-    host = _TRITON_URL.split(":")[0]
-    return f"http://{host}:8000"
+        base = url.rstrip("/")
+    else:
+        # 未设置时使用默认（与测试脚本 model_control.py --url http://192.168.31.188:18000 一致）
+        base = _TRITON_HTTP_URL_DEFAULT
+    if not _http_base_url_logged:
+        _http_base_url_logged = True
+        logger.info("Triton HTTP API base: %s", base)
+    return base
 
 
 _loaded_order: List[str] = []
