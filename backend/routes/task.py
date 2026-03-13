@@ -181,7 +181,7 @@ result_x100.add_argument('position_xmax', type=int, required=False, help='右下
 result_x100.add_argument('position_ymax', type=int, required=False, help='右下角在全图中的y坐标', location='form')
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 result_x100.add_argument('dpi', type=int, required=True, help='DPI，模型据此选择: 144750/357378/714756', location='form')
-result_x100.add_argument('algorithm_types', type=str, required=True,
+result_x100.add_argument('target_cell_types', type=str, required=True,
                          help='目标细胞类型如 WBC,MEG / WBC,RBC / MEG 等，见有效组合表', location='form')
 result_x100.add_argument('smear_type', type=str, required=False, help='涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取', location='form')
 result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
@@ -212,7 +212,7 @@ class AnalyzeSlide(Resource):
         if not task_id:
             return make_response(jsonify({
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'task_id 不能为空',
+                'ret_desc': 'task_id cannot be empty',
                 'result': {},
             }), 200)
         if not isinstance(analyze_names, list):
@@ -224,14 +224,14 @@ class AnalyzeSlide(Resource):
         if not analyze_names:
             return make_response(jsonify({
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'analyze_names 不能为空',
+                'ret_desc': 'analyze_names cannot be empty',
                 'result': {},
             }), 200)
         invalid = [n for n in analyze_names if n not in ALLOWED_ANALYZE_NAMES]
         if invalid:
             return make_response(jsonify({
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': f'不支持的分析项: {invalid}，目前仅支持: {list(ALLOWED_ANALYZE_NAMES)}',
+                'ret_desc': f'Unsupported analyze item: {invalid}, only supported: {list(ALLOWED_ANALYZE_NAMES)}',
                 'result': {},
             }), 200)
         result = taskService.analyze_slide(task_id, analyze_names)
@@ -247,14 +247,14 @@ class GetTaskResultX100(Resource):
         task_id = args.get('task_id')
         image_file = args.get('image_file')
         dpi = args.get('dpi')
-        algorithm_types = args.get('algorithm_types')
+        target_cell_types = args.get('target_cell_types')
         smear_type = args.get('smear_type')
         edge_cell_filter = args.get('edge_cell_filter', True)
         position_xmin = args.get('position_xmin', None)
         position_ymin = args.get('position_ymin', None)
         position_xmax = args.get('position_xmax', None)
         position_ymax = args.get('position_ymax', None)
-        result = taskService.get_task_result_x100(task_id, image_file, algorithm_types, dpi,
+        result = taskService.get_task_result_x100(task_id, image_file, target_cell_types, dpi,
                                                   edge_cell_filter, smear_type,
                                                   position_xmin, position_ymin, position_xmax, position_ymax)
         return make_response(jsonify(result), 200)

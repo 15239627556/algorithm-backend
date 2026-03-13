@@ -63,13 +63,13 @@ def validate_combo(
     """
     bucket = _get_dpi_bucket(dpi)
     if bucket is None:
-        return False, f"DPI {dpi} 不在有效范围内(144750/357378/714756 ±10%)"
+        return False, f"DPI {dpi} out of valid range (144750/357378/714756 ±10%)"
 
     st = (smear_type or "BM").strip().upper()
     key = (bucket, st)
     if key not in VALID_COMBINATIONS:
         valid_st = sorted({k[1] for k in VALID_COMBINATIONS if k[0] == bucket})
-        return False, f"无效组合: DPI={bucket} 时 smear_type 仅支持 {valid_st}，当前为 {st}"
+        return False, f"Invalid combo: DPI={bucket} smear_type must be one of {valid_st}, got {st}"
 
     requested = _parse_cell_types(target_cell_types)
     if allow_empty_types and not requested:
@@ -78,6 +78,6 @@ def validate_combo(
     allowed = VALID_COMBINATIONS[key]
     invalid = requested - allowed
     if invalid:
-        return False, f"无效组合: DPI={bucket} smear_type={st} 时 target_cell_types 仅支持 {sorted(allowed)}，当前含非法类型 {sorted(invalid)}"
+        return False, f"Invalid combo: DPI={bucket} smear_type={st} target_cell_types must be subset of {sorted(allowed)}, got invalid {sorted(invalid)}"
 
     return True, None

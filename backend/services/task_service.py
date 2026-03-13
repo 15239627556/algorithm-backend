@@ -94,7 +94,7 @@ class TaskService:
         if not os.path.exists(file_path):
             return {"ret_code": RetCode.CLIENT_ERROR.value,
                     "ret_desc": RetDesc.CLIENT_ERROR.value,
-                    'reason': '任务ID不存在',
+                    'reason': 'Task ID not found',
                     'msg': f"file for task_id '{task_id}' not found."}
         project = SmearProject.load_json(file_path)
         info = _load_task_info(task_id)
@@ -205,7 +205,7 @@ class TaskService:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': '任务模式需提供 row_index 和 col_index',
+                'reason': 'Task mode requires row_index and col_index',
             }
         if task_id not in self.tasks:
             result = self.load_data(task_id)
@@ -215,7 +215,7 @@ class TaskService:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
                     'ret_desc': RetDesc.CLIENT_ERROR.value,
-                    'reason': '任务ID不存在',
+                    'reason': 'Task ID not found',
                 }
 
         ctx = self.tasks[task_id]
@@ -317,7 +317,7 @@ class TaskService:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
                     'ret_desc': RetDesc.CLIENT_ERROR.value,
-                    'reason': '任务ID不存在',
+                    'reason': 'Task ID not found',
                 }
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
@@ -341,8 +341,8 @@ class TaskService:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': '任务ID不存在'
-            }
+'reason': 'Task ID not found'
+        }
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -362,7 +362,7 @@ class TaskService:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
                     'ret_desc': RetDesc.CLIENT_ERROR.value,
-                    'reason': '任务ID不存在',
+                    'reason': 'Task ID not found',
                     'result': {},
                 }
         info = self.tasks[task_id].info
@@ -370,7 +370,7 @@ class TaskService:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': '任务未完成',
+                'reason': 'Task not completed',
                 'result': {},
             }
         result = {}
@@ -454,7 +454,7 @@ class TaskService:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': '请求参数错误，缺少 BM WBC 目标数量'
+                'reason': 'Invalid params: missing BM WBC target count'
             }
         project = self.tasks[task_id].project
         area_str = json.dumps(user_choice_area or {}, sort_keys=True) if isinstance(user_choice_area, dict) else str(user_choice_area)
@@ -480,7 +480,7 @@ class TaskService:
             'task_list': task_list
         }
 
-    def get_task_result_x100(self, task_id, image_file, algorithm_types, dpi,
+    def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,
                              edge_cell_filter, smear_type,
                              position_xmin, position_ymin, position_xmax, position_ymax):
         """
@@ -490,7 +490,7 @@ class TaskService:
         """
         image_bytes = image_file.read()
 
-        ok, err = validate_combo(int(dpi), smear_type, algorithm_types or "")
+        ok, err = validate_combo(int(dpi), smear_type, target_cell_types or "")
         if not ok:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
@@ -503,7 +503,7 @@ class TaskService:
                 image_bytes,
                 dpi=int(dpi),
                 smear_type=smear_type,
-                algorithm_types=algorithm_types or "",
+                algorithm_types=target_cell_types or "",
             )
         except Exception as e:
             logger.exception("Triton infer failed: %s", e)

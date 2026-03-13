@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -34,27 +35,80 @@ api.add_namespace(task)
 api.add_namespace(ImgFilter)
 
 # ========== 日志配置开始 ==========
-# 错误日志
-error_handler = RotatingFileHandler("error.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
-error_handler.setLevel(logging.ERROR)
-error_handler.setFormatter(logging.Formatter(
-    '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-))
-app.logger.addHandler(error_handler)
+LOG_DIR = os.path.join(root_dir, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
-# 访问日志
-access_logger = logging.getLogger("access")
-access_handler = RotatingFileHandler("access.log", maxBytes=50 * 1024 * 1024, backupCount=10, encoding="utf-8")
-access_handler.setLevel(logging.INFO)
-access_handler.setFormatter(logging.Formatter(
-    '[%(asctime)s] %(levelname)s: %(message)s'
-))
-access_logger.addHandler(access_handler)
+_fmt = "[%(asctime)s] %(levelname)s [%(name)s] %(message)s"
+_fmt_access = "[%(asctime)s] %(message)s"
+
+# 1. 应用主日志（app.logger）：INFO 及以上，输出到文件 + 控制台
+app.logger.setLevel(logging.INFO)
+app.logger.handlers.clear()
+
+_app_fh = RotatingFileHandler(
+    os.path.join(LOG_DIR, "app.log"),
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+_app_fh.setLevel(logging.INFO)
+_app_fh.setFormatter(logging.Formatter(_fmt))
+app.logger.addHandler(_app_fh)
+
+_app_ch = logging.StreamHandler(sys.stdout)
+_app_ch.setLevel(logging.INFO)
+_app_ch.setFormatter(logging.Formatter(_fmt))
+app.logger.addHandler(_app_ch)
+
+# 2. 错误日志：仅 ERROR
+_error_fh = RotatingFileHandler(
+    os.path.join(LOG_DIR, "error.log"),
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+_error_fh.setLevel(logging.ERROR)
+_error_fh.setFormatter(logging.Formatter(_fmt))
+app.logger.addHandler(_error_fh)
+
+# 3. 访问日志：IP、方法、路径、状态码、耗时
+access_logger = logging.getLogger("flask.access")
+access_logger.setLevel(logging.INFO)
+access_logger.propagate = False
+
+_access_fh = RotatingFileHandler(
+    os.path.join(LOG_DIR, "access.log"),
+    maxBytes=50 * 1024 * 1024,
+    backupCount=10,
+    encoding="utf-8",
+)
+_access_fh.setLevel(logging.INFO)
+_access_fh.setFormatter(logging.Formatter(_fmt_access))
+access_logger.addHandler(_access_fh)
+
+_access_ch = logging.StreamHandler(sys.stdout)
+_access_ch.setLevel(logging.INFO)
+_access_ch.setFormatter(logging.Formatter(_fmt_access))
+access_logger.addHandler(_access_ch)
 
 
 @app.before_request
-def log_request():
-    access_logger.info(f"{request.remote_addr} {request.method} {request.path}")
+def _log_request_start():
+    request._log_start = time.time()
+
+
+@app.after_request
+def _log_request(response):
+    duration = (time.time() - getattr(request, "_log_start", 0)) * 1000
+    access_logger.info(
+        "%s %s %s %s %.1fms",
+        request.remote_addr,
+        request.method,
+        request.path,
+        response.status_code,
+        duration,
+    )
+    return response
 
 
 # ========== 日志配置结束 ==========
@@ -62,4 +116,4 @@ def log_request():
 
 if __name__ == '__main__':
     print("### FLASK MAIN PID =", os.getpid())
-    app.run(host='0.0.0.0', port=3889, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=3090, debug=False, threaded=True)

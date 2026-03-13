@@ -289,6 +289,8 @@ def infer(
             grpcclient.InferRequestedOutput("CONSTITUENCY_REGIONS"),
             grpcclient.InferRequestedOutput("CONSTITUENCY_GRADES"),
             grpcclient.InferRequestedOutput("CONSTITUENCY_SCORES"),
+            grpcclient.InferRequestedOutput("CELL_ANALYSIS_WBC_PIXEL_COUNT"),
+            grpcclient.InferRequestedOutput("CELL_ANALYSIS_RED_PIXEL_COUNT"),
         ]
         result = client.infer(model, inputs=[inp, inp_meg], outputs=req_outputs)
         wbc = result.as_numpy("WBC_DETECTIONS")

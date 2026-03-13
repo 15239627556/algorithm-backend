@@ -21,15 +21,15 @@ class RetDesc(Enum):
     """
     返回码枚举（描述）
     """
-    TASK_FINISHED = "任务已完成"
-    TASK_RUNNING = "任务进行中"
-    TASK_TIMEOUT = "任务超时"
-    IMAGE_ALREADY_UPLOADED = "图片已上传，请勿重复上传"
-    IMAGE_DAMAGED = "图片损坏，请检查上传图片是否完整"
-    TASK_IN_PROGRESS = "当前有任务正在进行"
+    TASK_FINISHED = "Task completed"
+    TASK_RUNNING = "Task in progress"
+    TASK_TIMEOUT = "Task timeout"
+    IMAGE_ALREADY_UPLOADED = "Image already uploaded, do not upload again"
+    IMAGE_DAMAGED = "Image damaged, please check if uploaded image is complete"
+    TASK_IN_PROGRESS = "Task in progress"
 
-    API_SUCCESS = "接口调用成功"
-    CLIENT_ERROR = "参数错误、文件类型错误、相关条目不存在等客户端错误"
+    API_SUCCESS = "API success"
+    CLIENT_ERROR = "Client error: invalid params, file type error, or entry not found"
 
 
 class TaskType(Enum):

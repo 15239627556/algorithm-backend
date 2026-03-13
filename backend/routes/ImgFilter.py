@@ -27,7 +27,7 @@ class UploadImg(Resource):
         args = post_img.parse_args()
         image_file = args.get('image_file')
         if not image_file or not isinstance(image_file, FileStorage):
-            return {"message": "无效的图片文件"}, 400
+            return {"message": "Invalid image file"}, 400
         filename = image_file.filename
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
@@ -56,7 +56,7 @@ class X40ImageFilterPt(Resource):
         args = post_img.parse_args()
         image_file = args.get('image_file')
         if not image_file or not isinstance(image_file, FileStorage):
-            return {"message": "无效的图片文件"}, 400
+            return {"message": "Invalid image file"}, 400
         filename = image_file.filename
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
@@ -85,13 +85,13 @@ class X40ImageFilter(Resource):
         args = post_img.parse_args()
         image_file = args.get('image_file')
         if not image_file or not isinstance(image_file, FileStorage):
-            return {"message": "无效的图片文件"}, 400
+            return {"message": "Invalid image file"}, 400
         filename = image_file.filename
         image_bytes = image_file.read()
         try:
             enhanced_bytes = infer_image_enhance(image_bytes)
         except Exception as e:
-            return {"message": f"滤镜推理失败: {str(e)}"}, 500
+            return {"message": f"Filter inference failed: {str(e)}"}, 500
         return send_file(
             BytesIO(enhanced_bytes),
             mimetype='image/jpeg',
