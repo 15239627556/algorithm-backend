@@ -12,12 +12,9 @@ import threading
 import urllib.request
 from typing import Dict, List, Tuple
 
-logger = logging.getLogger(__name__)
+from config import TRITON_HTTP_URL
 
-# TRITON_HTTP_URL: 模型加载/卸载用 HTTP API。若未设置则从 TRITON_URL 推导
-# Triton 端口：18000(HTTP)、18001(gRPC)、18002(Metrics)
-_TRITON_HTTP_URL_DEFAULT = "http://192.168.31.188:18000"
-_TRITON_URL = os.environ.get("TRITON_URL", "192.168.31.188:18001")
+logger = logging.getLogger(__name__)
 
 _http_base_url_logged = False
 
@@ -77,10 +74,7 @@ LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
 def _get_http_base_url() -> str:
     global _http_base_url_logged
     url = os.environ.get("TRITON_HTTP_URL")
-    if url:
-        base = url.rstrip("/")
-    else:
-        base = _TRITON_HTTP_URL_DEFAULT
+    base = url.rstrip("/") if url else TRITON_HTTP_URL
     if not _http_base_url_logged:
         _http_base_url_logged = True
         logger.info("Triton HTTP API base: %s", base)

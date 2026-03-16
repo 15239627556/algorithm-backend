@@ -200,6 +200,34 @@ analyze_slide_model = task.model('analyze_slide', {
 
 ALLOWED_ANALYZE_NAMES = {'cellularity'}
 
+generate_views_model = task.model('generate_views', {
+    'points': fields.List(
+        fields.List(fields.Float),
+        required=False,
+        description='Point centers [[x,y], [x,y], ...]'
+    ),
+    'view_width': fields.Integer(required=False, description='View box width', default=384),
+    'view_height': fields.Integer(required=False, description='View box height', default=283),
+    'pad': fields.Integer(required=False, description='Padding around points', default=100),
+})
+
+
+@task.route('/generate_views')
+class GenerateViews(Resource):
+    @task.doc(description='Generate minimum number of view boxes to cover all points (set cover). Provide points or cells.')
+    @task.expect(generate_views_model)
+    def post(self):
+        json_data = request.json or {}
+        points = json_data.get('points')
+        view_width = json_data.get('view_width', 384)
+        view_height = json_data.get('view_height', 283)
+        pad = json_data.get('pad', 100)
+        result = taskService.generate_views(
+            points=points,
+            view_width=view_width, view_height=view_height, pad=pad
+        )
+        return make_response(jsonify(result), 200)
+
 
 @task.route('/analyze_slide')
 class AnalyzeSlide(Resource):

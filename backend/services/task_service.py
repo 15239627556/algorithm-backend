@@ -7,6 +7,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, Any
 
+from cachetools import TTLCache
+
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
 from backend.tools.combo_validator import validate_combo
@@ -17,8 +19,14 @@ from project.cells import Cell
 from project.triton_client import infer, get_model_by_dpi
 from project.model_control import warmup_model
 from algorithms.SelectArea.main import *
+from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache TTL (10 min), clear on restart. TTLCache is thread-safe.
+CACHE_TTL_SEC = int(os.environ.get("ROI_CACHE_TTL", "600"))
+ROI_CACHE_MAXSIZE = int(os.environ.get("ROI_CACHE_MAXSIZE", "200"))
+PROJECT_X100_CACHE_MAXSIZE = int(os.environ.get("PROJECT_X100_CACHE_MAXSIZE", "50"))
 
 
 def _ensure_json_serializable(obj):
@@ -82,9 +90,10 @@ class TaskContext:
 class TaskService:
     def __init__(self):
         self.tasks: Dict[str, TaskContext] = {}
-        self.roi_cache: Dict[str, Dict[tuple, Any]] = {}
+        self.roi_cache = TTLCache(maxsize=ROI_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
         self.roi_cache_lock = threading.Lock()
-        self.project_x100: Dict[str, list] = {}
+        self.project_x100 = TTLCache(maxsize=PROJECT_X100_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
+        self.project_x100_lock = threading.Lock()
 
     def load_data(self, task_id):
         if task_id in self.tasks:
@@ -405,29 +414,24 @@ class TaskService:
         limit = max(0, int(request_task_num or 0))
         roi_key = (roi_xmin, roi_ymin, roi_xmax, roi_ymax)
 
+        roi_cache_key = (task_id, roi_key)
         with self.roi_cache_lock:
-            task_cache = self.roi_cache.setdefault(task_id, {})
-            hit = task_cache.get(roi_key)
+            hit = self.roi_cache.get(roi_cache_key)
 
         if hit is None:
             cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax, is_Cell=True)
             total = len(cells_all)
             hit = (total, cells_all)
             with self.roi_cache_lock:
-                task_cache[roi_key] = hit
-                if len(task_cache) > 8:
-                    task_cache.pop(next(iter(task_cache)))
+                self.roi_cache[roi_cache_key] = hit
         else:
             total, cells_all = hit
 
-        total, cells_all = hit
         page_cells = cells_all[offset: offset + limit]
         page_dicts = [c.to_dict() for c in page_cells]
         if (offset + limit) >= total:
             with self.roi_cache_lock:
-                task_cache = self.roi_cache.get(task_id)
-                if task_cache and roi_key in task_cache:
-                    task_cache.pop(roi_key)
+                self.roi_cache.pop(roi_cache_key, None)
 
         return {
             "ret_code": RetCode.API_SUCCESS.value,
@@ -459,7 +463,9 @@ class TaskService:
         project = self.tasks[task_id].project
         area_str = json.dumps(user_choice_area or {}, sort_keys=True) if isinstance(user_choice_area, dict) else str(user_choice_area)
         x100_key = f"{task_id}_{area_str}_{view_width}_{view_height}_{target_num_WBC}"
-        if not self.project_x100.get(x100_key):
+        with self.project_x100_lock:
+            final_task_list = self.project_x100.get(x100_key)
+        if final_task_list is None:
             bm_cfg = BM40Config(user_choice_area=user_choice_area,
                                 target_cell_num=target_num_WBC,
                                 x100_rect_width=view_width,
@@ -467,17 +473,94 @@ class TaskService:
             pipeline = WBCSamplingPipeline(bm_cfg)
             final_task_list = pipeline.run(project)
             final_task_list = [task.to_dict() for task in final_task_list]
-            self.project_x100[x100_key] = final_task_list
-        else:
-            final_task_list = self.project_x100[x100_key]
+            with self.project_x100_lock:
+                self.project_x100[x100_key] = final_task_list
         task_list = final_task_list[index_offset:index_offset + request_task_num]
         if (index_offset + request_task_num) >= len(final_task_list):
-            self.project_x100.pop(x100_key, None)
+            with self.project_x100_lock:
+                self.project_x100.pop(x100_key, None)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
             'task_list_num': len(final_task_list),
             'task_list': task_list
+        }
+
+    def generate_views(
+        self,
+        points: list = None,
+        view_width: int = 384,
+        view_height: int = 283,
+        pad: int = 100,
+    ) -> dict:
+        """
+        Generate minimum number of 100x view boxes to cover all points (set cover).
+        Input: points [[x,y],...] OR cells [[xmin,ymin,xmax,ymax],...]
+        Output: list of rects [[x,y,w,h], ...]
+        """
+        import numpy as np
+
+        centers = None
+        if points:
+            pts = np.array(points, dtype=np.float64)
+            if pts.ndim == 1:
+                pts = pts.reshape(-1, 2)
+            if pts.size == 0 or pts.shape[1] < 2:
+                return {
+                    'ret_code': RetCode.API_SUCCESS.value,
+                    'ret_desc': RetDesc.API_SUCCESS.value,
+                    'rects': [],
+                    'point_count': 0,
+                }
+            centers = pts[:, :2]
+        else:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': 'Must provide points or cells',
+                'rects': [],
+            }
+
+        if centers.size == 0:
+            return {
+                'ret_code': RetCode.API_SUCCESS.value,
+                'ret_desc': RetDesc.API_SUCCESS.value,
+                'rects': [],
+                'point_count': 0,
+            }
+
+        x_min_all = float(centers[:, 0].min()) - pad
+        y_min_all = float(centers[:, 1].min()) - pad
+        x_max_all = float(centers[:, 0].max()) + pad
+        y_max_all = float(centers[:, 1].max()) + pad
+        bounding_rect = np.array([
+            x_min_all, y_min_all,
+            x_max_all - x_min_all + 1,
+            y_max_all - y_min_all + 1
+        ], dtype=np.int32)
+
+        params = SetCoverSolverParameter(
+            rect_width=view_width,
+            rect_height=view_height,
+        )
+        try:
+            rects_x100 = solve(centers, bounding_rect, params)
+        except Exception as e:
+            logger.exception("Setcover solve failed: %s", e)
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': str(e),
+                'rects': [],
+            }
+
+        rects = rects_x100.tolist()
+        return {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'rects': rects,
+            'rect_count': len(rects),
+            'point_count': len(centers),
         }
 
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,

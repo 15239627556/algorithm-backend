@@ -19,9 +19,10 @@ from flask_restx import Api
 
 from backend.routes.task import task
 from backend.routes.ImgFilter import ImgFilter
+from config import FLASK_HOST, FLASK_PORT
 
 api = Api(version='2025.12.12', title='算法服务',
-          description='2025.12.12版本，算法服务，端口号为3889', doc="/")
+          description=f'2025.12.12版本，算法服务，端口号为{FLASK_PORT}', doc="/")
 app = Flask(__name__, static_url_path='/uploads', static_folder='uploads')
 api.init_app(app)
 CORS(app, supports_credentials=True)
@@ -116,4 +117,4 @@ def _log_request(response):
 
 if __name__ == '__main__':
     print("### FLASK MAIN PID =", os.getpid())
-    app.run(host='0.0.0.0', port=3090, debug=False, threaded=True)
+    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, threaded=True)

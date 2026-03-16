@@ -19,8 +19,7 @@ import numpy as np
 from project.cells import Cell
 from project.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100
-
-TRITON_URL = os.environ.get("TRITON_URL", "192.168.31.188:18001")
+from config import TRITON_URL
 
 # DPI 基准值（±10% 容差），仅以 DPI 选择模型，不再使用倍率缩写
 DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
