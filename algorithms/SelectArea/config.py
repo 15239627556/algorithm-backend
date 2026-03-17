@@ -12,6 +12,7 @@ class BM40Config:
     x100_rect_width: int = 384      # 百倍视野尺寸-宽 
     x100_rect_height: int = 283     # 百倍视野尺寸-高    
     heatmap_orientation: int = 1    # 0: 头部在右，1: 头部在左
+    target_cell_num_MEG: int = 300  # 用户设定的目标细胞数量(meg)     
 
 
 
@@ -24,8 +25,8 @@ class BM40Config:
     # --- 热力图核心配置 ---
     cell_size: float = field(default=224.0, init=False)               # 热力图每个格子的物理跨度 (单位：像素，需与 Tile 坐标单位一致)
     heatmap_penalty_value: float = field(default=-100.0, init=False)  # 热力图无效区域（无数据覆盖）的默认填充值
-    # scale: float = field(default=4.0, init=False)                     # x 坐标放大倍数
-    scale: float = field(default=1.0, init=False)
+    scale: float = field(default=4.0, init=False)                     # x 坐标放大倍数
+    # scale: float = field(default=1.0, init=False)
   
     # --- 头部裁剪算法参数 ---
     head_crop_height_threshold_ratio: float = field(default=0.1, init=False)   # 有效列判定阈值：该列有效像素占比 (原 rows // 10 -> 0.1)
@@ -58,3 +59,7 @@ class BM40Config:
     Extra_name: str = field(default="Extra", init=False)     # 补拍选区名称
     View_type: str = field(default="WBC", init=False)        # 视野类型标识
     Smear_type: str = field(default="BM", init=False)        # 涂片类型标识
+
+
+    WBC_cell_type: int = field(default=100000, init=False)
+    MEG_cell_type: int = field(default=100001, init=False)  

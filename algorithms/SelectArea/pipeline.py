@@ -60,7 +60,8 @@ class WBCSamplingPipeline:
         
         # 1. 基础数据准备
         self.grid = build_score_heatmap(tiles, config=self.cfg)
-        self.cell_matrix = build_cell_count_grid(tiles, self.grid) 
+        self.cell_matrix = build_cell_count_grid(tiles, self.grid, config=self.cfg)
+
         rows, cols = self.cell_matrix.shape
 
         # --- 构建用户选区约束掩码 ---
@@ -162,19 +163,25 @@ class WBCSamplingPipeline:
             config=self.cfg
         )
 
-        # 9. 准备全局细胞矩阵
+
+        # 9. 准备全局细胞矩阵（只保留配置中定义的 WBC 细胞类型）
         all_cells_list = []
         for t in tiles:
             for c in t.cells:
-                all_cells_list.append([c.cell_xmin + t.x, 
-                                       c.cell_ymin + t.y, 
-                                       c.cell_xmax + t.x, 
-                                       c.cell_ymax + t.y
-                                    ])
-        
+                # 使用配置的 WBC 类型过滤
+                if getattr(c, "cell_type", None) != self.cfg.WBC_cell_type:
+                    continue
+
+                all_cells_list.append([
+                    c.cell_xmin + t.x,
+                    c.cell_ymin + t.y,
+                    c.cell_xmax + t.x,
+                    c.cell_ymax + t.y
+                ])
+
         if not all_cells_list:
             return []
-            
+
         all_cells_array = np.array(all_cells_list)
 
         # 10. 构建禁区掩码并提取有效细胞

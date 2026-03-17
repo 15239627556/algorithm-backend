@@ -178,7 +178,12 @@ def build_score_heatmap(
 
 
 
-def build_cell_count_grid(tiles: List[Tile], grid_info: HeatmapGrid) -> np.ndarray:
+def build_cell_count_grid(
+    tiles: List[Tile],
+    grid_info: HeatmapGrid,
+    *,
+    config: BM40Config,
+) -> np.ndarray:
     """
     根据已有的 HeatmapGrid 结构，创建一个对齐的细胞数量矩阵。
     
@@ -197,6 +202,10 @@ def build_cell_count_grid(tiles: List[Tile], grid_info: HeatmapGrid) -> np.ndarr
             continue
             
         for cell in tile.cells:
+            # 先按细胞类型过滤：只统计配置中的 WBC 类型
+            if getattr(cell, "cell_type", None) != config.WBC_cell_type:
+                continue
+
             # 1. 属性访问 (cell.xxx)
             local_cx = (cell.cell_xmin + cell.cell_xmax) / 2.0
             local_cy = (cell.cell_ymin + cell.cell_ymax) / 2.0
@@ -211,5 +220,6 @@ def build_cell_count_grid(tiles: List[Tile], grid_info: HeatmapGrid) -> np.ndarr
             # 4. 边界检查并填充 [row, col]
             if 0 <= g_row < rows and 0 <= g_col < cols:
                 cell_count_matrix[g_row, g_col] += 1
+
                 
     return cell_count_matrix
