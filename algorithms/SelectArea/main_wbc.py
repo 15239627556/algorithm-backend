@@ -21,7 +21,7 @@ import matplotlib.patches as patches
 # 导入核心组件
 from .data_structure import SelectionResult, TaskOutput
 from .config import BM40Config
-from .pipeline import WBCSamplingPipeline
+from .pipeline_wbc import WBCSamplingPipeline
 
 
 # ===================== 可视化配置 =====================
@@ -194,9 +194,9 @@ def main() -> None:
     print(f"[INFO] 成功加载项目: {project.smear_type}")
 
 
-    user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
-    bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
-    # bm_cfg = BM40Config(target_cell_num=300)
+    # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
+    # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
+    bm_cfg = BM40Config(target_cell_num=300)
     pipeline = WBCSamplingPipeline(bm_cfg)
     
   
