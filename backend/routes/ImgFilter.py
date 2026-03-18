@@ -32,7 +32,7 @@ class UploadImg(Resource):
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         img_np = cv2.imdecode(np_arr, cv2.COLOR_BGR2RGB)
-        out = x100EnhancemModule.x100PicEnhance(img_np)
+        out = x100EnhancemModule.enhence_100_2(img_np)
         _, img_encode = cv2.imencode('.jpg', out)
         new_img_bytes = img_encode.tobytes()
         # 返回处理后的图像
@@ -61,7 +61,7 @@ class X40ImageFilterPt(Resource):
         image_bytes = image_file.read()
         np_arr = np.frombuffer(image_bytes, np.uint8)
         img_np = cv2.imdecode(np_arr, cv2.COLOR_BGR2RGB)
-        out = x40EnhancemModule.x40PicEnhance(img_np)
+        out = x40EnhancemModule.enhance_40(img_np)
         _, img_encode = cv2.imencode('.jpg', out)
         new_img_bytes = img_encode.tobytes()
         # 返回处理后的图像

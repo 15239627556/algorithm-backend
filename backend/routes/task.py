@@ -139,37 +139,60 @@ user_choice_area_mod = task.model('user_choice_area', {
     'x_max': fields.Integer(required=False, description='用户框选区域的x最大值'),
     'y_max': fields.Integer(required=False, description='用户框选区域的y最大值'),
 })
-target_item_mod = task.model('TargetItem', {
-    'smear_type': fields.String(required=True, description='目标类型，如 BM等'),
-    'target_cell_type': fields.String(required=True, description='目标细胞类型，如 WBC,MEG / WBC,RBC，供任务模式使用'),
-    'count': fields.Integer(required=True, description='该类型目标的数量')
+
+wbc_point_mod = task.model('wbc_point', {
+    'x': fields.Integer(required=True, description='x 坐标'),
+    'y': fields.Integer(required=True, description='y 坐标'),
+    'w': fields.Integer(required=True, description='宽度'),
+    'h': fields.Integer(required=True, description='高度'),
 })
-get_task_x100 = task.model('get_task_x100', {
+
+roi_kwargs_mod = task.model('roi_kwargs', {
+    'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0', default=0),
+    'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
+    'wbc_points': fields.List(fields.Nested(wbc_point_mod), required=False, description='用户选择的有核细胞框列表'),
+})
+
+required_num_mod = task.model('required_num', {
+    'WBC': fields.Integer(required=False, description='当 task_type=WBC 且 smear_type=BM 时必填'),
+    'MEG': fields.Integer(required=False, description='当 task_type=MEG 或 WBC_MEG 且 smear_type=BM 时必填'),
+    'RBC': fields.Integer(required=False, description='当 task_type=RBC 且 smear_type=PB 时必填'),
+})
+
+roi_selection_model = task.model('roi_selection', {
     'task_id': fields.String(required=True, description='任务ID'),
+    'task_type': fields.String(required=True, description='选区类型：WBC/MEG/WBC_MEG/RBC'),
     'user_choice_area': fields.Nested(user_choice_area_mod, required=False, description='用户框选的扫描区域'),
     'view_width': fields.Integer(required=True, description='拍摄视图宽度'),
     'view_height': fields.Integer(required=True, description='拍摄视图高度'),
-    'target_list': fields.List(fields.Nested(target_item_mod), required=True, description='目标类型及数量列表'),
-    'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0'),
-    'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
+    'kwargs': fields.Nested(roi_kwargs_mod, required=False, description='选区算法其他参数'),
+    'required_num': fields.Nested(required_num_mod, required=False, description='按 task_type 需要的目标数量'),
 })
 
 
 @task.route('/roi_selection')
 class GetTaskListX100(Resource):
     @task.doc(description='获取X100任务列表')
-    @task.expect(get_task_x100)
+    @task.expect(roi_selection_model)
     def post(self):
         json_data = request.json
         task_id = json_data.get('task_id')
+        task_type = json_data.get('task_type')
         user_choice_area = json_data.get('user_choice_area')
         view_width = json_data.get('view_width')
         view_height = json_data.get('view_height')
-        target_list = json_data.get('target_list')
-        index_offset = json_data.get('index_offset', 0)
-        request_task_num = json_data.get('request_task_num', 100)
-        result = taskService.get_task_list_x100(task_id, user_choice_area, view_width, view_height, target_list,
-                                                index_offset, request_task_num)
+        kwargs = json_data.get('kwargs') or {}
+        required_num = json_data.get('required_num') or {}
+
+        result = taskService.get_task_list_x100(
+            task_id=task_id,
+            task_type=task_type,
+            user_choice_area=user_choice_area,
+            view_width=view_width,
+            view_height=view_height,
+            kwargs=kwargs,
+            required_num=required_num,
+        )
         return make_response(jsonify(result), 200)
 
 

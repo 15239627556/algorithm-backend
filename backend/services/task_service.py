@@ -18,7 +18,8 @@ from project.smear_project import SmearProject
 from project.cells import Cell
 from project.triton_client import infer, get_model_by_dpi
 from project.model_control import warmup_model
-from algorithms.SelectArea.main import *
+from algorithms.SelectArea.main_wbc import *
+from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 
 logger = logging.getLogger(__name__)
@@ -441,49 +442,218 @@ class TaskService:
             "index_offset": offset,
         }
 
-    def get_task_list_x100(self, task_id, user_choice_area, view_width, view_height, target_list,
-                           index_offset, request_task_num):
+    def get_task_list_x100(
+        self,
+        task_id: str,
+        task_type: str,
+        user_choice_area,
+        view_width,
+        view_height,
+        kwargs: dict | None,
+        required_num: dict | None,
+    ):
         if task_id not in self.tasks:
             result = self.load_data(task_id)
             if result:
                 return result
-        target_num_WBC = None
-        target_num_MEG = None
-        for one in target_list:
-            if one['smear_type'] == 'BM' and "WBC" in one['target_cell_type']:
-                target_num_WBC = one['count']
-            if one['smear_type'] == 'BM' and "MEG" in one['target_cell_type']:
-                target_num_MEG = one['count']
-        if target_num_WBC is None:
+        ctx = self.tasks.get(task_id)
+        smear_type = (ctx.info or {}).get("smear_type")
+        if not smear_type:
+            smear_type = "BM"
+
+        if not isinstance(kwargs, dict):
+            kwargs = {}
+        if not isinstance(required_num, dict):
+            required_num = {}
+
+        index_offset = int(kwargs.get("index_offset", 0) or 0)
+        request_task_num = int(kwargs.get("request_task_num", 100) or 100)
+
+        normalized_task_type = (task_type or "").strip().upper()
+        allowed_task_types = {"WBC", "MEG", "WBC_MEG", "RBC"}
+        if normalized_task_type not in allowed_task_types:
             return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': 'Invalid params: missing BM WBC target count'
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "reason": f"Invalid task_type: {task_type}. Allowed: {sorted(list(allowed_task_types))}",
             }
-        project = self.tasks[task_id].project
+
+        def _get_required_int(key: str) -> int | None:
+            value = required_num.get(key)
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        required_wbc = _get_required_int("WBC")
+        required_meg = _get_required_int("MEG")
+        required_rbc = _get_required_int("RBC")
+
+        if smear_type == "BM":
+            if normalized_task_type == "WBC":
+                if not required_wbc or required_wbc <= 0:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing required_num.WBC for BM WBC",
+                    }
+            elif normalized_task_type == "MEG":
+                if not required_meg or required_meg <= 0:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing required_num.MEG for BM MEG",
+                    }
+                if not isinstance(kwargs.get("wbc_points"), list) or not kwargs.get("wbc_points"):
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing kwargs.wbc_points for BM MEG",
+                    }
+            elif normalized_task_type == "WBC_MEG":
+                if not required_wbc or required_wbc <= 0:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing required_num.WBC for BM WBC_MEG",
+                    }
+                if not required_meg or required_meg <= 0:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing required_num.MEG for BM WBC_MEG",
+                    }
+            elif normalized_task_type == "RBC":
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "reason": "Invalid combo: BM does not support task_type=RBC",
+                }
+        elif smear_type == "PB":
+            if normalized_task_type != "RBC":
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "reason": f"Invalid combo: PB only supports task_type=RBC, got {task_type}",
+                }
+            if not required_rbc or required_rbc <= 0:
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "reason": "Missing required_num.RBC for PB RBC",
+                }
+        else:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "reason": f"Unsupported smear_type: {smear_type}",
+            }
+
+        project = ctx.project
+
         area_str = json.dumps(user_choice_area or {}, sort_keys=True) if isinstance(user_choice_area, dict) else str(user_choice_area)
-        x100_key = f"{task_id}_{area_str}_{view_width}_{view_height}_{target_num_WBC}"
+        cache_key = f"{task_id}_{smear_type}_{normalized_task_type}_{area_str}_{view_width}_{view_height}_{required_wbc}_{required_meg}_{required_rbc}"
         with self.project_x100_lock:
-            final_task_list = self.project_x100.get(x100_key)
+            final_task_list = self.project_x100.get(cache_key)
+
         if final_task_list is None:
-            bm_cfg = BM40Config(user_choice_area=user_choice_area,
-                                target_cell_num=target_num_WBC,
-                                x100_rect_width=view_width,
-                                x100_rect_height=view_height)
-            pipeline = WBCSamplingPipeline(bm_cfg)
-            final_task_list = pipeline.run(project)
-            final_task_list = [task.to_dict() for task in final_task_list]
+            if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
+                bm_cfg = BM40Config(
+                    user_choice_area=user_choice_area,
+                    target_cell_num=required_wbc,
+                    x100_rect_width=int(view_width),
+                    x100_rect_height=int(view_height),
+                )
+                pipeline = WBCSamplingPipeline(bm_cfg)
+                wbc_tasks = pipeline.run(project)
+                wbc_task_rects = [task.to_dict() for task in wbc_tasks]
+
+                if normalized_task_type == "WBC":
+                    final_task_list = wbc_task_rects
+                else:
+                    # WBC_MEG：当前实现先产出 WBC 视野，再产出 MEG 视野，合并返回
+                    bm_cfg.target_cell_num_MEG = required_meg
+                    try:
+                        meg_pipeline = MegSamplingPipeline(bm_cfg)
+                        meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_task_rects)
+                        meg_task_rects = [task.to_dict() for task in meg_tasks]
+                    except Exception as e:
+                        logger.exception("MEG roi_selection failed: %s", e)
+                        return {
+                            "ret_code": RetCode.CLIENT_ERROR.value,
+                            "ret_desc": RetDesc.CLIENT_ERROR.value,
+                            "reason": str(e),
+                        }
+                    final_task_list = wbc_task_rects + meg_task_rects
+
+            elif smear_type == "BM" and normalized_task_type == "MEG":
+                bm_cfg = BM40Config(
+                    user_choice_area=user_choice_area,
+                    target_cell_num=required_wbc or 0,
+                    x100_rect_width=int(view_width),
+                    x100_rect_height=int(view_height),
+                )
+                bm_cfg.target_cell_num_MEG = required_meg
+
+                wbc_points = kwargs.get("wbc_points") or []
+                wbc_rects = []
+                for p in wbc_points:
+                    if not isinstance(p, dict):
+                        continue
+                    try:
+                        x = int(p.get("x"))
+                        y = int(p.get("y"))
+                        w = int(p.get("w"))
+                        h = int(p.get("h"))
+                    except (TypeError, ValueError):
+                        continue
+                    wbc_rects.append({"x": x, "y": y, "w": w, "h": h})
+
+                if not wbc_rects:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Invalid kwargs.wbc_points: empty or not parseable",
+                    }
+                try:
+                    meg_pipeline = MegSamplingPipeline(bm_cfg)
+                    meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
+                    final_task_list = [task.to_dict() for task in meg_tasks]
+                except Exception as e:
+                    logger.exception("MEG roi_selection failed: %s", e)
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": str(e),
+                    }
+
+            elif smear_type == "PB" and normalized_task_type == "RBC":
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "reason": "PB RBC roi_selection is not implemented yet",
+                }
+            else:
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+                }
+
             with self.project_x100_lock:
-                self.project_x100[x100_key] = final_task_list
+                self.project_x100[cache_key] = final_task_list
+
         task_list = final_task_list[index_offset:index_offset + request_task_num]
         if (index_offset + request_task_num) >= len(final_task_list):
             with self.project_x100_lock:
-                self.project_x100.pop(x100_key, None)
+                self.project_x100.pop(cache_key, None)
         return {
-            'ret_code': RetCode.API_SUCCESS.value,
-            'ret_desc': RetDesc.API_SUCCESS.value,
-            'task_list_num': len(final_task_list),
-            'task_list': task_list
+            "ret_code": RetCode.API_SUCCESS.value,
+            "ret_desc": RetDesc.API_SUCCESS.value,
+            "task_list_num": len(final_task_list),
+            "task_list": task_list,
         }
 
     def generate_views(

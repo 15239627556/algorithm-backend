@@ -10,11 +10,12 @@ cachetools>=5.0.0
 # Numerical & image
 numpy==2.3.3
 opencv_python==4.11.0.86
+opencv-contrib-python
 Pillow==11.3.0
 
 # Deep learning (dedup NMS)
-torch
-torchvision
+torch==2.3.1
+torchvision==0.18.1
 
 # Triton inference
 tritonclient[grpc]
