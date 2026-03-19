@@ -33,7 +33,7 @@ MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞
 MODEL_714756_BM = "DPI714756_BM_PB_pipeline"
 MODEL_714756_CF = "DPI714756_CF_WBC_pipeline"
 # 图片增强/滤镜 pipeline（x40 超分辨率滤镜深度学习模式）
-MODEL_IMAGE_ENHANCE = "Image_enhance_pipline"
+MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
@@ -449,7 +449,7 @@ def infer(
 
 def infer_image_enhance(image_bytes: bytes) -> bytes:
     """
-    图片增强/滤镜推理（Triton Image_enhance_pipline）。
+    图片增强/滤镜推理（Triton Image_enhance_pipeline）。
     输入: 原始图片字节（jpg/png）
     输出: 增强后的图片字节（jpg 编码）
     """

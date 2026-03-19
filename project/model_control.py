@@ -58,11 +58,11 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
             "DPI714756_BM_PB_pipeline",
         ],
     ),
-    "Image_enhance_pipline": (
+    "Image_enhance_pipeline": (
         "Image_enhance",
         [
             "Image_enhance",
-            "Image_enhance_pipline",
+            "Image_enhance_pipeline",
         ],
     ),
 }
@@ -174,6 +174,7 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
         max_groups = max_models  # 兼容旧参数
 
     group_info = _get_group_for_pipeline(model_name)
+    print(group_info)
     if not group_info:
         # 不在预定义组内，退化为单模型加载
         with _model_lock:

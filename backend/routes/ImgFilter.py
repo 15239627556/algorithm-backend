@@ -79,7 +79,7 @@ class X40ImageFilter(Resource):
     @ImgFilter.expect(post_img)
     def post(self):
         """
-        上传图片并应用滤镜（Triton Image_enhance_pipline，同步推理）
+        上传图片并应用滤镜（Triton Image_enhance_pipeline，同步推理）
         :return: 返回处理后的图片
         """
         args = post_img.parse_args()
