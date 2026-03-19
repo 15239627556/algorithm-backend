@@ -658,55 +658,52 @@ class TaskService:
 
     def generate_views(
         self,
-        points: list = None,
+        rects: list = None,
         view_width: int = 384,
         view_height: int = 283,
         pad: int = 100,
     ) -> dict:
         """
-        Generate minimum number of 100x view boxes to cover all points (set cover).
-        Input: points [[x,y],...] OR cells [[xmin,ymin,xmax,ymax],...]
-        Output: list of rects [[x,y,w,h], ...]
+        根据 rects [[x,y,w,h],...] 生成最少视野框覆盖（set cover）。
+        参考 task_wbc.generate_wbc_view_tasks 核心逻辑：rects → centers → solve → rects_x100
         """
         import numpy as np
 
-        centers = None
-        if points:
-            pts = np.array(points, dtype=np.float64)
-            if pts.ndim == 1:
-                pts = pts.reshape(-1, 2)
-            if pts.size == 0 or pts.shape[1] < 2:
-                return {
-                    'ret_code': RetCode.API_SUCCESS.value,
-                    'ret_desc': RetDesc.API_SUCCESS.value,
-                    'rects': [],
-                    'point_count': 0,
-                }
-            centers = pts[:, :2]
-        else:
+        if not rects:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'reason': 'Must provide points or cells',
+                'reason': 'Must provide rects',
                 'rects': [],
             }
 
-        if centers.size == 0:
+        arr = np.array(rects, dtype=np.float64)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 4)
+        if arr.size == 0 or arr.shape[1] < 4:
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
                 'rects': [],
-                'point_count': 0,
+                'rect_count': 0,
+                'rect_count_input': 0,
             }
 
-        x_min_all = float(centers[:, 0].min()) - pad
-        y_min_all = float(centers[:, 1].min()) - pad
-        x_max_all = float(centers[:, 0].max()) + pad
-        y_max_all = float(centers[:, 1].max()) + pad
+        # rects [x,y,w,h] → cell_bounds [xmin,ymin,xmax,ymax] → centers
+        cell_bounds = np.column_stack([
+            arr[:, 0],
+            arr[:, 1],
+            arr[:, 0] + arr[:, 2],
+            arr[:, 1] + arr[:, 3],
+        ])
+        centers = 0.5 * (cell_bounds[:, 0:2] + cell_bounds[:, 2:4])
+
+        x_min_all, y_min_all = cell_bounds[:, 0:2].min(axis=0) - pad
+        x_max_all, y_max_all = cell_bounds[:, 2:4].max(axis=0) + pad
         bounding_rect = np.array([
             x_min_all, y_min_all,
             x_max_all - x_min_all + 1,
-            y_max_all - y_min_all + 1
+            y_max_all - y_min_all + 1,
         ], dtype=np.int32)
 
         params = SetCoverSolverParameter(
@@ -724,13 +721,12 @@ class TaskService:
                 'rects': [],
             }
 
-        rects = rects_x100.tolist()
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
-            'rects': rects,
-            'rect_count': len(rects),
-            'point_count': len(centers),
+            'rects': rects_x100.tolist(),
+            'rect_count': len(rects_x100),
+            'rect_count_input': len(rects),
         }
 
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,

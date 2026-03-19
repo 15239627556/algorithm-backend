@@ -1,7 +1,8 @@
 # model_control.py
 """
 Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理，显存最多保留 max_groups 组，按加载顺序 FIFO 淘汰整组。
+按模型组管理，显存最多保留 max_groups 组，按 LRU（最少最近使用）淘汰整组。
+每次 ensure_model_loaded 调用都记录时间，淘汰时卸载最久未用的组。
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import json
 import logging
 import os
 import threading
+import time
 import urllib.request
 from typing import Dict, List, Tuple
 
@@ -65,7 +67,8 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
     ),
 }
 
-_loaded_group_order: List[str] = []
+# LRU: group_key -> 最后访问时间戳，每次 ensure_model_loaded 调用时更新
+_group_last_used: Dict[str, float] = {}
 _max_groups = int(os.environ.get("TRITON_MAX_GROUPS", "3"))
 _model_lock = threading.Lock()
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
@@ -149,13 +152,23 @@ def _unload_group(group_key: str, models: List[str]) -> None:
         unload_model(m)
 
 
+def _get_loaded_group_keys(actually_loaded: set) -> set:
+    """根据已加载的模型列表，反推出当前加载的组 key 集合"""
+    loaded_groups = set()
+    for _pn, (gk, ms) in MODEL_GROUPS.items():
+        if all(m in actually_loaded for m in ms):
+            loaded_groups.add(gk)
+    return loaded_groups
+
+
 def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int = None) -> Tuple[bool, str]:
     """
     确保模型组已加载。model_name 为 pipeline 名称（如 DPI147246_BM_PB_pipeline）。
-    显存最多保留 max_groups 组（默认 3），超限时按 FIFO 淘汰最久未用组。
+    显存最多保留 max_groups 组（默认 3），超限时按 LRU 淘汰最久未用组。
+    每次调用都会更新该组的最后访问时间戳。
     返回 (成功, 错误信息)
     """
-    global _loaded_group_order
+    global _group_last_used
     max_groups = max_groups if max_groups is not None else _max_groups
     if max_models is not None:
         max_groups = max_models  # 兼容旧参数
@@ -171,26 +184,29 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
             return ok, msg
 
     group_key, models = group_info
+    now = time.time()
     with _model_lock:
         actually_loaded = set(get_loaded_models())
-        _loaded_group_order = [g for g in _loaded_group_order if g]
 
         if all(m in actually_loaded for m in models):
-            if group_key in _loaded_group_order:
-                _loaded_group_order.remove(group_key)
-            _loaded_group_order.append(group_key)
+            _group_last_used[group_key] = now
             return True, ""
 
-        while len(_loaded_group_order) >= max_groups and _loaded_group_order:
-            oldest = _loaded_group_order.pop(0)
-            oldest_info = None
+        loaded_groups = _get_loaded_group_keys(actually_loaded)
+        while len(loaded_groups) >= max_groups and loaded_groups:
+            lru_group = min(loaded_groups, key=lambda g: _group_last_used.get(g, 0))
+            lru_info = None
             for _pn, (_gk, _ms) in MODEL_GROUPS.items():
-                if _gk == oldest:
-                    oldest_info = (_gk, _ms)
+                if _gk == lru_group:
+                    lru_info = (_gk, _ms)
                     break
-            if oldest_info:
-                _unload_group(oldest_info[0], oldest_info[1])
+            if lru_info:
+                _unload_group(lru_info[0], lru_info[1])
+                loaded_groups.discard(lru_group)
+                if lru_group in _group_last_used:
+                    del _group_last_used[lru_group]
             actually_loaded = set(get_loaded_models())
+            loaded_groups = _get_loaded_group_keys(actually_loaded)
 
         for m in models:
             if m in actually_loaded:
@@ -200,9 +216,7 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
                 return False, msg
             actually_loaded.add(m)
 
-        if group_key in _loaded_group_order:
-            _loaded_group_order.remove(group_key)
-        _loaded_group_order.append(group_key)
+        _group_last_used[group_key] = now
         return True, ""
 
 
