@@ -7,6 +7,19 @@ from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 
 taskService = TaskService()
 
+
+def _edge_cell_filter_form(value):
+    """form 中 edge_cell_filter 常为字符串，不能用 type=bool（bool('false') 为 True）。"""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    return True
+
+
 task = Namespace('api/v1/smear_analysis', description='任务相关接口')
 
 get_create_task = reqparse.RequestParser()
@@ -207,8 +220,14 @@ result_x100.add_argument('dpi', type=int, required=True, help='DPI，模型据�
 result_x100.add_argument('target_cell_types', type=str, required=True,
                          help='目标细胞类型如 WBC,MEG / WBC,RBC / MEG 等，见有效组合表', location='form')
 result_x100.add_argument('smear_type', type=str, required=False, help='涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取', location='form')
-result_x100.add_argument('edge_cell_filter', type=bool, required=False, help='是否过滤边缘细胞，默认为true',
-                         location='form', default=True)
+result_x100.add_argument(
+    'edge_cell_filter',
+    type=_edge_cell_filter_form,
+    required=False,
+    help='是否过滤边缘细胞（与瓦片任务同款规则），默认 true；可传 false/0/closed',
+    location='form',
+    default=True,
+)
 
 
 analyze_slide_model = task.model('analyze_slide', {
@@ -300,7 +319,9 @@ class GetTaskResultX100(Resource):
         dpi = args.get('dpi')
         target_cell_types = args.get('target_cell_types')
         smear_type = args.get('smear_type')
-        edge_cell_filter = args.get('edge_cell_filter', True)
+        edge_cell_filter = args.get('edge_cell_filter')
+        if edge_cell_filter is None:
+            edge_cell_filter = True
         position_xmin = args.get('position_xmin', None)
         position_ymin = args.get('position_ymin', None)
         position_xmax = args.get('position_xmax', None)

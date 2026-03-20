@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from io import BytesIO
 import time
 import uuid
 import logging
@@ -14,7 +15,12 @@ from backend.tools.public_methods import thread_decorator, upload_folder
 from backend.tools.combo_validator import validate_combo
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
-from backend.tools.filter_edge_incomplete_cells import filter_edge_incomplete_cells
+from backend.tools.filter_edge_incomplete_cells import (
+    filter_cell_dicts_edge_incomplete,
+    filter_edge_incomplete_cells,
+)
+from PIL import Image
+
 from project.smear_project import SmearProject
 from project.cells import Cell
 from project.triton_client import infer, get_model_by_dpi
@@ -79,6 +85,18 @@ def _load_task_info(task_id: str) -> dict | None:
     if matcher_data:
         data["matcher"] = {tuple(int(x) for x in k.split(",")): v for k, v in matcher_data.items()}
     return data
+
+
+def _parse_edge_cell_filter_flag(value) -> bool:
+    """multipart/form 里布尔常为字符串，避免 bool('false') == True。"""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    return True
 
 
 @dataclass
@@ -758,6 +776,7 @@ class TaskService:
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
         image_bytes = image_file.read()
+        edge_cell_filter = _parse_edge_cell_filter_flag(edge_cell_filter)
 
         ok, err = validate_combo(int(dpi), smear_type, target_cell_types or "")
         if not ok:
@@ -790,6 +809,18 @@ class TaskService:
                 'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
+        if edge_cell_filter and cell_list:
+            try:
+                with Image.open(BytesIO(image_bytes)) as im:
+                    tw_img, th_img = im.size
+                cell_list = filter_cell_dicts_edge_incomplete(
+                    cell_list, tw_img, th_img
+                )
+            except Exception as e:
+                logger.warning(
+                    "get_task_result_x100: edge_cell_filter skipped (image decode failed): %s",
+                    e,
+                )
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
