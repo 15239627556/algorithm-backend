@@ -14,6 +14,7 @@ from backend.tools.public_methods import thread_decorator, upload_folder
 from backend.tools.combo_validator import validate_combo
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
+from backend.tools.filter_edge_incomplete_cells import filter_edge_incomplete_cells
 from project.smear_project import SmearProject
 from project.cells import Cell
 from project.triton_client import infer, get_model_by_dpi
@@ -303,6 +304,25 @@ class TaskService:
             layer = project.get_layer(dpi)
             tiles = layer.iter_tiles()
             tiles = dedup_cells_across_tiles(tiles)
+            # 去掉贴边/近边细长等不完整检测框（尺度使用任务 tile_width/tile_height）
+            info = ctx.info
+            task_tw = info.get("tile_width")
+            task_th = info.get("tile_height")
+            if task_tw is None and tiles:
+                task_tw = tiles[0].w
+            if task_th is None and tiles:
+                task_th = tiles[0].h
+            if task_tw is not None and task_th is not None:
+                filter_edge_incomplete_cells(
+                    tiles,
+                    task_tile_w=int(task_tw),
+                    task_tile_h=int(task_th),
+                )
+            else:
+                logger.warning(
+                    "Task %s: skip filter_edge_incomplete_cells (no tile_width/tile_height)",
+                    task_id,
+                )
             for one_tile in tiles:
                 layer.tiles[one_tile.image_uid] = one_tile
             project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
