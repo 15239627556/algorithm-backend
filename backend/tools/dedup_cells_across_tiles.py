@@ -18,7 +18,8 @@ def dedup_cells_across_tiles(
     在相邻 40x tile 的重叠带内做 NMS 去重（torchvision.ops.nms）。
     - 输入：List[Tile]，每个 tile 的 cells 列表中的细胞坐标为局部坐标（相对于瓦片）
     - 相邻关系：右、下、右下、左下
-    - NMS 分数：使用 Cell.class_confidence；若缺，则在该对候选上临时面积兜底
+    - NMS 分数：使用 Cell.class_confidence，并结合“离 tile 边界的完整度”与“面积归一化”联合打分；
+      若该候选缺分数，则仅用面积归一化兜底
     - iou_thresh: 细胞的交并比阈值（用于 NMS）
     - 输出：List[Tile]，去重后的 tiles（cells 坐标仍为局部坐标，与输入一致）
     """
@@ -100,6 +101,52 @@ def dedup_cells_across_tiles(
         y2 = rects_xyxy[:, 3]
         return (x1 < rx2) & (x2 > rx1) & (y1 < ry2) & (y2 > ry1)
 
+    # NMS 里用于“更倾向保留不被裁剪的框”的打分因子：
+    # - 被裁剪的框往往贴着 tile 边界，因此到边界的最小距离更小
+    # - 完整框相对会有更大的到边界距离，同时面积也通常更大
+    def compute_effective_scores(
+        boxes_t: torch.Tensor,
+        scores_t_opt: torch.Tensor | None,
+        tile_rect_xyxy_np: np.ndarray,
+    ) -> torch.Tensor:
+        if boxes_t.numel() == 0:
+            return boxes_t.new_zeros((0,), dtype=torch.float32)
+
+        # 1. 计算框的宽高
+        wh = (boxes_t[:, 2:4] - boxes_t[:, 0:2]).clamp_min(0.0)
+        wh_w, wh_h = wh[:, 0], wh[:, 1]
+        
+        # 2. 面积归一化 (保持原样)
+        area = wh_w * wh_h
+        tile_w_h = tile_rect_xyxy_np[2:] - tile_rect_xyxy_np[:2]
+        tile_area = float(max(tile_w_h[0] * tile_w_h[1], 1))
+        area_norm = area / tile_area
+
+        # 3. 动态计算 tau_pixels：取短边的 50%，并设定 30-100 的安全区间
+        # 这样 150 像素的框 tau 是 75；30 像素的框 tau 是 30 (受限于 min)
+        box_short_side = torch.minimum(wh_w, wh_h)
+        dynamic_tau = (0.5 * box_short_side).clamp(min=30.0, max=100.0)
+
+        # 4. 到边界距离 
+        tile_rect_t = boxes_t.new_tensor(tile_rect_xyxy_np, dtype=boxes_t.dtype)
+        dist_left = (boxes_t[:, 0] - tile_rect_t[0]).clamp_min(0.0)
+        dist_right = (tile_rect_t[2] - boxes_t[:, 2]).clamp_min(0.0)
+        dist_top = (boxes_t[:, 1] - tile_rect_t[1]).clamp_min(0.0)
+        dist_bottom = (tile_rect_t[3] - boxes_t[:, 3]).clamp_min(0.0)
+        dist_min = torch.minimum(torch.minimum(dist_left, dist_right), 
+                                torch.minimum(dist_top, dist_bottom))
+
+        # 5. 完整度因子 [0, 1]
+        completeness_norm = (dist_min / dynamic_tau).clamp(0.0, 1.0)
+
+        # 6. 最终得分融合
+        if scores_t_opt is None:
+            return area_norm.to(torch.float32)
+
+        # 使用 0.5 作为基础分，让完整度占据更大的权重波动
+        return scores_t_opt.to(torch.float32) * (0.5 + 0.5 * completeness_norm) + area_norm.to(torch.float32)
+
+
     # 主循环：tile 对级别（候选在 torch 侧索引，NMS 用 score）
     for i, ti in enumerate(tiles_sorted):
         r, c = ti["rowID"], ti["colID"]
@@ -142,21 +189,12 @@ def dedup_cells_across_tiles(
             boxes_i_t = ti["rects_t"].index_select(0, idx_i_t)
             boxes_j_t = tj["rects_t"].index_select(0, idx_j_t)
 
-            # 分数优先用原 score；若该 tile 缺 score，则对该对候选临时按面积兜底（只算子集，开销很小）
-            if ti["scores_t"] is not None:
-                scores_i_t = ti["scores_t"].index_select(0, idx_i_t)
-            else:
-                # (x2-x1)*(y2-y1)
-                wh_i = (boxes_i_t[:, 2] - boxes_i_t[:, 0]).clamp_min_(0) * (
-                        boxes_i_t[:, 3] - boxes_i_t[:, 1]).clamp_min_(0)
-                scores_i_t = wh_i
+            # 联合打分：class_confidence + 完整度 + 面积（更倾向保留不被裁剪的框）
+            scores_i_base_t = ti["scores_t"].index_select(0, idx_i_t) if ti["scores_t"] is not None else None
+            scores_j_base_t = tj["scores_t"].index_select(0, idx_j_t) if tj["scores_t"] is not None else None
 
-            if tj["scores_t"] is not None:
-                scores_j_t = tj["scores_t"].index_select(0, idx_j_t)
-            else:
-                wh_j = (boxes_j_t[:, 2] - boxes_j_t[:, 0]).clamp_min_(0) * (
-                        boxes_j_t[:, 3] - boxes_j_t[:, 1]).clamp_min_(0)
-                scores_j_t = wh_j
+            scores_i_t = compute_effective_scores(boxes_i_t, scores_i_base_t, A)
+            scores_j_t = compute_effective_scores(boxes_j_t, scores_j_base_t, B)
 
             boxes_t = torch.cat([boxes_i_t, boxes_j_t], dim=0) if num_left and num_right else \
                 (boxes_i_t if num_left else boxes_j_t)
