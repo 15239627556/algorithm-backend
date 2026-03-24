@@ -495,6 +495,14 @@ class TaskService:
             if result:
                 return result
         ctx = self.tasks.get(task_id)
+        info = ctx.info
+        if not info.get('finished', False):
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': 'Task not completed',
+                'result': {},
+            }
         smear_type = (ctx.info or {}).get("smear_type")
         if not smear_type:
             smear_type = "BM"
