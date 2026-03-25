@@ -661,18 +661,18 @@ class TaskService:
                 bm_cfg.target_cell_num_MEG = required_meg
 
                 wbc_points = kwargs.get("wbc_points") or []
-                wbc_rects = []
+                wbc_rects: list[list[float]] = []
                 for p in wbc_points:
                     if not isinstance(p, dict):
                         continue
                     try:
-                        x = int(p.get("x"))
-                        y = int(p.get("y"))
-                        w = int(p.get("w"))
-                        h = int(p.get("h"))
+                        x = float(p.get("x"))
+                        y = float(p.get("y"))
+                        w = float(p.get("w"))
+                        h = float(p.get("h"))
                     except (TypeError, ValueError):
                         continue
-                    wbc_rects.append({"x": x, "y": y, "w": w, "h": h})
+                    wbc_rects.append([x, y, w, h])
 
                 if not wbc_rects:
                     return {
