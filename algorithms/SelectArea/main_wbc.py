@@ -29,7 +29,8 @@ from .pipeline_wbc import WBCSamplingPipeline
 class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
+    # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
+    json_path: str = "/home/ubuntu/Downloads/c25a8f33793c43f4a164f5bbd4785e25.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     out_png_name: str = "sampling_result_viz.png"
 

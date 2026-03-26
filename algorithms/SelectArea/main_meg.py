@@ -9,6 +9,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from project.smear_project import SmearProject
+from project.tiles import Tile
 
 from dataclasses import dataclass
 from typing import Any, Dict, List
@@ -26,13 +27,34 @@ from .pipeline_meg import MegSamplingPipeline
 # ===================== 可视化配置 =====================
 @dataclass(frozen=True)
 class VizConfigMeg:
-    # 与 WBC 共用同一 JSON 与输出目录，方便协同调试
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"
+    # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
+    json_path: str = "/home/ubuntu/Downloads/c25a8f33793c43f4a164f5bbd4785e25.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
-    # WBC 结果默认文件名
-    wbc_result_json: str = "results.json"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
+
+
+def collect_nucleated_wbc_rects_from_tiles(
+    tiles: List[Tile],
+    wbc_cell_type: int,
+) -> List[List[float]]:
+    """
+    从 40x tiles 中收集有核细胞矩形，全局坐标 [x, y, w, h]。
+    过滤方式与 heatmaps.build_cell_count_grid 中一致（cell_type == WBC_cell_type）。
+    """
+    wbc_rects: List[List[float]] = []
+    for tile in tiles:
+        if tile.x is None or tile.y is None:
+            continue
+        for cell in tile.cells:
+            if getattr(cell, "cell_type", None) != wbc_cell_type:
+                continue
+            x = float(tile.x + cell.cell_xmin)
+            y = float(tile.y + cell.cell_ymin)
+            w = float(cell.cell_xmax - cell.cell_xmin)
+            h = float(cell.cell_ymax - cell.cell_ymin)
+            wbc_rects.append([x, y, w, h])
+    return wbc_rects
 
 
 # ===================== 可视化：MEG 任务 =====================
@@ -182,45 +204,52 @@ def main() -> None:
     json_path = Path(viz_cfg.json_path)
     out_dir = Path(viz_cfg.out_dir)
 
-    # 1. 加载 SmearProject
+    # 1. 加载 SmearProject（与 main_wbc 相同入口）
     project = SmearProject.load_json(str(json_path))
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
-    # 2. 从 WBC 结果 JSON 中构造 wbc_rects
-    wbc_result_path = out_dir / viz_cfg.wbc_result_json
-    if not wbc_result_path.exists():
-        print(f"[ERROR][MEG] 未找到 WBC 结果文件: {wbc_result_path}")
+    # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
+    bm_cfg = BM40Config(target_cell_num_MEG=100)
+
+    # 3. 从 40x 层 tiles 中收集有核细胞 rect（与 pipeline_wbc 取层/tiles、heatmaps 按类型过滤一致）
+    layer_40x_id = 0
+    if not project.layers or layer_40x_id >= len(project.layers):
+        print("[ERROR][MEG] 项目中缺少扫描层数据")
+        return
+    layer_40x = project.layers[layer_40x_id]
+    if not layer_40x:
+        print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
+        return
+    tiles = list(layer_40x.tiles.values())
+    if not tiles:
+        print("[ERROR][MEG] 40x 层中没有找到有效的 Tile 数据")
         return
 
-    with open(wbc_result_path, "r", encoding="utf-8") as f:
-        wbc_results = json.load(f)
-
-    # 只使用 view_type == "WBC" 的视野，并转换为 [x, y, w, h]
-    wbc_rects: List[List[float]] = []
-    for item in wbc_results:
-        if item.get("view_type") != "WBC":
-            continue
-        x = float(item["view_xmin"])
-        y = float(item["view_ymin"])
-        w = float(item["view_xmax"] - item["view_xmin"])
-        h = float(item["view_ymax"] - item["view_ymin"])
-        wbc_rects.append([x, y, w, h])
-
+    wbc_rects = collect_nucleated_wbc_rects_from_tiles(tiles, bm_cfg.WBC_cell_type)
+    print(f"[INFO][MEG] 从 40x tiles 中解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
     if not wbc_rects:
-        print("[ERROR][MEG] 从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。")
+        print(
+            "[ERROR][MEG] 未从 40x tiles 中解析到任何有核细胞（WBC_cell_type），"
+            "无法计算 MEG 排序参考。"
+        )
         return
 
-    print(f"[INFO][MEG] 解析到 {len(wbc_rects)} 个 WBC 视野用于 MEG 排序。")
+    print(f"[INFO][MEG] 从项目解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
 
-    # 3. 构造 BM40Config
-    bm_cfg = BM40Config(target_cell_num_MEG=500)
+    import time
+    start_time = time.time()
     pipeline = MegSamplingPipeline(bm_cfg)
+    end_time = time.time()
+    print(f"[INFO][MEG] 构造 MegSamplingPipeline 时间: {end_time - start_time} 秒")
 
+    start_time = time.time()
     # 4. 运行 MEG 采样
     meg_tasks: List[TaskOutput] = pipeline.run_meg(
         project=project,
         wbc_rects=wbc_rects,
     )
+    end_time = time.time()
+    print(f"[INFO][MEG] 运行 MEG 采样时间: {end_time - start_time} 秒")
     print(f"[INFO][MEG] 算法执行完成，生成了 {len(meg_tasks)} 个 MEG 拍摄视野")
 
     # 5. 保存 MEG 结果到 JSON

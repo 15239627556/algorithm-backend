@@ -106,15 +106,12 @@ def generate_meg_view_tasks(
             mask = in_x & in_y
             matched_idx = np.where(mask)[0]
             selected_rects.append((rx, ry, rw, rh, matched_idx))
+    # 保护逻辑：用户需求为0或负数时，返回空的 meg_tasks。
     elif target_num <= 0:
-        print("警告：target_cell_num_MEG <= 0，将返回全部候选 MEG 视野。")
-        # 保持旧行为：返回全部候选视野。为了减少重复开销，这里直接缓存每个视野内的命中索引。
-        for rx, ry, rw, rh in rects_meg:
-            in_x = (centers[:, 0] >= rx) & (centers[:, 0] < rx + rw)
-            in_y = (centers[:, 1] >= ry) & (centers[:, 1] < ry + rh)
-            mask = in_x & in_y
-            matched_idx = np.where(mask)[0]
-            selected_rects.append((rx, ry, rw, rh, matched_idx))
+        print("警告：target_cell_num_MEG <= 0，将返回空的 meg_tasks。")
+        return []
+
+    # 正常逻辑：用户需求为正数时，按贪心算法选择视野。
     else:
         for rx, ry, rw, rh in rects_meg:
             if total_cells >= target_num:

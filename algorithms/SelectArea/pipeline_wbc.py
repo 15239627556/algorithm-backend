@@ -88,6 +88,10 @@ class WBCSamplingPipeline:
 
 
         # 3. 业务参数准备
+        if self.cfg.target_cell_num <= 0:
+            print(f"警告：target_cell_num({self.cfg.target_cell_num}) <= 0，将返回空的 wbc_tasks。")
+            return []
+
         target_num = self.cfg.target_cell_num * self.cfg.target_ratio
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
