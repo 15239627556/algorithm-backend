@@ -6,7 +6,7 @@ import time
 import uuid
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from cachetools import TTLCache
 
@@ -30,6 +30,13 @@ from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 
 logger = logging.getLogger(__name__)
+
+
+def _async_finish_after_update_coordinates() -> bool:
+    """为 True 时 update_coordinates 在更新坐标后立即返回，去重/过滤/落盘在后台线程执行。"""
+    v = os.environ.get("UPDATE_COORDINATES_ASYNC_FINISH", "1").strip().lower()
+    return v not in ("0", "false", "no", "off", "")
+
 
 # In-memory cache TTL (10 min), clear on restart. TTLCache is thread-safe.
 CACHE_TTL_SEC = int(os.environ.get("ROI_CACHE_TTL", "600"))
@@ -105,6 +112,8 @@ class TaskContext:
     project: SmearProject
     info: dict
     lock: threading.Lock = field(default_factory=threading.Lock)
+    coord_mutex: threading.Lock = field(default_factory=threading.Lock)
+    finish_thread: Optional[threading.Thread] = field(default=None, repr=False)
 
 
 class TaskService:
@@ -178,53 +187,96 @@ class TaskService:
         }
 
     def update_coordinates(self, task_id, tiles_msg):
+        t0 = time.time()
         if task_id not in self.tasks:
             result = self.load_data(task_id)
             if result:
                 return result
+        t_load = time.time()
         ctx = self.tasks[task_id]
         project = ctx.project
         dpi = ctx.info.get('dpi', 144750)
         layer = project.get_layer(dpi)
         project_info = ctx.info
-        with ctx.lock:
-            matcher = project_info.get('matcher')
-            if not matcher:
-                matcher = {}
-                project_info['matcher'] = matcher
-        failed_tiles = []
-        for tile_info in tiles_msg:
-            row_index = int(tile_info['row_index'])
-            col_index = int(tile_info['col_index'])
-            position_x = int(tile_info['position_x'])
-            position_y = int(tile_info['position_y'])
-            image_uid = matcher.get((row_index, col_index))
-            if image_uid is None:
-                tiles = layer.iter_tiles()
-                flag = 0
-                for tile in tiles:
-                    if tile.meta.get('row_index') == row_index and tile.meta.get('col_index') == col_index:
-                        tile.x = position_x
-                        tile.y = position_y
-                        flag = 1
-                        break
-                if flag == 0:
-                    tile_info['reason'] = 'tile not found'
-                    failed_tiles.append(tile_info)
-            else:
-                try:
-                    tile = layer.get_tile(image_uid)
-                    tile.x = position_x
-                    tile.y = position_y
-                except Exception as e:
-                    tile_info['reason'] = str(e)
-                    failed_tiles.append(tile_info)
-        self._finish_task_sync(task_id)
-        return {
+
+        with ctx.coord_mutex:
+            with ctx.lock:
+                matcher = project_info.get('matcher')
+                if not matcher:
+                    matcher = {}
+                    project_info['matcher'] = matcher
+                prev = ctx.finish_thread
+                if prev is not None and prev.is_alive():
+                    prev.join(timeout=3600)
+
+                tiles_list = layer.iter_tiles()
+                rowcol_to_tile = {}
+                for tile in tiles_list:
+                    r, c = tile.meta.get("row_index"), tile.meta.get("col_index")
+                    if r is not None and c is not None:
+                        rowcol_to_tile[(int(r), int(c))] = tile
+
+                failed_tiles = []
+                for tile_info in tiles_msg:
+                    row_index = int(tile_info['row_index'])
+                    col_index = int(tile_info['col_index'])
+                    position_x = int(tile_info['position_x'])
+                    position_y = int(tile_info['position_y'])
+                    image_uid = matcher.get((row_index, col_index))
+                    if image_uid is None:
+                        tile = rowcol_to_tile.get((row_index, col_index))
+                        if tile is None:
+                            tile_info['reason'] = 'tile not found'
+                            failed_tiles.append(tile_info)
+                        else:
+                            tile.x = position_x
+                            tile.y = position_y
+                    else:
+                        try:
+                            tile = layer.get_tile(image_uid)
+                            if tile is None:
+                                tile_info['reason'] = 'tile not found'
+                                failed_tiles.append(tile_info)
+                            else:
+                                tile.x = position_x
+                                tile.y = position_y
+                        except Exception as e:
+                            tile_info['reason'] = str(e)
+                            failed_tiles.append(tile_info)
+
+        t_done = time.time()
+        logger.debug(
+            "update_coordinates task_id=%s load_ms=%.2f coord_update_ms=%.2f",
+            task_id[:8],
+            (t_load - t0) * 1000,
+            (t_done - t_load) * 1000,
+        )
+
+        async_finish = _async_finish_after_update_coordinates()
+        if async_finish:
+            def _run():
+                with ctx.lock:
+                    self._finish_task_impl(task_id)
+
+            th = threading.Thread(
+                target=_run,
+                name=f"finish-{task_id[:8]}",
+                daemon=True,
+            )
+            ctx.finish_thread = th
+            th.start()
+        else:
+            with ctx.lock:
+                self._finish_task_impl(task_id)
+
+        out: Dict[str, Any] = {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
-            'failed_tiles': failed_tiles
+            'failed_tiles': failed_tiles,
         }
+        if async_finish:
+            out['finish_in_background'] = True
+        return out
 
     def upload_image(self, task_id, row_index, col_index, tile_image):
         """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
@@ -311,18 +363,24 @@ class TaskService:
                 'reason': str(e),
             }
 
-    def _finish_task_sync(self, task_id: str):
-        """所有 tile 已上传并推理完成，同步去重并保存"""
+    def _finish_task_impl(self, task_id: str) -> None:
+        """所有 tile 已上传并推理完成：去重、过滤、落盘。须在持有 ctx.lock 时调用。"""
+        t5 = time.time()
+        ctx = self.tasks.get(task_id)
+        if not ctx:
+            return
         try:
-            ctx = self.tasks.get(task_id)
-            if not ctx:
-                return
             project = ctx.project
             dpi = ctx.info.get('dpi', 144750)
             layer = project.get_layer(dpi)
             tiles = layer.iter_tiles()
             tiles = dedup_cells_across_tiles(tiles)
-            # 去掉贴边/近边细长等不完整检测框（尺度使用任务 tile_width/tile_height）
+            t6 = time.time()
+            logger.debug(
+                "dedup_cells_across_tiles task_id=%s ms=%.2f",
+                task_id[:8],
+                (t6 - t5) * 1000,
+            )
             info = ctx.info
             task_tw = info.get("tile_width")
             task_th = info.get("tile_height")
@@ -343,15 +401,34 @@ class TaskService:
                 )
             for one_tile in tiles:
                 layer.tiles[one_tile.image_uid] = one_tile
+            t9 = time.time()
+            logger.debug(
+                "filter_edge_incomplete_cells task_id=%s ms=%.2f",
+                task_id[:8],
+                (t9 - t6) * 1000,
+            )
             project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+            t7 = time.time()
+            logger.debug(
+                "save_json task_id=%s ms=%.2f",
+                task_id[:8],
+                (t7 - t9) * 1000,
+            )
             ctx.info['task_status'] = RetCode.TASK_FINISHED.value
             ctx.info['finished'] = True
             _save_task_info(task_id, ctx.info)
+            t8 = time.time()
+            logger.debug(
+                "save_task_info task_id=%s ms=%.2f finish_total_ms=%.2f",
+                task_id[:8],
+                (t8 - t7) * 1000,
+                (t8 - t5) * 1000,
+            )
             logger.info("Task %s finished and saved.", task_id)
         except Exception as e:
             if task_id in self.tasks:
                 self.tasks[task_id].info['task_status'] = RetCode.TASK_TIMEOUT.value
-            logger.exception("_finish_task_sync error: %s", e)
+            logger.exception("_finish_task_impl error: %s", e)
 
     def check_image(self, task_id: str) -> dict:
         """不再检测缺失块，直接返回成功与空 missing_tiles"""
