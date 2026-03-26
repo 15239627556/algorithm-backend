@@ -7,7 +7,7 @@ from __future__ import annotations
 VALID_COMBINATIONS = {
     (144750, "BM"): {"WBC", "MEG"},
     (144750, "PB"): {"WBC", "RBC", "PLAT"},
-    (357378, "BM"): {"MEG"},
+    (357378, "BM"): {"MEG", "WBC"},
     (714756, "BM"): {"WBC", "RBC"},
     (714756, "PB"): {"WBC", "RBC"},
     (714756, "CF"): {"WBC"},

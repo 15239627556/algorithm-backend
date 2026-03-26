@@ -60,7 +60,7 @@ def get_model_by_dpi(
 
     有效组合:
     - 144750 ± 10%: BM(WBC,MEG) / PB(WBC,RBC,PLAT) → MODEL_144750
-    - 357378 ± 10%: BM(MEG) → MODEL_357378
+    - 357378 ± 10%: BM(MEG) → MODEL_357378；BM(WBC) 暂无专用模型，临时走 MODEL_714756_BM（与 714756 BM WBC 同 pipeline）
     - 714756 ± 10%: BM(WBC,RBC) / PB(WBC,RBC) / CF(WBC) → MODEL_714756_CF(CF) / MODEL_714756_BM(BM/PB)
     """
     # 遗留倍率缩写 → 实际 DPI
@@ -69,6 +69,11 @@ def get_model_by_dpi(
     if _in_dpi_range(dpi, DPI_144750):
         return MODEL_144750
     if _in_dpi_range(dpi, DPI_357378):
+        st = (smear_type or "BM").strip().upper()
+        at = (algorithm_types or "").upper()
+        # 暂无 DPI357378 的 BM WBC 专用模型：仅 WBC（不含 MEG）时临时使用 714756 BM/PB pipeline
+        if st == "BM" and "WBC" in at and "MEG" not in at:
+            return MODEL_714756_BM
         return MODEL_357378
     if _in_dpi_range(dpi, DPI_714756):
         if (smear_type or "").upper() == "CF":
@@ -477,6 +482,7 @@ if __name__ == "__main__":
         (144750, "BM", "WBC,MEG"),
         (144750, "PB", "WBC,RBC"),
         (357378, "BM", "MEG"),
+        (357378, "BM", "WBC"),
         (714756, "BM", "WBC,RBC"),
         (714756, "CF", "WBC"),
         (40, "BM", "WBC,MEG"),
