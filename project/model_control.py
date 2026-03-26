@@ -1,8 +1,9 @@
 # model_control.py
 """
 Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理，显存最多保留 max_groups 组，按 LRU（最少最近使用）淘汰整组。
-每次 ensure_model_loaded 调用都记录时间，淘汰时卸载最久未用的组。
+按模型组管理，显存最多保留 max_groups 组；其中 DPI147246_BM_PB_pipeline 对应组常驻、不参与 LRU、不会被卸载。
+其余组在 (max_groups - 1) 个槽位内按 LRU（最少最近使用）淘汰整组。
+每次 ensure_model_loaded 调用都记录时间；淘汰时只从非常驻组中选最久未用者。
 """
 from __future__ import annotations
 
@@ -67,7 +68,11 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
     ),
 }
 
-# LRU: group_key -> 最后访问时间戳，每次 ensure_model_loaded 调用时更新
+# 常驻组（与 MODEL_GROUPS 中 DPI147246_BM_PB_pipeline 的 group_key 一致）：启动预加载，不参与 LRU，永不淘汰
+PINNED_GROUP_KEY = "DPI147246_BM_PB"
+PINNED_PIPELINE_NAME = "DPI147246_BM_PB_pipeline"
+
+# LRU: group_key -> 最后访问时间戳（常驻组也会更新，仅用于观测，不参与淘汰）
 _group_last_used: Dict[str, float] = {}
 _max_groups = int(os.environ.get("TRITON_MAX_GROUPS", "3"))
 _model_lock = threading.Lock()
@@ -161,10 +166,18 @@ def _get_loaded_group_keys(actually_loaded: set) -> set:
     return loaded_groups
 
 
+def _evictable_group_keys(loaded_groups: set) -> set:
+    """可作为 LRU 淘汰候选的组。若常驻组已加载，则将其排除；否则全部可淘汰。"""
+    if PINNED_GROUP_KEY in loaded_groups:
+        return loaded_groups - {PINNED_GROUP_KEY}
+    return set(loaded_groups)
+
+
 def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int = None) -> Tuple[bool, str]:
     """
     确保模型组已加载。model_name 为 pipeline 名称（如 DPI147246_BM_PB_pipeline）。
-    显存最多保留 max_groups 组（默认 3），超限时按 LRU 淘汰最久未用组。
+    显存最多保留 max_groups 组（默认 3）：其中 DPI147246_BM_PB 组常驻、不淘汰；
+    其余组最多占 (max_groups - 1) 个槽位，超限时在非常驻组中按 LRU 淘汰。
     每次调用都会更新该组的最后访问时间戳。
     返回 (成功, 错误信息)
     """
@@ -194,7 +207,16 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
 
         loaded_groups = _get_loaded_group_keys(actually_loaded)
         while len(loaded_groups) >= max_groups and loaded_groups:
-            lru_group = min(loaded_groups, key=lambda g: _group_last_used.get(g, 0))
+            evictable = _evictable_group_keys(loaded_groups)
+            if not evictable:
+                logger.warning(
+                    "Model groups at limit (%s) but no evictable group (pinned=%s holds slot); cannot load %s",
+                    len(loaded_groups),
+                    PINNED_GROUP_KEY,
+                    group_key,
+                )
+                return False, "model group capacity full and pinned group cannot be evicted"
+            lru_group = min(evictable, key=lambda g: _group_last_used.get(g, 0))
             lru_info = None
             for _pn, (_gk, _ms) in MODEL_GROUPS.items():
                 if _gk == lru_group:
@@ -218,6 +240,19 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
 
         _group_last_used[group_key] = now
         return True, ""
+
+
+def warmup_pinned_models_at_startup() -> None:
+    """Web 服务启动时预加载常驻组（DPI147246_BM_PB_pipeline），失败打 ERROR 日志。"""
+    ok, msg = ensure_model_loaded(PINNED_PIPELINE_NAME, max_groups=_max_groups)
+    if not ok:
+        logger.error(
+            "Pinned model group %s failed to load at startup: %s",
+            PINNED_PIPELINE_NAME,
+            msg,
+        )
+    else:
+        logger.info("Pinned model group %s loaded at startup.", PINNED_PIPELINE_NAME)
 
 
 def warmup_model(model_name: str) -> None:

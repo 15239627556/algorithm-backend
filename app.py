@@ -114,6 +114,14 @@ def _log_request(response):
 
 # ========== 日志配置结束 ==========
 
+# Triton：常驻组 DPI147246_BM_PB_pipeline 在进程启动时预加载，不参与 LRU 淘汰（见 project.model_control）
+try:
+    from project.model_control import warmup_pinned_models_at_startup
+
+    warmup_pinned_models_at_startup()
+except Exception:
+    app.logger.exception("Triton pinned model warmup failed at startup")
+
 
 if __name__ == '__main__':
     print("### FLASK MAIN PID =", os.getpid())
