@@ -640,15 +640,15 @@ class TaskService:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
                         "ret_desc": RetDesc.CLIENT_ERROR.value,
-                        "reason": "Missing required_num.WBC for BM WBC_MEG",
+                        "reason": "Missing required_num.WBC or required_num.WBC is 0 for BM WBC_MEG",
                     }
                 # 屏蔽这种情况,允许MGE为0
-                # if not required_meg or required_meg <= 0:
-                #     return {
-                #         "ret_code": RetCode.CLIENT_ERROR.value,
-                #         "ret_desc": RetDesc.CLIENT_ERROR.value,
-                #         "reason": "Missing required_num.MEG for BM WBC_MEG",
-                #     }
+                if required_meg is None:
+                    return {
+                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "reason": "Missing required_num.MEG for BM WBC_MEG",
+                    }
             elif normalized_task_type == "RBC":
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
