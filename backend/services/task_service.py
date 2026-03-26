@@ -642,12 +642,13 @@ class TaskService:
                         "ret_desc": RetDesc.CLIENT_ERROR.value,
                         "reason": "Missing required_num.WBC for BM WBC_MEG",
                     }
-                if not required_meg or required_meg <= 0:
-                    return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
-                        "reason": "Missing required_num.MEG for BM WBC_MEG",
-                    }
+                # 屏蔽这种情况,允许MGE为0
+                # if not required_meg or required_meg <= 0:
+                #     return {
+                #         "ret_code": RetCode.CLIENT_ERROR.value,
+                #         "ret_desc": RetDesc.CLIENT_ERROR.value,
+                #         "reason": "Missing required_num.MEG for BM WBC_MEG",
+                #     }
             elif normalized_task_type == "RBC":
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
@@ -696,37 +697,38 @@ class TaskService:
                 if normalized_task_type == "WBC":
                     final_task_list = wbc_task_rects
                 else:
-                    # WBC_MEG：与 main_meg.py 一致，仅使用 view_type=="WBC" 的视野，转为 [[x,y,w,h]] 再 run_meg
-                    wbc_rects_meg: list[list[float]] = []
-                    for task in wbc_tasks:
-                        if task.view_type != "WBC":
-                            continue
-                        x = float(task.view_xmin)
-                        y = float(task.view_ymin)
-                        w = float(task.view_xmax - task.view_xmin)
-                        h = float(task.view_ymax - task.view_ymin)
-                        wbc_rects_meg.append([x, y, w, h])
-                    if not wbc_rects_meg:
-                        return {
-                            "ret_code": RetCode.CLIENT_ERROR.value,
-                            "ret_desc": RetDesc.CLIENT_ERROR.value,
-                            "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
-                        }
-                    bm_cfg.target_cell_num_MEG = required_meg
-                    try:
-                        meg_pipeline = MegSamplingPipeline(bm_cfg)
-                        meg_tasks = meg_pipeline.run_meg(
-                            project=project, wbc_rects=wbc_rects_meg
-                        )
-                        meg_task_rects = [task.to_dict() for task in meg_tasks]
-                    except Exception as e:
-                        logger.exception("MEG roi_selection failed: %s", e)
-                        return {
-                            "ret_code": RetCode.CLIENT_ERROR.value,
-                            "ret_desc": RetDesc.CLIENT_ERROR.value,
-                            "reason": str(e),
-                        }
-                    final_task_list = wbc_task_rects + meg_task_rects
+                    if required_meg > 0:
+                        # WBC_MEG：与 main_meg.py 一致，仅使用 view_type=="WBC" 的视野，转为 [[x,y,w,h]] 再 run_meg
+                        wbc_rects_meg: list[list[float]] = []
+                        for task in wbc_tasks:
+                            if task.view_type != "WBC":
+                                continue
+                            x = float(task.view_xmin)
+                            y = float(task.view_ymin)
+                            w = float(task.view_xmax - task.view_xmin)
+                            h = float(task.view_ymax - task.view_ymin)
+                            wbc_rects_meg.append([x, y, w, h])
+                        if not wbc_rects_meg:
+                            return {
+                                "ret_code": RetCode.CLIENT_ERROR.value,
+                                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                                "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
+                            }
+                        bm_cfg.target_cell_num_MEG = required_meg
+                        try:
+                            meg_pipeline = MegSamplingPipeline(bm_cfg)
+                            meg_tasks = meg_pipeline.run_meg(
+                                project=project, wbc_rects=wbc_rects_meg
+                            )
+                            meg_task_rects = [task.to_dict() for task in meg_tasks]
+                        except Exception as e:
+                            logger.exception("MEG roi_selection failed: %s", e)
+                            return {
+                                "ret_code": RetCode.CLIENT_ERROR.value,
+                                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                                "reason": str(e),
+                            }
+                        final_task_list = wbc_task_rects + meg_task_rects
 
             elif smear_type == "BM" and normalized_task_type == "MEG":
                 bm_cfg = BM40Config(
