@@ -729,6 +729,8 @@ class TaskService:
                                 "reason": str(e),
                             }
                         final_task_list = wbc_task_rects + meg_task_rects
+                    else:
+                        final_task_list = wbc_task_rects
 
             elif smear_type == "BM" and normalized_task_type == "MEG":
                 bm_cfg = BM40Config(
