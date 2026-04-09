@@ -209,14 +209,11 @@ def main() -> None:
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=100)
+    bm_cfg = BM40Config(target_cell_num_MEG=100, dpi=138430)
 
     # 3. 从 40x 层 tiles 中收集有核细胞 rect（与 pipeline_wbc 取层/tiles、heatmaps 按类型过滤一致）
-    layer_40x_id = 0
-    if not project.layers or layer_40x_id >= len(project.layers):
-        print("[ERROR][MEG] 项目中缺少扫描层数据")
-        return
-    layer_40x = project.layers[layer_40x_id]
+    dpi = bm_cfg.dpi
+    layer_40x = project.get_layer(dpi)
     if not layer_40x:
         print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
         return

@@ -38,8 +38,10 @@ class MegSamplingPipeline:
         wbc_rects: List[List[int]],
     ) -> List[TaskOutput]:
         # 1. 从项目中提取 40x 扫描层
-        layer_40x_id = 0
-        layer_40x = project.layers[layer_40x_id]
+        dpi = self.cfg.dpi
+        layer_40x = project.get_layer(dpi)
+        # layer_40x_id = 0
+        # layer_40x = project.layers[layer_40x_id]
         if not layer_40x:
             print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
             return []

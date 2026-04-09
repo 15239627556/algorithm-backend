@@ -198,7 +198,7 @@ def main() -> None:
 
     # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
     # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
-    bm_cfg = BM40Config(target_cell_num=300)
+    bm_cfg = BM40Config(target_cell_num=300, dpi=138430)
     pipeline = WBCSamplingPipeline(bm_cfg)
     
   

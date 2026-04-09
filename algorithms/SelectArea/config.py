@@ -12,7 +12,8 @@ class BM40Config:
     x100_rect_width: int = 384      # 百倍视野尺寸-宽 
     x100_rect_height: int = 283     # 百倍视野尺寸-高    
     heatmap_orientation: int = 1    # 0: 头部在右，1: 头部在左
-    target_cell_num_MEG: int = 300  # 用户设定的目标细胞数量(meg)     
+    target_cell_num_MEG: int = 300  # 用户设定的目标细胞数量(meg)  
+    dpi: int = 138430                   # 扫描层 DPI（默认40倍DPI）
 
 
 

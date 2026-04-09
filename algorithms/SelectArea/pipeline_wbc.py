@@ -45,8 +45,10 @@ class WBCSamplingPipeline:
         输入改为 SmearProject 对象。
         """
         # 1. 从项目中提取 40x 扫描层
-        layer_40x_id = 0
-        layer_40x = project.layers[layer_40x_id]
+        # layer_40x_id = 0
+        # layer_40x = project.layers[layer_40x_id]
+        dpi = self.cfg.dpi
+        layer_40x = project.get_layer(dpi)
         if not layer_40x:
             print("[ERROR] 项目中缺少 40x 扫描层数据")
             return []
