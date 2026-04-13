@@ -656,17 +656,17 @@ class TaskService:
                     "reason": "Invalid combo: BM does not support task_type=RBC",
                 }
         elif smear_type == "PB":
-            if normalized_task_type != "RBC":
+            if normalized_task_type != "WBC":
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
                     "ret_desc": RetDesc.CLIENT_ERROR.value,
-                    "reason": f"Invalid combo: PB only supports task_type=RBC, got {task_type}",
+                    "reason": f"Invalid combo: PB only supports task_type=WBC, got {task_type}",
                 }
-            if not required_rbc or required_rbc <= 0:
+            if not required_wbc and required_wbc <= 0:
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
                     "ret_desc": RetDesc.CLIENT_ERROR.value,
-                    "reason": "Missing required_num.RBC for PB RBC",
+                    "reason": "Missing required_num.WBC for PB WBC",
                 }
         else:
             return {
@@ -773,12 +773,16 @@ class TaskService:
                         "reason": str(e),
                     }
 
-            elif smear_type == "PB" and normalized_task_type == "RBC":
-                return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
-                    "reason": "PB RBC roi_selection is not implemented yet",
-                }
+            elif smear_type == "PB" and normalized_task_type == "WBC":
+                bm_cfg = BM40Config(
+                    user_choice_area=user_choice_area,
+                    target_cell_num=required_wbc,
+                    x100_rect_width=int(view_width),
+                    x100_rect_height=int(view_height),
+                )
+                pipeline = WBCSamplingPipeline(bm_cfg)
+                wbc_tasks = pipeline.run(project)
+                final_task_list = [task.to_dict() for task in wbc_tasks]
             else:
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,

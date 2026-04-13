@@ -19,7 +19,7 @@ import numpy as np
 from project.cells import Cell
 from project.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100
-from config import TRITON_URL
+from config import TRITON_PINNED_PIPELINE_NAME, TRITON_URL
 
 # DPI 基准值（±10% 容差），仅以 DPI 选择模型，不再使用倍率缩写
 DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
@@ -27,13 +27,13 @@ DPI_357378 = 357378  # 巨核细胞定位分类
 DPI_714756 = 714756  # 有核细胞/成熟红细胞
 TOLERANCE = 0.1
 
-# 模型名称常量
-MODEL_144750 = "DPI147246_BM_PB_pipeline"   # 144750: BM/PB 共用
-MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞
-MODEL_714756_BM = "DPI714756_BM_PB_pipeline"
-MODEL_714756_CF = "DPI714756_CF_WBC_pipeline"
+# 模型名称常量：144750 常驻 pipeline 见 config.TRITON_PINNED_PIPELINE_NAME（各组预估显存须与 GROUP_VRAM_GB 一致）
+MODEL_144750 = TRITON_PINNED_PIPELINE_NAME  # 144750: BM/PB 共用  预估显存占用6G
+MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用3.5G
+MODEL_714756_BM = "DPI714756_BM_PB_pipeline" #  预估显存占用3G
+MODEL_714756_CF = "DPI714756_CF_WBC_pipeline" #  预估显存占用7.5G
 # 图片增强/滤镜 pipeline（x40 超分辨率滤镜深度学习模式）
-MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
+MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline" # 预估显存占用3G
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
@@ -272,7 +272,7 @@ def infer(
     import tritonclient.grpc as grpcclient
 
     model = get_model_by_dpi(dpi, smear_type=smear_type, algorithm_types=algorithm_types)
-    ok, err = ensure_model_loaded(model, max_models=3)
+    ok, err = ensure_model_loaded(model)
     if not ok:
         raise RuntimeError(f"Model {model} load failed: {err}")
     client = _get_client()
@@ -460,7 +460,7 @@ def infer_image_enhance(image_bytes: bytes) -> bytes:
     """
     import tritonclient.grpc as grpcclient
 
-    ok, err = ensure_model_loaded(MODEL_IMAGE_ENHANCE, max_models=3)
+    ok, err = ensure_model_loaded(MODEL_IMAGE_ENHANCE)
     if not ok:
         raise RuntimeError(f"Model {MODEL_IMAGE_ENHANCE} load failed: {err}")
     client = _get_client()

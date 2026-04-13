@@ -114,7 +114,7 @@ def _log_request(response):
 
 # ========== 日志配置结束 ==========
 
-# Triton：常驻组 DPI147246_BM_PB_pipeline 在进程启动时预加载，不参与 LRU 淘汰（见 project.model_control）
+# Triton：常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME）在进程启动时预加载，不参与 LRU 淘汰（见 project.model_control）
 try:
     from project.model_control import warmup_pinned_models_at_startup
 

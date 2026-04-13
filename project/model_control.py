@@ -1,9 +1,10 @@
 # model_control.py
 """
 Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理，显存最多保留 max_groups 组；其中 DPI147246_BM_PB_pipeline 对应组常驻、不参与 LRU、不会被卸载。
-其余组在 (max_groups - 1) 个槽位内按 LRU（最少最近使用）淘汰整组。
-每次 ensure_model_loaded 调用都记录时间；淘汰时只从非常驻组中选最久未用者。
+按模型组管理：DPI147246_BM_PB（144750 pipeline）常驻、预加载、不参与 LRU、不会被卸载。
+其余组在「预估显存占用 + 常驻组」超过 GPU 预算（见 config.TRITON_GPU_VRAM_GB − 预留）时，
+按 LRU（最久未访问）淘汰整组，直至能装入目标组（槽位数不再固定为 3）。
+每次 ensure_model_loaded 调用都更新该组最后访问时间；淘汰仅从非常驻组中选择。
 """
 from __future__ import annotations
 
@@ -13,25 +14,33 @@ import os
 import threading
 import time
 import urllib.request
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from config import TRITON_HTTP_URL
+from config import (
+    TRITON_GPU_VRAM_GB,
+    TRITON_HTTP_URL,
+    TRITON_PINNED_PIPELINE_NAME,
+    TRITON_VRAM_RESERVE_GB,
+)
 
 logger = logging.getLogger(__name__)
 
 _http_base_url_logged = False
 
+# 常驻 pipeline 名称见 config.TRITON_PINNED_PIPELINE_NAME；MODEL_GROUPS 中键须与 Triton 仓库内名称一致
+PINNED_PIPELINE_NAME = TRITON_PINNED_PIPELINE_NAME
+
 # 模型组：pipeline 名称 -> (组标识, [子模型..., pipeline])
 # 子模型先加载，pipeline 最后加载
 MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
-    "DPI147246_BM_PB_pipeline": (
+    PINNED_PIPELINE_NAME: (
         "DPI147246_BM_PB",
         [
             "DPI147246_BM_PB_WBC_cell_detection",
             "DPI147246_BM_PB_MEG_cell_detection",
             "DPI147246_BM_PB_constituency_score",
-            "DPI147246_BM_PB_pipeline",
-            "DPI147246_BM_PB_cell_analysis"
+            PINNED_PIPELINE_NAME,
+            "DPI147246_BM_PB_cell_analysis",
         ],
     ),
     "DPI357378_BM_MEG_pipeline": (
@@ -68,15 +77,35 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
     ),
 }
 
-# 常驻组（与 MODEL_GROUPS 中 DPI147246_BM_PB_pipeline 的 group_key 一致）：启动预加载，不参与 LRU，永不淘汰
+# 每组预估显存占用（GB），与 triton_client 注释一致；用于加载前测算是否需 LRU 淘汰
+GROUP_VRAM_GB: Dict[str, float] = {
+    "DPI147246_BM_PB": 6.0,
+    "DPI357378_BM_MEG": 3.5,
+    "DPI714756_CF": 7.5,
+    "DPI714756_BM_PB": 3.0,
+    "Image_enhance": 3.0,
+}
+
+# 常驻组 group_key（与 MODEL_GROUPS 中常驻项的元组第一项一致）；换 pipeline 时若组名变化需同步改 GROUP_VRAM_GB 键
 PINNED_GROUP_KEY = "DPI147246_BM_PB"
-PINNED_PIPELINE_NAME = "DPI147246_BM_PB_pipeline"
 
 # LRU: group_key -> 最后访问时间戳（常驻组也会更新，仅用于观测，不参与淘汰）
 _group_last_used: Dict[str, float] = {}
-_max_groups = int(os.environ.get("TRITON_MAX_GROUPS", "3"))
 _model_lock = threading.Lock()
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
+
+
+def _effective_vram_budget_gb() -> float:
+    """可用显存上限（总显存 − 预留，防碎片/峰值）"""
+    return max(0.5, TRITON_GPU_VRAM_GB - TRITON_VRAM_RESERVE_GB)
+
+
+def _group_vram_gb(group_key: str) -> float:
+    return float(GROUP_VRAM_GB.get(group_key, 2.0))
+
+
+def _estimated_vram_for_groups(loaded_groups: set) -> float:
+    return sum(_group_vram_gb(g) for g in loaded_groups)
 
 
 def _get_http_base_url() -> str:
@@ -173,18 +202,23 @@ def _evictable_group_keys(loaded_groups: set) -> set:
     return set(loaded_groups)
 
 
-def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int = None) -> Tuple[bool, str]:
+def ensure_model_loaded(
+    model_name: str,
+    max_models: Optional[int] = None,
+    max_groups: Optional[int] = None,
+) -> Tuple[bool, str]:
     """
-    确保模型组已加载。model_name 为 pipeline 名称（如 DPI147246_BM_PB_pipeline）。
-    显存最多保留 max_groups 组（默认 3）：其中 DPI147246_BM_PB 组常驻、不淘汰；
-    其余组最多占 (max_groups - 1) 个槽位，超限时在非常驻组中按 LRU 淘汰。
+    确保模型组已加载。model_name 为 pipeline 名称（见 config.TRITON_PINNED_PIPELINE_NAME 等）。
+    容量规则：常驻组（PINNED_GROUP_KEY）永不卸载；其余组在
+    「当前已加载组预估显存之和 + 待加载组预估显存」超过 TRITON_GPU_VRAM_GB − 预留时，
+    在非常驻组中按 LRU 整组卸载，直至预算足够（不再使用固定「最多 3 组」）。
+    max_groups / max_models 若传入则额外限制「已加载组数量」上限（兼容旧调用），默认不限制仅按显存。
     每次调用都会更新该组的最后访问时间戳。
     返回 (成功, 错误信息)
     """
     global _group_last_used
-    max_groups = max_groups if max_groups is not None else _max_groups
-    if max_models is not None:
-        max_groups = max_models  # 兼容旧参数
+    use_count_cap = max_groups is not None or max_models is not None
+    count_cap = max_groups if max_groups is not None else max_models
 
     group_info = _get_group_for_pipeline(model_name)
     if not group_info:
@@ -206,16 +240,31 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
             return True, ""
 
         loaded_groups = _get_loaded_group_keys(actually_loaded)
-        while len(loaded_groups) >= max_groups and loaded_groups:
+        budget = _effective_vram_budget_gb()
+        new_gb = _group_vram_gb(group_key)
+
+        def _over_vram() -> bool:
+            return _estimated_vram_for_groups(loaded_groups) + new_gb > budget + 1e-6
+
+        def _over_count() -> bool:
+            if not use_count_cap or count_cap is None:
+                return False
+            return len(loaded_groups) >= count_cap and loaded_groups
+
+        while (_over_vram() or _over_count()) and loaded_groups:
             evictable = _evictable_group_keys(loaded_groups)
             if not evictable:
+                need = _estimated_vram_for_groups(loaded_groups) + new_gb
                 logger.warning(
-                    "Model groups at limit (%s) but no evictable group (pinned=%s holds slot); cannot load %s",
-                    len(loaded_groups),
-                    PINNED_GROUP_KEY,
+                    "Cannot load group %s: need ~%.1fGB, budget %.1fGB, no evictable non-pinned group",
                     group_key,
+                    need,
+                    budget,
                 )
-                return False, "model group capacity full and pinned group cannot be evicted"
+                return (
+                    False,
+                    f"VRAM insufficient: need ~{need:.1f}GB, budget {budget:.1f}GB (pinned group not evictable)",
+                )
             lru_group = min(evictable, key=lambda g: _group_last_used.get(g, 0))
             lru_info = None
             for _pn, (_gk, _ms) in MODEL_GROUPS.items():
@@ -223,12 +272,24 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
                     lru_info = (_gk, _ms)
                     break
             if lru_info:
+                logger.info(
+                    "Evicting LRU model group %s (~%.1fGB) to load %s (~%.1fGB); budget=%.1fGB",
+                    lru_group,
+                    _group_vram_gb(lru_group),
+                    group_key,
+                    new_gb,
+                    budget,
+                )
                 _unload_group(lru_info[0], lru_info[1])
                 loaded_groups.discard(lru_group)
                 if lru_group in _group_last_used:
                     del _group_last_used[lru_group]
             actually_loaded = set(get_loaded_models())
             loaded_groups = _get_loaded_group_keys(actually_loaded)
+
+        if _over_vram() or _over_count():
+            need = _estimated_vram_for_groups(loaded_groups) + new_gb
+            return False, f"model group capacity full: need ~{need:.1f}GB, budget {budget:.1f}GB"
 
         for m in models:
             if m in actually_loaded:
@@ -243,8 +304,15 @@ def ensure_model_loaded(model_name: str, max_models: int = None, max_groups: int
 
 
 def warmup_pinned_models_at_startup() -> None:
-    """Web 服务启动时预加载常驻组（DPI147246_BM_PB_pipeline），失败打 ERROR 日志。"""
-    ok, msg = ensure_model_loaded(PINNED_PIPELINE_NAME, max_groups=_max_groups)
+    """Web 服务启动时预加载常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME），失败打 ERROR 日志。"""
+    logger.info(
+        "Triton VRAM policy: effective budget %.1fGB (GPU %.1fGB − reserve %.1fGB); pinned=%s",
+        _effective_vram_budget_gb(),
+        TRITON_GPU_VRAM_GB,
+        TRITON_VRAM_RESERVE_GB,
+        PINNED_PIPELINE_NAME,
+    )
+    ok, msg = ensure_model_loaded(PINNED_PIPELINE_NAME)
     if not ok:
         logger.error(
             "Pinned model group %s failed to load at startup: %s",
@@ -257,11 +325,11 @@ def warmup_pinned_models_at_startup() -> None:
 
 def warmup_model(model_name: str) -> None:
     """模型预热：创建任务或单张识别前调用，确保模型组已加载。失败时记录日志，不抛异常。"""
-    ok, msg = ensure_model_loaded(model_name, max_groups=_max_groups)
+    ok, msg = ensure_model_loaded(model_name)
     if not ok:
         logger.warning("Model warmup failed for %s: %s", model_name, msg)
 
 
 if __name__ == "__main__":
     print("Loaded models:", get_loaded_models())
-    # print("ensure_model_loaded DPI147246_BM_PB_pipeline:", ensure_model_loaded("DPI147246_BM_PB_pipeline"))
+    # print("ensure_model_loaded pinned:", ensure_model_loaded(PINNED_PIPELINE_NAME))
