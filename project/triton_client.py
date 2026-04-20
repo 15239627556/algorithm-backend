@@ -19,7 +19,7 @@ import numpy as np
 from project.cells import Cell
 from project.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100
-from config import TRITON_PINNED_PIPELINE_NAME, TRITON_URL
+from config import TRITON_URL
 
 # DPI 基准值（±10% 容差），仅以 DPI 选择模型，不再使用倍率缩写
 DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
@@ -28,7 +28,7 @@ DPI_714756 = 714756  # 有核细胞/成熟红细胞
 TOLERANCE = 0.1
 
 # 模型名称常量：144750 常驻 pipeline 见 config.TRITON_PINNED_PIPELINE_NAME（各组预估显存须与 GROUP_VRAM_GB 一致）
-MODEL_144750 = TRITON_PINNED_PIPELINE_NAME  # 144750: BM/PB 共用  预估显存占用6G
+MODEL_144750 = "DPI147246_BM_PB_pipeline"  # 144750: BM/PB 共用  预估显存占用6G
 MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用3.5G
 MODEL_714756_BM = "DPI714756_BM_PB_pipeline" #  预估显存占用3G
 MODEL_714756_CF = "DPI714756_CF_WBC_pipeline" #  预估显存占用7.5G

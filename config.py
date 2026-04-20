@@ -7,7 +7,7 @@ import os
 # ========== Triton 推理服务配置 ==========
 # 默认：本机 127.0.0.1
 # 端口：8000(HTTP 模型加载/卸载)、8001(gRPC 推理)、8002(Metrics)
-TRITON_IP = os.environ.get("TRITON_IP", "127.0.0.1")
+TRITON_IP = os.environ.get("TRITON_IP", "192.168.31.188")
 TRITON_HTTP_PORT = int(os.environ.get("TRITON_HTTP_PORT", "18000"))
 TRITON_GRPC_PORT = int(os.environ.get("TRITON_GRPC_PORT", "18001"))
 TRITON_METRICS_PORT = int(os.environ.get("TRITON_METRICS_PORT", "18002"))
@@ -35,7 +35,7 @@ TRITON_PINNED_PIPELINE_NAME = os.environ.get(
 
 # Triton 显存预算（GB）：用于模型组 LRU 淘汰时的容量测算，与 project.model_control.GROUP_VRAM_GB 配合
 TRITON_GPU_VRAM_GB = float(os.environ.get("TRITON_GPU_VRAM_GB", "16"))
-TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "1.5"))
+TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "1"))
 
 # ========== Flask 应用配置 ==========
 FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")

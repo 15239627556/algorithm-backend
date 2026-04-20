@@ -33,13 +33,13 @@ PINNED_PIPELINE_NAME = TRITON_PINNED_PIPELINE_NAME
 # 模型组：pipeline 名称 -> (组标识, [子模型..., pipeline])
 # 子模型先加载，pipeline 最后加载
 MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
-    PINNED_PIPELINE_NAME: (
+    "DPI147246_BM_PB_pipeline": (
         "DPI147246_BM_PB",
         [
             "DPI147246_BM_PB_WBC_cell_detection",
             "DPI147246_BM_PB_MEG_cell_detection",
             "DPI147246_BM_PB_constituency_score",
-            PINNED_PIPELINE_NAME,
+            "DPI147246_BM_PB_pipeline",
             "DPI147246_BM_PB_cell_analysis",
         ],
     ),
@@ -87,7 +87,7 @@ GROUP_VRAM_GB: Dict[str, float] = {
 }
 
 # 常驻组 group_key（与 MODEL_GROUPS 中常驻项的元组第一项一致）；换 pipeline 时若组名变化需同步改 GROUP_VRAM_GB 键
-PINNED_GROUP_KEY = "DPI147246_BM_PB"
+PINNED_GROUP_KEY = MODEL_GROUPS.get(TRITON_PINNED_PIPELINE_NAME)[0]
 
 # LRU: group_key -> 最后访问时间戳（常驻组也会更新，仅用于观测，不参与淘汰）
 _group_last_used: Dict[str, float] = {}

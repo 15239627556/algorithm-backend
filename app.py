@@ -39,58 +39,90 @@ api.add_namespace(ImgFilter)
 LOG_DIR = os.path.join(root_dir, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-_fmt = "[%(asctime)s] %(levelname)s [%(name)s] %(message)s"
-_fmt_access = "[%(asctime)s] %(message)s"
+_fmt = logging.Formatter("[%(asctime)s] %(levelname)s [%(name)s] %(message)s")
+_fmt_access = logging.Formatter("[%(asctime)s] %(message)s")
 
-# 1. 应用主日志（app.logger）：INFO 及以上，输出到文件 + 控制台
+
+class _MaxLevelFilter(logging.Filter):
+    """只放行严格低于 level 的日志，用于把 ERROR 及以上从 app.log 中剔除。"""
+
+    def __init__(self, level: int) -> None:
+        super().__init__()
+        self._level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno < self._level
+
+
+def _make_rotating_handler(filename: str, max_bytes: int, backups: int,
+                           level: int, fmt: logging.Formatter,
+                           filt: logging.Filter | None = None) -> RotatingFileHandler:
+    h = RotatingFileHandler(
+        os.path.join(LOG_DIR, filename),
+        maxBytes=max_bytes,
+        backupCount=backups,
+        encoding="utf-8",
+    )
+    h.setLevel(level)
+    h.setFormatter(fmt)
+    if filt is not None:
+        h.addFilter(filt)
+    return h
+
+
+def _make_stream_handler(level: int, fmt: logging.Formatter,
+                         filt: logging.Filter | None = None) -> logging.StreamHandler:
+    h = logging.StreamHandler(sys.stdout)
+    h.setLevel(level)
+    h.setFormatter(fmt)
+    if filt is not None:
+        h.addFilter(filt)
+    return h
+
+
+# ---------- 1. 应用日志（app.logger）：正常日志 -> app.log，错误日志 -> error.log ----------
+# 关键点：关闭 propagate，避免冒泡到 root logger 被再写一次
 app.logger.setLevel(logging.INFO)
 app.logger.handlers.clear()
+app.logger.propagate = False
 
-_app_fh = RotatingFileHandler(
-    os.path.join(LOG_DIR, "app.log"),
-    maxBytes=10 * 1024 * 1024,
-    backupCount=5,
-    encoding="utf-8",
-)
-_app_fh.setLevel(logging.INFO)
-_app_fh.setFormatter(logging.Formatter(_fmt))
-app.logger.addHandler(_app_fh)
+# app.log：只保留 INFO / WARNING（< ERROR）
+_info_only = _MaxLevelFilter(logging.ERROR)
+app.logger.addHandler(_make_rotating_handler(
+    "app.log", 10 * 1024 * 1024, 5, logging.INFO, _fmt, _info_only))
 
-_app_ch = logging.StreamHandler(sys.stdout)
-_app_ch.setLevel(logging.INFO)
-_app_ch.setFormatter(logging.Formatter(_fmt))
-app.logger.addHandler(_app_ch)
+# error.log：只保留 ERROR / CRITICAL
+app.logger.addHandler(_make_rotating_handler(
+    "error.log", 10 * 1024 * 1024, 5, logging.ERROR, _fmt))
 
-# 2. 错误日志：仅 ERROR
-_error_fh = RotatingFileHandler(
-    os.path.join(LOG_DIR, "error.log"),
-    maxBytes=10 * 1024 * 1024,
-    backupCount=5,
-    encoding="utf-8",
-)
-_error_fh.setLevel(logging.ERROR)
-_error_fh.setFormatter(logging.Formatter(_fmt))
-app.logger.addHandler(_error_fh)
+# 控制台：INFO+ 都打印，便于开发观察
+app.logger.addHandler(_make_stream_handler(logging.INFO, _fmt))
 
-# 3. 访问日志：IP、方法、路径、状态码、耗时
+# ---------- 2. 访问日志：独立文件 access.log ----------
 access_logger = logging.getLogger("flask.access")
 access_logger.setLevel(logging.INFO)
+access_logger.handlers.clear()
 access_logger.propagate = False
+access_logger.addHandler(_make_rotating_handler(
+    "access.log", 50 * 1024 * 1024, 10, logging.INFO, _fmt_access))
+access_logger.addHandler(_make_stream_handler(logging.INFO, _fmt_access))
 
-_access_fh = RotatingFileHandler(
-    os.path.join(LOG_DIR, "access.log"),
-    maxBytes=50 * 1024 * 1024,
-    backupCount=10,
-    encoding="utf-8",
-)
-_access_fh.setLevel(logging.INFO)
-_access_fh.setFormatter(logging.Formatter(_fmt_access))
-access_logger.addHandler(_access_fh)
+# ---------- 3. 抑制重复日志源 ----------
+# 3.1 werkzeug 自带的访问日志（形如 `IP - - [..] "GET /x" 200 -`）与我们的 access_logger 重复，
+#     提升其级别到 WARNING，只保留启动/错误信息。
+_werkzeug_logger = logging.getLogger("werkzeug")
+_werkzeug_logger.setLevel(logging.WARNING)
+_werkzeug_logger.propagate = False
 
-_access_ch = logging.StreamHandler(sys.stdout)
-_access_ch.setLevel(logging.INFO)
-_access_ch.setFormatter(logging.Formatter(_fmt_access))
-access_logger.addHandler(_access_ch)
+# 3.2 root logger：清理掉第三方库可能通过 basicConfig 加上的默认 StreamHandler，
+#     让所有业务日志都经由我们显式配置的 logger 输出，避免 "控制台同一行出现两次"
+_root_logger = logging.getLogger()
+for _h in list(_root_logger.handlers):
+    _root_logger.removeHandler(_h)
+_root_logger.setLevel(logging.WARNING)
+# root 只接收未被 propagate 截断的第三方库日志，统一写到 error.log（避免丢失三方告警）
+_root_logger.addHandler(_make_rotating_handler(
+    "error.log", 10 * 1024 * 1024, 5, logging.WARNING, _fmt))
 
 
 @app.before_request
