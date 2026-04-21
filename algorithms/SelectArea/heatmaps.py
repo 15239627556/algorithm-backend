@@ -202,7 +202,7 @@ def build_cell_count_grid(
             continue
             
         for cell in tile.cells:
-            # 先按细胞类型过滤：只统计配置中的 WBC 类型
+            # 先按细胞类型过滤：统一统计配置中的 WBC 类型
             if getattr(cell, "cell_type", None) != config.WBC_cell_type:
                 continue
 

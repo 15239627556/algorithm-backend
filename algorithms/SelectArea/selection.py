@@ -128,7 +128,7 @@ def filter_candidates(
     根据细胞数量目标筛选候选区域。
     """
     # 选区目标：基础目标 * 冗余系数
-    target_num = config.target_cell_num * config.target_ratio
+    target_num = config.target_cell_num_WBC * config.target_ratio
     
     # 优先看尾部结果（体尾交界），没有则看头部
     candidates = results.get("tail_results", []) or results.get("head_results", [])

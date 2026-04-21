@@ -68,7 +68,7 @@ def generate_wbc_view_tasks(
     config: BM40Config,
     params: Optional[SetCoverSolverParameter] = None
 ) -> List[TaskOutput]:
-    """
+    """Smear_type
     生成百倍视野任务，标记所属区域名称，并返回平铺的任务列表。
     """
     if cell_bounds.size == 0:

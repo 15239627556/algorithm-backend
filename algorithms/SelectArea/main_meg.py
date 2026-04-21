@@ -76,33 +76,6 @@ def visualize_meg_results(
     # 1. 确保输出目录存在
     save_path_base.mkdir(parents=True, exist_ok=True)
 
-    # 2. 准备热力图数据
-    heatmap_data = grid_info.finalize(fill_value=np.nan)
-
-    # 计算归一化范围
-    valid_scores = heatmap_data[~np.isnan(heatmap_data)]
-    vmin, vmax = (
-        (np.nanmin(valid_scores), np.nanmax(valid_scores))
-        if valid_scores.size > 0
-        else (0, 1)
-    )
-
-    # ---------------------------------------------------------
-    # 图 3：纯分值图 (Heatmap Only) - 复用 WBC 的输出文件名
-    # ---------------------------------------------------------
-    fig3, ax3 = plt.subplots(figsize=(12, 10))
-    im3 = ax3.imshow(
-        heatmap_data,
-        cmap="gray",
-        vmin=vmin,
-        vmax=vmax,
-        interpolation="nearest",
-    )
-    plt.colorbar(im3, ax=ax3, label="Score (Grayscale)")
-    ax3.set_title("Figure 3 (MEG): Score Grid Heatmap (Grayscale)")
-    fig3.savefig(save_path_base / "heatmap_meg.png", dpi=200, bbox_inches="tight")
-    plt.close(fig3)
-
     # ---------------------------------------------------------
     # 图 4：MEG 视野框 + 巨核细胞点 - 物理坐标，强制截取
     # ---------------------------------------------------------
@@ -209,7 +182,12 @@ def main() -> None:
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=100, dpi=138430)
+    bm_cfg = BM40Config(target_cell_num_MEG=100, 
+                        dpi=138430, 
+                        x100_rect_width=1000,
+                        x100_rect_height=500,
+                        View_type="MEG", 
+                        Smear_type=project.smear_type)
 
     # 3. 从 40x 层 tiles 中收集有核细胞 rect（与 pipeline_wbc 取层/tiles、heatmaps 按类型过滤一致）
     dpi = bm_cfg.dpi
@@ -226,12 +204,10 @@ def main() -> None:
     print(f"[INFO][MEG] 从 40x tiles 中解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
     if not wbc_rects:
         print(
-            "[ERROR][MEG] 未从 40x tiles 中解析到任何有核细胞（WBC_cell_type），"
+            "[ERROR][MEG] 未解析到任何有核细胞（WBC_cell_type），"
             "无法计算 MEG 排序参考。"
         )
         return
-
-    print(f"[INFO][MEG] 从项目解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
 
     import time
     start_time = time.time()

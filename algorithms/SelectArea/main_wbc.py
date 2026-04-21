@@ -11,7 +11,6 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -32,7 +31,6 @@ class VizConfig:
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
     json_path: str = "/home/ubuntu/Downloads/c25a8f33793c43f4a164f5bbd4785e25.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
-    out_png_name: str = "sampling_result_viz.png"
 
     def get_color(self, region_name: str) -> str:
         """
@@ -197,12 +195,20 @@ def main() -> None:
 
 
     # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
-    # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num=300)
-    bm_cfg = BM40Config(target_cell_num=300, dpi=138430)
+    # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num_WBC=300)
+    bm_cfg = BM40Config(target_cell_num_WBC=300, 
+                        dpi=138430, 
+                        x100_rect_width=1200,
+                        x100_rect_height=1000,
+                        View_type="WBC", 
+                        Smear_type=project.smear_type)
     pipeline = WBCSamplingPipeline(bm_cfg)
     
-  
+    import time
+    start_time = time.time()
     final_task_list = pipeline.run(project) 
+    end_time = time.time()
+    print(f"[INFO] 算法执行时间: {end_time - start_time} 秒")
     print(f"[INFO] 算法执行完成，生成了 {len(final_task_list)} 个拍摄视野")
 
     # 转换为标准的字典列表 [{}, {}...]

@@ -153,13 +153,13 @@ def generate_meg_view_tasks(
 
         task_obj = TaskOutput(
             task_index=global_counter,
-            view_type="MEG",             # 区分 WBC 任务
+            view_type=config.View_type,             
             smear_type=config.Smear_type,
             view_xmin=int(round(rx)),
             view_ymin=int(round(ry)),
             view_xmax=int(round(rx + rw)),
             view_ymax=int(round(ry + rh)),
-            region_name="MEG",           # 简单统一成 'MEG'
+            region_name=config.View_type,          
             cell_list=current_cell_outputs,
         )
         meg_tasks.append(task_obj)

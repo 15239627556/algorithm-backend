@@ -8,13 +8,15 @@ import cv2
 class BM40Config:
     # ========= 允许外部设置的参数 =========
     user_choice_area: Optional[Dict[str, int]] = None   # 用户框选的搜索区域 (x_min, y_min, x_max, y_max) 全局坐标系下的物理坐标
-    target_cell_num: int = 300      # 用户设定的目标细胞数量(wbc)     
+    target_cell_num_WBC: int = 300  # 骨髓-血片-用户设定的目标有核细胞数量(wbc)    
+    target_cell_num_MEG: int = 300  # 骨髓-用户设定的目标巨核细胞数量(meg)  
     x100_rect_width: int = 384      # 百倍视野尺寸-宽 
     x100_rect_height: int = 283     # 百倍视野尺寸-高    
     heatmap_orientation: int = 1    # 0: 头部在右，1: 头部在左
-    target_cell_num_MEG: int = 300  # 用户设定的目标细胞数量(meg)  
     dpi: int = 138430                   # 扫描层 DPI（默认40倍DPI）
-
+    View_type: str = "WBC"              # 视野类型标识（写入 TaskOutput）
+    Smear_type: str = "BM"              # 涂片类型标识（写入 TaskOutput，建议与 project.smear_type 一致）
+    
 
 
     # ========内部默认参数 =========
@@ -58,9 +60,8 @@ class BM40Config:
     # --- 输出配置 ---
     Initial_name: str = field(default="Initial", init=False) # 初始选区名称
     Extra_name: str = field(default="Extra", init=False)     # 补拍选区名称
-    View_type: str = field(default="WBC", init=False)        # 视野类型标识
-    Smear_type: str = field(default="BM", init=False)        # 涂片类型标识
 
-
-    WBC_cell_type: int = field(default=100000, init=False)
-    MEG_cell_type: int = field(default=100001, init=False)  
+ 
+    MEG_cell_type: int = field(default=100001, init=False)  # MEG 细胞类型
+    WBC_cell_type: int = field(default=100000, init=False)  # WBC 细胞类型 
+    RBC_cell_type: int = field(default=100002, init=False)  # RBC 细胞类型 

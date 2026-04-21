@@ -89,8 +89,8 @@ def validate_bm40_config(config: BM40Config) -> None:
     if config.cell_size <= 0:
         raise ConfigContractError(f"cell_size 必须大于 0, 当前为 {config.cell_size}")
     
-    if config.target_cell_num <= 0:
-        raise ConfigContractError(f"target_cell_num 必须为正数, 当前为 {config.target_cell_num}")
+    if config.target_cell_num_WBC <= 0:
+        raise ConfigContractError(f"target_cell_num_WBC 必须为正数, 当前为 {config.target_cell_num_WBC}")
 
     if config.scale <= 0:
         raise ConfigContractError(f"坐标缩放比例 config.scale 必须大于 0")

@@ -35,7 +35,7 @@ def build_forbidden_mask(
             if t.x is None or t.y is None: continue
             scores_list = t.meta.get("scores", [])
             for row in scores_list:
-                if len(row) < 5: continue
+                if len(row) < 6: continue
                 # 提取 Label 
                 label = int(row[5])
                 
@@ -175,10 +175,9 @@ def generate_initial_and_extra_tasks(
     # 有效搜索区 = 选区 - 禁区 
     valid_search_mask = cv2.bitwise_and(selection_mask, cv2.bitwise_not(forbidden_mask))
     
-    # 2. 寻找初始拍摄框 (小框目标为 target_cell_num)
-    # 注意：这里传的是 config.target_cell_num 而非乘以 ratio 后的值
+    # 2. 寻找初始拍摄框 (小框目标为 target_cell_num_WBC，不乘 ratio)
     initial_rect, final_th = find_initial_task(
-        grid, cell_matrix, valid_search_mask, config, config.target_cell_num
+        grid, cell_matrix, valid_search_mask, config, config.target_cell_num_WBC
     )
     
     if initial_rect is None:
