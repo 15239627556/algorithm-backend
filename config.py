@@ -40,3 +40,7 @@ TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "1"))
 # ========== Flask 应用配置 ==========
 FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
 FLASK_PORT = int(os.environ.get("FLASK_PORT", "3090"))
+
+# 配置算法服务版本以及doc的开关
+sufa_version = "2026.04.21"
+is_doc = False # 是否开启doc

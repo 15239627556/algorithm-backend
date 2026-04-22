@@ -19,10 +19,15 @@ from flask_restx import Api
 
 from backend.routes.task import task
 from backend.routes.ImgFilter import ImgFilter
-from config import FLASK_HOST, FLASK_PORT
+from config import FLASK_HOST, FLASK_PORT, sufa_version, is_doc
 
-api = Api(version='2025.12.12', title='算法服务',
-          description=f'2025.12.12版本，算法服务，端口号为{FLASK_PORT}', doc="/")
+api = Api(
+    version=sufa_version, title='算法服务',
+    description=f'{sufa_version}版本，算法服务，端口号为{FLASK_PORT}',
+    doc=is_doc,
+    add_specs=is_doc
+    )
+
 app = Flask(__name__, static_url_path='/uploads', static_folder='uploads')
 api.init_app(app)
 CORS(app, supports_credentials=True)
