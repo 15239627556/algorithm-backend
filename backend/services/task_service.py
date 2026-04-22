@@ -686,7 +686,7 @@ class TaskService:
             if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
                 bm_cfg = BM40Config(
                     user_choice_area=user_choice_area,
-                    target_cell_num=required_wbc,
+                    target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
                 )
@@ -735,7 +735,7 @@ class TaskService:
             elif smear_type == "BM" and normalized_task_type == "MEG":
                 bm_cfg = BM40Config(
                     user_choice_area=user_choice_area,
-                    target_cell_num=required_wbc or 0,
+                    target_cell_num_WBC=required_wbc or 0,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
                 )
@@ -776,7 +776,7 @@ class TaskService:
             elif smear_type == "PB" and normalized_task_type == "WBC":
                 bm_cfg = BM40Config(
                     user_choice_area=user_choice_area,
-                    target_cell_num=required_wbc,
+                    target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
                 )

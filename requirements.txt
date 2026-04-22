@@ -11,14 +11,14 @@ uwsgi==2.0.28; sys_platform != "win32"
 cachetools>=5.0.0
 
 # Numerical & image
-numpy==2.3.3
+numpy==2.2.5
 opencv_python==4.11.0.86
 opencv-contrib-python
 Pillow==11.3.0
 
 # Deep learning (dedup NMS)
-torch==2.3.1
-torchvision==0.18.1
+torch==2.8.0
+torchvision==0.23.0
 
 # Triton inference
 tritonclient[grpc]
