@@ -133,6 +133,8 @@ _root_logger.addHandler(_make_rotating_handler(
 @app.before_request
 def _log_request_start():
     request._log_start = time.time()
+    if request.path.endswith('/swagger.json'):
+        return "Forbidden", 403
 
 
 @app.after_request
@@ -161,5 +163,4 @@ except Exception:
 
 
 if __name__ == '__main__':
-    print("### FLASK MAIN PID =", os.getpid())
     app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, threaded=True)
