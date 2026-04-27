@@ -1,8 +1,9 @@
 # model_control.py
 """
 Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理：DPI147246_BM_PB（144750 pipeline）常驻、预加载、不参与 LRU、不会被卸载。
-其余组在「预估显存占用 + 常驻组」超过 GPU 预算（见 config.TRITON_GPU_VRAM_GB − 预留）时，
+按模型组管理：若 config.TRITON_PINNED_PIPELINE_NAME 非空且为 MODEL_GROUPS 的键，则该组常驻、启动预载、不参与 LRU、不会被卸载；
+若未配置或为空字符串，则无常驻组，全部走动态加载与 LRU。
+其余组在「预估显存占用 + 可选常驻组」超过 GPU 预算（见 config.TRITON_GPU_VRAM_GB − 预留）时，
 按 LRU（最久未访问）淘汰整组，直至能装入目标组（槽位数不再固定为 3）。
 每次 ensure_model_loaded 调用都更新该组最后访问时间；淘汰仅从非常驻组中选择。
 """
@@ -26,9 +27,6 @@ from config import (
 logger = logging.getLogger(__name__)
 
 _http_base_url_logged = False
-
-# 常驻 pipeline 名称见 config.TRITON_PINNED_PIPELINE_NAME；MODEL_GROUPS 中键须与 Triton 仓库内名称一致
-PINNED_PIPELINE_NAME = TRITON_PINNED_PIPELINE_NAME
 
 # 模型组：pipeline 名称 -> (组标识, [子模型..., pipeline])
 # 子模型先加载，pipeline 最后加载
@@ -86,8 +84,11 @@ GROUP_VRAM_GB: Dict[str, float] = {
     "Image_enhance": 3.0,
 }
 
-# 常驻组 group_key（与 MODEL_GROUPS 中常驻项的元组第一项一致）；换 pipeline 时若组名变化需同步改 GROUP_VRAM_GB 键
-PINNED_GROUP_KEY = MODEL_GROUPS.get(TRITON_PINNED_PIPELINE_NAME)[0]
+# 常驻：config 为空或仅空白时无 pin；非空时须为 MODEL_GROUPS 的键，否则视为无有效常驻（与空配置相同，启动不预载）
+_TRITON_PINNED_STR = (TRITON_PINNED_PIPELINE_NAME or "").strip()
+PINNED_PIPELINE_NAME = _TRITON_PINNED_STR
+_PINNED_ENTRY = MODEL_GROUPS.get(_TRITON_PINNED_STR) if _TRITON_PINNED_STR else None
+PINNED_GROUP_KEY: Optional[str] = _PINNED_ENTRY[0] if _PINNED_ENTRY else None
 
 # LRU: group_key -> 最后访问时间戳（常驻组也会更新，仅用于观测，不参与淘汰）
 _group_last_used: Dict[str, float] = {}
@@ -196,8 +197,8 @@ def _get_loaded_group_keys(actually_loaded: set) -> set:
 
 
 def _evictable_group_keys(loaded_groups: set) -> set:
-    """可作为 LRU 淘汰候选的组。若常驻组已加载，则将其排除；否则全部可淘汰。"""
-    if PINNED_GROUP_KEY in loaded_groups:
+    """可作为 LRU 淘汰候选的组。若存在常驻组且已加载，则将其排除；无常驻时全部可淘汰。"""
+    if PINNED_GROUP_KEY is not None and PINNED_GROUP_KEY in loaded_groups:
         return loaded_groups - {PINNED_GROUP_KEY}
     return set(loaded_groups)
 
@@ -208,8 +209,8 @@ def ensure_model_loaded(
     max_groups: Optional[int] = None,
 ) -> Tuple[bool, str]:
     """
-    确保模型组已加载。model_name 为 pipeline 名称（见 config.TRITON_PINNED_PIPELINE_NAME 等）。
-    容量规则：常驻组（PINNED_GROUP_KEY）永不卸载；其余组在
+    确保模型组已加载。model_name 为 pipeline 名称（见 MODEL_GROUPS 键等）。
+    容量规则：若配置了常驻组（PINNED_GROUP_KEY 非空）则该组永不被 LRU 卸载；否则全部组均可淘汰。其余组在
     「当前已加载组预估显存之和 + 待加载组预估显存」超过 TRITON_GPU_VRAM_GB − 预留时，
     在非常驻组中按 LRU 整组卸载，直至预算足够（不再使用固定「最多 3 组」）。
     max_groups / max_models 若传入则额外限制「已加载组数量」上限（兼容旧调用），默认不限制仅按显存。
@@ -304,14 +305,25 @@ def ensure_model_loaded(
 
 
 def warmup_pinned_models_at_startup() -> None:
-    """Web 服务启动时预加载常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME），失败打 ERROR 日志。"""
+    """Web 服务启动时预加载常驻 pipeline；未配置、为空或不在 MODEL_GROUPS 时跳过，失败打 ERROR 日志。"""
     logger.info(
         "Triton VRAM policy: effective budget %.1fGB (GPU %.1fGB − reserve %.1fGB); pinned=%s",
         _effective_vram_budget_gb(),
         TRITON_GPU_VRAM_GB,
         TRITON_VRAM_RESERVE_GB,
-        PINNED_PIPELINE_NAME,
+        PINNED_PIPELINE_NAME or "(none)",
     )
+    if PINNED_GROUP_KEY is None:
+        if _TRITON_PINNED_STR:
+            logger.warning(
+                "TRITON_PINNED_PIPELINE_NAME=%r 非空但不在 MODEL_GROUPS 中，不执行启动预加载，仅动态加载。",
+                TRITON_PINNED_PIPELINE_NAME,
+            )
+        else:
+            logger.info(
+                "未配置常驻 pipeline（TRITON_PINNED_PIPELINE_NAME 为空），跳过启动预加载，全部按请求动态加载/LRU。",
+            )
+        return
     ok, msg = ensure_model_loaded(PINNED_PIPELINE_NAME)
     if not ok:
         logger.error(

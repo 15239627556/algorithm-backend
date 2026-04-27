@@ -43,6 +43,9 @@ CACHE_TTL_SEC = int(os.environ.get("ROI_CACHE_TTL", "600"))
 ROI_CACHE_MAXSIZE = int(os.environ.get("ROI_CACHE_MAXSIZE", "200"))
 PROJECT_X100_CACHE_MAXSIZE = int(os.environ.get("PROJECT_X100_CACHE_MAXSIZE", "50"))
 
+# Task 内存上下文：自最后一次读/写起超过该时间则从 self.tasks 淘汰（可再经 load_data 从磁盘恢复）
+TASK_CONTEXT_IDLE_TTL_SEC = int(os.environ.get("TASK_CONTEXT_IDLE_TTL", "1800"))
+
 
 def _ensure_json_serializable(obj):
     """将 scores（可能含 numpy、嵌套列表）转为 JSON 可序列化的 Python 原生类型"""
@@ -119,14 +122,36 @@ class TaskContext:
 class TaskService:
     def __init__(self):
         self.tasks: Dict[str, TaskContext] = {}
+        self._tasks_lock = threading.Lock()
+        self._task_last_access: Dict[str, float] = {}
         self.roi_cache = TTLCache(maxsize=ROI_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
         self.roi_cache_lock = threading.Lock()
         self.project_x100 = TTLCache(maxsize=PROJECT_X100_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
         self.project_x100_lock = threading.Lock()
 
+    def _evict_idle_tasks_unlocked(self) -> None:
+        if not self._task_last_access:
+            return
+        now = time.time()
+        deadline = now - TASK_CONTEXT_IDLE_TTL_SEC
+        stale = [tid for tid, t in self._task_last_access.items() if t < deadline]
+        for tid in stale:
+            self.tasks.pop(tid, None)
+            self._task_last_access.pop(tid, None)
+
+    def _touch_task(self, task_id: str) -> None:
+        """在任意成功访问/写入该任务后调用，刷新 idle 计时，并清理其它过期任务。勿在 ctx.lock 内调用。"""
+        with self._tasks_lock:
+            self._evict_idle_tasks_unlocked()
+            if task_id in self.tasks:
+                self._task_last_access[task_id] = time.time()
+
     def load_data(self, task_id):
-        if task_id in self.tasks:
-            return None
+        with self._tasks_lock:
+            self._evict_idle_tasks_unlocked()
+            if task_id in self.tasks:
+                self._task_last_access[task_id] = time.time()
+                return None
         os.makedirs(upload_folder, exist_ok=True)
         file_path = os.path.join(upload_folder, f"{task_id}.json")
         if not os.path.exists(file_path):
@@ -153,7 +178,10 @@ class TaskService:
                 r, c = t.meta.get("row_index"), t.meta.get("col_index")
                 if r is not None and c is not None:
                     info.setdefault("matcher", {})[(r, c)] = t.image_uid
-        self.tasks[task_id] = TaskContext(project=project, info=info)
+        with self._tasks_lock:
+            self._evict_idle_tasks_unlocked()
+            self.tasks[task_id] = TaskContext(project=project, info=info)
+            self._task_last_access[task_id] = time.time()
 
     def create_task(self, task_info: dict) -> dict:
         dpi = task_info.get('dpi')
@@ -174,7 +202,10 @@ class TaskService:
         project = SmearProject(smear_type=task_info['smear_type'])
         project.add_layer(task_info['dpi'])
 
-        self.tasks[task_id] = TaskContext(project=project, info=task_info)
+        with self._tasks_lock:
+            self._evict_idle_tasks_unlocked()
+            self.tasks[task_id] = TaskContext(project=project, info=task_info)
+            self._task_last_access[task_id] = time.time()
         _save_task_info(task_id, task_info)
         model_name = get_model_by_dpi(dpi, smear_type=task_info.get('smear_type', 'BM'), algorithm_types=task_info.get('target_cell_types', ''))
         warmup_model(model_name)
@@ -194,6 +225,7 @@ class TaskService:
                 return result
         t_load = time.time()
         ctx = self.tasks[task_id]
+        self._touch_task(task_id)
         project = ctx.project
         dpi = ctx.info.get('dpi', 144750)
         layer = project.get_layer(dpi)
@@ -255,8 +287,11 @@ class TaskService:
         async_finish = _async_finish_after_update_coordinates()
         if async_finish:
             def _run():
-                with ctx.lock:
-                    self._finish_task_impl(task_id)
+                try:
+                    with ctx.lock:
+                        self._finish_task_impl(task_id)
+                finally:
+                    self._touch_task(task_id)
 
             th = threading.Thread(
                 target=_run,
@@ -268,6 +303,7 @@ class TaskService:
         else:
             with ctx.lock:
                 self._finish_task_impl(task_id)
+            self._touch_task(task_id)
 
         out: Dict[str, Any] = {
             'ret_code': RetCode.API_SUCCESS.value,
@@ -444,6 +480,7 @@ class TaskService:
                     'ret_desc': RetDesc.CLIENT_ERROR.value,
                     'reason': 'Task ID not found',
                 }
+            self._touch_task(task_id)
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -452,7 +489,7 @@ class TaskService:
         except Exception as e:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': RetCode.CLIENT_ERROR.value,
                 'reason': str(e)
             }
 
@@ -468,6 +505,7 @@ class TaskService:
                 'ret_desc': RetDesc.CLIENT_ERROR.value,
                 'reason': 'Task ID not found'
         }
+        self._touch_task(task_id)
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -490,6 +528,7 @@ class TaskService:
                     'reason': 'Task ID not found',
                     'result': {},
                 }
+        self._touch_task(task_id)
         info = self.tasks[task_id].info
         if not info.get('finished', False):
             return {
@@ -518,6 +557,7 @@ class TaskService:
             if result:
                 return result
         ctx = self.tasks[task_id]
+        self._touch_task(task_id)
         project = ctx.project
         dpi = ctx.info.get('dpi', 144750)
         layer = project.get_layer(dpi)
@@ -572,6 +612,14 @@ class TaskService:
             if result:
                 return result
         ctx = self.tasks.get(task_id)
+        if not ctx:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'reason': 'Task ID not found',
+                'result': {},
+            }
+        self._touch_task(task_id)
         info = ctx.info
         if not info.get('finished', False):
             return {
@@ -921,6 +969,9 @@ class TaskService:
                 'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
+        # 当DPI为714756 +-10%的时候不过滤边缘细胞，因为模型自带过滤功能
+        if int(dpi) in (714756, 786432):
+            edge_cell_filter = False
         if edge_cell_filter and cell_list:
             try:
                 with Image.open(BytesIO(image_bytes)) as im:
