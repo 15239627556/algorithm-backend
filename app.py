@@ -21,11 +21,12 @@ from backend.routes.task import task
 from backend.routes.ImgFilter import ImgFilter
 from config import FLASK_HOST, FLASK_PORT, sufa_version, is_doc
 
+is_doc = '/' if is_doc else False
+
 api = Api(
     version=sufa_version, title='算法服务',
     description=f'{sufa_version}版本，算法服务，端口号为{FLASK_PORT}',
-    doc=is_doc,
-    add_specs=is_doc
+    doc=is_doc
     )
 
 app = Flask(__name__, static_url_path='/uploads', static_folder='uploads')
@@ -133,8 +134,9 @@ _root_logger.addHandler(_make_rotating_handler(
 @app.before_request
 def _log_request_start():
     request._log_start = time.time()
-    if request.path.endswith('/swagger.json'):
-        return "Forbidden", 403
+    if is_doc!='/':
+        if request.path.endswith('/swagger.json'):
+            return "Forbidden", 403
 
 
 @app.after_request

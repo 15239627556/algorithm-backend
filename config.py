@@ -43,4 +43,4 @@ FLASK_PORT = int(os.environ.get("FLASK_PORT", "3090"))
 
 # 配置算法服务版本以及doc的开关
 sufa_version = "2026.04.21"
-is_doc = False # 是否开启doc
+is_doc = True # 是否开启doc

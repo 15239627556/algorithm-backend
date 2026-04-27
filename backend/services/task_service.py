@@ -715,6 +715,7 @@ class TaskService:
                                 "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
                             }
                         bm_cfg.target_cell_num_MEG = required_meg
+                        bm_cfg.View_type = "MEG"
                         try:
                             meg_pipeline = MegSamplingPipeline(bm_cfg)
                             meg_tasks = meg_pipeline.run_meg(
@@ -738,6 +739,7 @@ class TaskService:
                     target_cell_num_WBC=required_wbc or 0,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    View_type="MEG"
                 )
                 bm_cfg.target_cell_num_MEG = required_meg
 
