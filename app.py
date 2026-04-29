@@ -41,6 +41,10 @@ os.makedirs('backend/images', exist_ok=True)
 api.add_namespace(task)
 api.add_namespace(ImgFilter)
 
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
+    
 # ========== 日志配置开始 ==========
 LOG_DIR = os.path.join(root_dir, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)

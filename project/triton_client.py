@@ -74,10 +74,14 @@ def get_model_by_dpi(
         # 暂无 DPI357378 的 BM WBC 专用模型：仅 WBC（不含 MEG）时临时使用 714756 BM/PB pipeline
         if st == "BM" and "WBC" in at and "MEG" not in at:
             return MODEL_714756_BM
+        if st == "PB" and ("WBC" in at or "RBC" in at):
+            return MODEL_714756_BM
         return MODEL_357378
     if _in_dpi_range(dpi, DPI_714756):
         if (smear_type or "").upper() == "CF":
             return MODEL_714756_CF
+        if (smear_type or "").upper() == "MEG":
+            return MODEL_357378
         return MODEL_714756_BM
     return MODEL_144750
 
