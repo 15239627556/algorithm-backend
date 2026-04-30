@@ -629,6 +629,7 @@ class TaskService:
                 'result': {},
             }
         smear_type = (ctx.info or {}).get("smear_type")
+        dpi = (ctx.info or {}).get("dpi")
         if not smear_type:
             smear_type = "BM"
 
@@ -737,6 +738,9 @@ class TaskService:
                     target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    dpi=dpi,
+                    View_type="WBC",
+                    Smear_type=smear_type,
                 )
                 pipeline = WBCSamplingPipeline(bm_cfg)
                 wbc_tasks = pipeline.run(project)
@@ -787,6 +791,8 @@ class TaskService:
                     target_cell_num_WBC=required_wbc or 0,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    dpi=dpi,
+                    Smear_type="BM",
                     View_type="MEG"
                 )
                 bm_cfg.target_cell_num_MEG = required_meg
@@ -829,6 +835,9 @@ class TaskService:
                     target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    dpi=dpi,
+                    View_type="WBC",
+                    Smear_type="PB",
                 )
                 pipeline = WBCSamplingPipeline(bm_cfg)
                 wbc_tasks = pipeline.run(project)
