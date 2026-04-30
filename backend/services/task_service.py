@@ -197,6 +197,7 @@ class TaskService:
         task_id = uuid.uuid4().hex
         task_info['smear_type'] = task_info.get('smear_type', 'BM')
         task_info['task_status'] = RetCode.TASK_RUNNING.value
+        task_info['heatmap_orientation'] = int(task_info.get('heatmap_orientation', 1))
         task_info['finished'] = False
         task_info['matcher'] = {}
         project = SmearProject(smear_type=task_info['smear_type'])
@@ -629,7 +630,8 @@ class TaskService:
                 'result': {},
             }
         smear_type = (ctx.info or {}).get("smear_type")
-        dpi = (ctx.info or {}).get("dpi")
+        dpi = info.get("dpi")
+        heatmap_orientation = info.get('heatmap_orientation', 1)
         if not smear_type:
             smear_type = "BM"
 
@@ -738,6 +740,7 @@ class TaskService:
                     target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    heatmap_orientation=heatmap_orientation,
                     dpi=dpi,
                     View_type="WBC",
                     Smear_type=smear_type,
@@ -791,6 +794,7 @@ class TaskService:
                     target_cell_num_WBC=required_wbc or 0,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    heatmap_orientation=heatmap_orientation,
                     dpi=dpi,
                     Smear_type="BM",
                     View_type="MEG"
@@ -835,6 +839,7 @@ class TaskService:
                     target_cell_num_WBC=required_wbc,
                     x100_rect_width=int(view_width),
                     x100_rect_height=int(view_height),
+                    heatmap_orientation=heatmap_orientation,
                     dpi=dpi,
                     View_type="WBC",
                     Smear_type="PB",
