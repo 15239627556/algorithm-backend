@@ -171,6 +171,11 @@ class WBCSamplingPipeline:
                 config=self.cfg,
                 user_search_mask=self.user_search_mask
             )
+            print(f"[INFO][WBC] 过滤前的 head 候选区域数量: {len(results['head_results'])}")
+            # print(f"[INFO][WBC] 过滤前的 head 候选区域: {results['head_results']}")
+
+            print(f"[INFO][WBC] 过滤前的 tail 候选区域数量: {len(results['tail_results'])}")
+            # print(f"[INFO][WBC] 过滤前的 tail 候选区域: {results['tail_results']}")
 
             # 6. 过滤候选区
             selected_list = filter_candidates(
@@ -178,6 +183,8 @@ class WBCSamplingPipeline:
                 config=self.cfg,
                 all_cell_count=all_cell_count
             )
+            print(f"[INFO][RBC] 过滤后的候选区域数量: {len(selected_list)}")
+            print(f"[INFO][RBC] 候选区域: {selected_list}")
 
             # 7. 均匀性评估：选出最佳选区
             self.best_res = select_best_uniform_region(
