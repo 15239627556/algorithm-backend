@@ -23,8 +23,8 @@ from PIL import Image
 
 from project.smear_project import SmearProject
 from project.cells import Cell
-from project.triton_client import infer, get_model_by_dpi
-from project.model_control import warmup_model
+from backend.tools.triton_client import infer, get_model_by_dpi
+from backend.tools.model_control import warmup_model
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
@@ -278,7 +278,7 @@ class TaskService:
                             failed_tiles.append(tile_info)
 
         t_done = time.time()
-        logger.debug(
+        logger.info(
             "update_coordinates task_id=%s load_ms=%.2f coord_update_ms=%.2f",
             task_id[:8],
             (t_load - t0) * 1000,
@@ -413,7 +413,7 @@ class TaskService:
             tiles = layer.iter_tiles()
             tiles = dedup_cells_across_tiles(tiles)
             t6 = time.time()
-            logger.debug(
+            logger.info(
                 "dedup_cells_across_tiles task_id=%s ms=%.2f",
                 task_id[:8],
                 (t6 - t5) * 1000,
@@ -439,14 +439,14 @@ class TaskService:
             for one_tile in tiles:
                 layer.tiles[one_tile.image_uid] = one_tile
             t9 = time.time()
-            logger.debug(
+            logger.info(
                 "filter_edge_incomplete_cells task_id=%s ms=%.2f",
                 task_id[:8],
                 (t9 - t6) * 1000,
             )
             project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
             t7 = time.time()
-            logger.debug(
+            logger.info(
                 "save_json task_id=%s ms=%.2f",
                 task_id[:8],
                 (t7 - t9) * 1000,
@@ -455,7 +455,7 @@ class TaskService:
             ctx.info['finished'] = True
             _save_task_info(task_id, ctx.info)
             t8 = time.time()
-            logger.debug(
+            logger.info(
                 "save_task_info task_id=%s ms=%.2f finish_total_ms=%.2f",
                 task_id[:8],
                 (t8 - t7) * 1000,

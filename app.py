@@ -44,17 +44,32 @@ api.add_namespace(ImgFilter)
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
-    
-# ========== 日志配置开始 ==========
+
+
+# ---------------------------------------------------------------------------
+# 日志：三文件 + 控制台
+#
+# app.log       — Flask app.logger、business(backend.*)、stdout tee，仅 INFO/WARNING（ERROR 不进此文件便于阅读）
+# error.log     — ERROR+（app.logger + root；root 接住第三方库的告警）
+# access.log    — 下面 after_request 里一行一条 HTTP 摘要
+#
+# propagate=False：日志不往上冒泡，避免与 root handler 双重输出。
+# werkzeug logger 提到 WARNING：否则每个请求两行访问日志（它一行 + access_logger 一行）。
+# print：sys.stdout 换成 Tee → 控制台照旧，并按行记入 app.logger → app.log；
+#        StreamHandler 必须绑在真实的 __stdout__ 上，不能绑 Tee，否则会 logging 递归。
+# backend.*：命名空间挂上与 app.logger 同一批 handler（root 默认 WARNING，否则 getLogger(__name__).info 被吃掉）。
+# ---------------------------------------------------------------------------
+
 LOG_DIR = os.path.join(root_dir, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
+_MB = 1024 * 1024
+_CONSOLE = getattr(sys, "__stdout__", sys.stdout)
+_FMT = logging.Formatter("[%(asctime)s] %(levelname)s [%(name)s] %(message)s")
+_FMT_ACC = logging.Formatter("[%(asctime)s] %(message)s")
 
-_fmt = logging.Formatter("[%(asctime)s] %(levelname)s [%(name)s] %(message)s")
-_fmt_access = logging.Formatter("[%(asctime)s] %(message)s")
 
-
-class _MaxLevelFilter(logging.Filter):
-    """只放行严格低于 level 的日志，用于把 ERROR 及以上从 app.log 中剔除。"""
+class _LtLevel(logging.Filter):
+    """只保留低于给定级别的记录（用来让 app.log 不含 ERROR）。"""
 
     def __init__(self, level: int) -> None:
         super().__init__()
@@ -64,75 +79,111 @@ class _MaxLevelFilter(logging.Filter):
         return record.levelno < self._level
 
 
-def _make_rotating_handler(filename: str, max_bytes: int, backups: int,
-                           level: int, fmt: logging.Formatter,
-                           filt: logging.Filter | None = None) -> RotatingFileHandler:
-    h = RotatingFileHandler(
-        os.path.join(LOG_DIR, filename),
-        maxBytes=max_bytes,
-        backupCount=backups,
-        encoding="utf-8",
+class _StdoutTeeAppLog:
+    """把 write 进 sys.stdout 的内容镜像到 app.logger（进 app.log）。"""
+
+    def __init__(self, raw, app_log: logging.Logger) -> None:
+        self._raw = raw
+        self._log = app_log
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        self._raw.write(s)
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            self._log.info("[stdout] %s", line)
+        return len(s)
+
+    def flush(self) -> None:
+        if self._buf:
+            self._log.info("[stdout] %s", self._buf)
+            self._buf = ""
+        self._raw.flush()
+
+    def isatty(self) -> bool:
+        fn = getattr(self._raw, "isatty", None)
+        return bool(fn and fn())
+
+    @property
+    def encoding(self):
+        return getattr(self._raw, "encoding", None) or "utf-8"
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
+def _setup_logging(flask_app: Flask):
+    """一次性挂好 handler；返回 access_logger 供路由钩子里使用。"""
+
+    def file_handler(path: str, level: int, fmt: logging.Formatter, *,
+                     mb: int = 10, backups: int = 5,
+                     filt: logging.Filter | None = None):
+        h = RotatingFileHandler(
+            os.path.join(LOG_DIR, path),
+            maxBytes=mb * _MB,
+            backupCount=backups,
+            encoding="utf-8",
+        )
+        h.setLevel(level)
+        h.setFormatter(fmt)
+        if filt is not None:
+            h.addFilter(filt)
+        return h
+
+    def stream(level: int, fmt: logging.Formatter, filt: logging.Filter | None = None):
+        h = logging.StreamHandler(_CONSOLE)
+        h.setLevel(level)
+        h.setFormatter(fmt)
+        if filt is not None:
+            h.addFilter(filt)
+        return h
+
+    def attach(log: logging.Logger, level: int, *handlers: logging.Handler) -> None:
+        log.handlers.clear()
+        log.setLevel(level)
+        log.propagate = False
+        for h in handlers:
+            log.addHandler(h)
+
+    # 两个 logger 共用同一 error 实体：谁触发就只 emit 一次，不会重复追加两条
+    error_fh = file_handler("error.log", logging.ERROR, _FMT)
+
+    attach(
+        flask_app.logger,
+        logging.INFO,
+        file_handler("app.log", logging.INFO, _FMT, filt=_LtLevel(logging.ERROR)),
+        error_fh,
+        stream(logging.INFO, _FMT),
     )
-    h.setLevel(level)
-    h.setFormatter(fmt)
-    if filt is not None:
-        h.addFilter(filt)
-    return h
+
+    acc = logging.getLogger("flask.access")
+    attach(
+        acc,
+        logging.INFO,
+        file_handler("access.log", logging.INFO, _FMT_ACC, mb=50, backups=10),
+        stream(logging.INFO, _FMT_ACC),
+    )
+
+    # 保留 werkzeug 自带 handler，只抬高级别，避免清掉后连 WARNING 也看不见
+    wz = logging.getLogger("werkzeug")
+    wz.setLevel(logging.WARNING)
+    wz.propagate = False
+
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    root.setLevel(logging.WARNING)
+    root.addHandler(error_fh)
+
+    attach(logging.getLogger("backend"), logging.INFO, *list(flask_app.logger.handlers))
+    sys.stdout = _StdoutTeeAppLog(_CONSOLE, flask_app.logger)
+    return acc
 
 
-def _make_stream_handler(level: int, fmt: logging.Formatter,
-                         filt: logging.Filter | None = None) -> logging.StreamHandler:
-    h = logging.StreamHandler(sys.stdout)
-    h.setLevel(level)
-    h.setFormatter(fmt)
-    if filt is not None:
-        h.addFilter(filt)
-    return h
-
-
-# ---------- 1. 应用日志（app.logger）：正常日志 -> app.log，错误日志 -> error.log ----------
-# 关键点：关闭 propagate，避免冒泡到 root logger 被再写一次
-app.logger.setLevel(logging.INFO)
-app.logger.handlers.clear()
-app.logger.propagate = False
-
-# app.log：只保留 INFO / WARNING（< ERROR）
-_info_only = _MaxLevelFilter(logging.ERROR)
-app.logger.addHandler(_make_rotating_handler(
-    "app.log", 10 * 1024 * 1024, 5, logging.INFO, _fmt, _info_only))
-
-# error.log：只保留 ERROR / CRITICAL
-app.logger.addHandler(_make_rotating_handler(
-    "error.log", 10 * 1024 * 1024, 5, logging.ERROR, _fmt))
-
-# 控制台：INFO+ 都打印，便于开发观察
-app.logger.addHandler(_make_stream_handler(logging.INFO, _fmt))
-
-# ---------- 2. 访问日志：独立文件 access.log ----------
-access_logger = logging.getLogger("flask.access")
-access_logger.setLevel(logging.INFO)
-access_logger.handlers.clear()
-access_logger.propagate = False
-access_logger.addHandler(_make_rotating_handler(
-    "access.log", 50 * 1024 * 1024, 10, logging.INFO, _fmt_access))
-access_logger.addHandler(_make_stream_handler(logging.INFO, _fmt_access))
-
-# ---------- 3. 抑制重复日志源 ----------
-# 3.1 werkzeug 自带的访问日志（形如 `IP - - [..] "GET /x" 200 -`）与我们的 access_logger 重复，
-#     提升其级别到 WARNING，只保留启动/错误信息。
-_werkzeug_logger = logging.getLogger("werkzeug")
-_werkzeug_logger.setLevel(logging.WARNING)
-_werkzeug_logger.propagate = False
-
-# 3.2 root logger：清理掉第三方库可能通过 basicConfig 加上的默认 StreamHandler，
-#     让所有业务日志都经由我们显式配置的 logger 输出，避免 "控制台同一行出现两次"
-_root_logger = logging.getLogger()
-for _h in list(_root_logger.handlers):
-    _root_logger.removeHandler(_h)
-_root_logger.setLevel(logging.WARNING)
-# root 只接收未被 propagate 截断的第三方库日志，统一写到 error.log（避免丢失三方告警）
-_root_logger.addHandler(_make_rotating_handler(
-    "error.log", 10 * 1024 * 1024, 5, logging.WARNING, _fmt))
+access_logger = _setup_logging(app)
 
 
 @app.before_request
@@ -157,11 +208,9 @@ def _log_request(response):
     return response
 
 
-# ========== 日志配置结束 ==========
-
-# Triton：常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME）在进程启动时预加载，不参与 LRU 淘汰（见 project.model_control）
+# Triton：常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME）在进程启动时预加载，不参与 LRU 淘汰（见 backend.tools.model_control）
 try:
-    from project.model_control import warmup_pinned_models_at_startup
+    from backend.tools.model_control import warmup_pinned_models_at_startup
 
     warmup_pinned_models_at_startup()
 except Exception:

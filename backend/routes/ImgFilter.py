@@ -6,7 +6,7 @@ import numpy as np
 from flask import send_file
 
 # from backend.tools import x100EnhancemModule, x40EnhancemModule
-from project.triton_client import infer_image_enhance
+from backend.tools.triton_client import infer_image_enhance
 
 ImgFilter = Namespace('img_filter', description='图片滤镜接口')
 

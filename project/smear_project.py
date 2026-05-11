@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import json
 import pickle
 from typing import List, Optional
+
+import orjson
 
 from .layers import Layer
 
@@ -88,21 +89,19 @@ class SmearProject:
     def save_json(self, path: str) -> str:
         """
         使用 JSON 持久化（推荐，可跨版本 / 跨语言）。
-        文件名: <root_dir>/<task_id>.smear.json
+        编码为 UTF-8；与标准库 json 产出格式兼容，可由任意 JSON 解析器读取。
         """
         path = Path(path)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(orjson.dumps(self.to_dict()))
         return "save success"
 
     @classmethod
     def load_json(cls, path: str) -> "SmearProject":
         path = Path(path)
-        if not os.path.exists(path):
+        if not path.exists():
             raise FileNotFoundError(path)
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = orjson.loads(path.read_bytes())
         return cls.from_dict(data)
 
 

@@ -1,9 +1,10 @@
 # model_control.py
 """
 Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理：若 config.TRITON_PINNED_PIPELINE_NAME 非空且为 MODEL_GROUPS 的键，则该组常驻、启动预载、不参与 LRU、不会被卸载；
-若未配置或为空字符串，则无常驻组，全部走动态加载与 LRU。
-其余组在「预估显存占用 + 可选常驻组」超过 GPU 预算（见 config.TRITON_GPU_VRAM_GB − 预留）时，
+按模型组管理：STARTUP_WARMUP_PIPELINES 中的 pipeline 在启动时预载，对应组不参与 LRU；另若 config.TRITON_PINNED_PIPELINE_NAME
+为非空且在 MODEL_GROUPS 中，其组一并视为常驻。
+若上述集合为空（无可用预载/常驻项），则全部走动态加载与 LRU。
+其余组在「预估显存占用 + 常驻组」超过 GPU 预算（见本模块 TRITON_GPU_VRAM_GB − 预留）时，
 按 LRU（最久未访问）淘汰整组，直至能装入目标组（槽位数不再固定为 3）。
 每次 ensure_model_loaded 调用都更新该组最后访问时间；淘汰仅从非常驻组中选择。
 """
@@ -15,14 +16,9 @@ import os
 import threading
 import time
 import urllib.request
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
-from config import (
-    TRITON_GPU_VRAM_GB,
-    TRITON_HTTP_URL,
-    TRITON_PINNED_PIPELINE_NAME,
-    TRITON_VRAM_RESERVE_GB,
-)
+from config import TRITON_HTTP_URL, TRITON_PINNED_PIPELINE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +33,6 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
             "DPI147246_BM_PB_WBC_cell_detection",
             "DPI147246_BM_PB_MEG_cell_detection",
             "DPI147246_BM_PB_constituency_score",
-            "DPI147246_BM_PB_pipeline",
             "DPI147246_BM_PB_cell_analysis",
         ],
     ),
@@ -46,36 +41,56 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
         [
             "DPI357378_BM_MEG_cell_detection",
             "DPI357378_BM_MEG_cell_classifier",
-            "DPI357378_BM_MEG_pipeline",
         ],
     ),
-    "DPI714756_CF_WBC_pipeline": (
-        "DPI714756_CF",
-        [
-            "DPI714756_CF_WBC_cell_detector",
-            "DPI714756_CF_WBC_cell_classifier",
-            "DPI714756_CF_WBC_pipeline",
-        ],
-    ),
+    # "DPI714756_CF_WBC_pipeline": (
+    #     "DPI714756_CF",
+    #     [
+            # "DPI714756_CF_WBC_cell_detector",
+            # "DPI714756_CF_WBC_cell_classifier",
+    #     ],
+    # ),
     "DPI714756_BM_PB_pipeline": (
         "DPI714756_BM_PB",
         [
             "DPI714756_BM_PB_WBC_detector",
             "DPI714756_BM_PB_WBC_classifier",
             "DPI714756_BM_PB_RED_cell_detection",
-            "DPI714756_BM_PB_pipeline",
         ],
     ),
-    "Image_enhance_pipeline": (
-        "Image_enhance",
-        [
-            "Image_enhance",
-            "Image_enhance_pipeline",
-        ],
-    ),
+    # "Image_enhance_pipeline": (
+    #     "Image_enhance",
+    #     [
+    #         "Image_enhance",
+    #     ],
+    # ),
 }
 
-# 每组预估显存占用（GB），与 triton_client 注释一致；用于加载前测算是否需 LRU 淘汰
+# 进程启动时必须按序预加载的 pipeline（亦为常驻组来源之一，不参与 LRU）
+STARTUP_WARMUP_PIPELINES: Tuple[str, ...] = (
+    "DPI147246_BM_PB_pipeline",
+    "DPI357378_BM_MEG_pipeline",
+    "DPI714756_BM_PB_pipeline",
+)
+
+
+def _pinned_group_keys() -> FrozenSet[str]:
+    keys: set[str] = set()
+    for pname in STARTUP_WARMUP_PIPELINES:
+        entry = MODEL_GROUPS.get(pname)
+        if entry:
+            keys.add(entry[0])
+    extra = (TRITON_PINNED_PIPELINE_NAME or "").strip()
+    if extra:
+        entry = MODEL_GROUPS.get(extra)
+        if entry:
+            keys.add(entry[0])
+    return frozenset(keys)
+
+
+PINNED_GROUP_KEYS: FrozenSet[str] = _pinned_group_keys()
+
+# 每组预估显存占用（GB），与 backend.tools.triton_client 注释一致；用于加载前测算是否需 LRU 淘汰
 GROUP_VRAM_GB: Dict[str, float] = {
     "DPI147246_BM_PB": 6.0,
     "DPI357378_BM_MEG": 3.5,
@@ -84,16 +99,12 @@ GROUP_VRAM_GB: Dict[str, float] = {
     "Image_enhance": 3.0,
 }
 
-# 常驻：config 为空或仅空白时无 pin；非空时须为 MODEL_GROUPS 的键，否则视为无有效常驻（与空配置相同，启动不预载）
-_TRITON_PINNED_STR = (TRITON_PINNED_PIPELINE_NAME or "").strip()
-PINNED_PIPELINE_NAME = _TRITON_PINNED_STR
-_PINNED_ENTRY = MODEL_GROUPS.get(_TRITON_PINNED_STR) if _TRITON_PINNED_STR else None
-PINNED_GROUP_KEY: Optional[str] = _PINNED_ENTRY[0] if _PINNED_ENTRY else None
-
 # LRU: group_key -> 最后访问时间戳（常驻组也会更新，仅用于观测，不参与淘汰）
 _group_last_used: Dict[str, float] = {}
 _model_lock = threading.Lock()
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
+TRITON_GPU_VRAM_GB = float(os.environ.get("TRITON_GPU_VRAM_GB", "16"))
+TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "1"))
 
 
 def _effective_vram_budget_gb() -> float:
@@ -197,9 +208,9 @@ def _get_loaded_group_keys(actually_loaded: set) -> set:
 
 
 def _evictable_group_keys(loaded_groups: set) -> set:
-    """可作为 LRU 淘汰候选的组。若存在常驻组且已加载，则将其排除；无常驻时全部可淘汰。"""
-    if PINNED_GROUP_KEY is not None and PINNED_GROUP_KEY in loaded_groups:
-        return loaded_groups - {PINNED_GROUP_KEY}
+    """可作为 LRU 淘汰候选的组。常驻组集合 PINNED_GROUP_KEYS 中的已加载项排除；无常驻集合时全部可淘汰。"""
+    if PINNED_GROUP_KEYS:
+        return loaded_groups - PINNED_GROUP_KEYS
     return set(loaded_groups)
 
 
@@ -210,7 +221,7 @@ def ensure_model_loaded(
 ) -> Tuple[bool, str]:
     """
     确保模型组已加载。model_name 为 pipeline 名称（见 MODEL_GROUPS 键等）。
-    容量规则：若配置了常驻组（PINNED_GROUP_KEY 非空）则该组永不被 LRU 卸载；否则全部组均可淘汰。其余组在
+    容量规则：PINNED_GROUP_KEYS 中的组永不被 LRU 卸载；若无常驻组集合则全部组均可淘汰。其余组在
     「当前已加载组预估显存之和 + 待加载组预估显存」超过 TRITON_GPU_VRAM_GB − 预留时，
     在非常驻组中按 LRU 整组卸载，直至预算足够（不再使用固定「最多 3 组」）。
     max_groups / max_models 若传入则额外限制「已加载组数量」上限（兼容旧调用），默认不限制仅按显存。
@@ -305,34 +316,30 @@ def ensure_model_loaded(
 
 
 def warmup_pinned_models_at_startup() -> None:
-    """Web 服务启动时预加载常驻 pipeline；未配置、为空或不在 MODEL_GROUPS 时跳过，失败打 ERROR 日志。"""
+    """Web 服务启动时按 STARTUP_WARMUP_PIPELINES 依次预加载；失败打 ERROR 日志。"""
     logger.info(
-        "Triton VRAM policy: effective budget %.1fGB (GPU %.1fGB − reserve %.1fGB); pinned=%s",
+        "Triton VRAM policy: effective budget %.1fGB (GPU %.1fGB − reserve %.1fGB); warmup=%s pinned_group_keys=%s",
         _effective_vram_budget_gb(),
         TRITON_GPU_VRAM_GB,
         TRITON_VRAM_RESERVE_GB,
-        PINNED_PIPELINE_NAME or "(none)",
+        STARTUP_WARMUP_PIPELINES,
+        tuple(sorted(PINNED_GROUP_KEYS)),
     )
-    if PINNED_GROUP_KEY is None:
-        if _TRITON_PINNED_STR:
-            logger.warning(
-                "TRITON_PINNED_PIPELINE_NAME=%r 非空但不在 MODEL_GROUPS 中，不执行启动预加载，仅动态加载。",
-                TRITON_PINNED_PIPELINE_NAME,
-            )
+    loaded_any = False
+    for pname in STARTUP_WARMUP_PIPELINES:
+        if pname not in MODEL_GROUPS:
+            logger.warning("Startup warmup: pipeline %r 不在 MODEL_GROUPS 中，已跳过。", pname)
+            continue
+        ok, msg = ensure_model_loaded(pname)
+        if not ok:
+            logger.error("Startup warmup: pipeline %s failed to load: %s", pname, msg)
         else:
-            logger.info(
-                "未配置常驻 pipeline（TRITON_PINNED_PIPELINE_NAME 为空），跳过启动预加载，全部按请求动态加载/LRU。",
-            )
-        return
-    ok, msg = ensure_model_loaded(PINNED_PIPELINE_NAME)
-    if not ok:
-        logger.error(
-            "Pinned model group %s failed to load at startup: %s",
-            PINNED_PIPELINE_NAME,
-            msg,
+            loaded_any = True
+            logger.info("Startup warmup: pipeline %s loaded.", pname)
+    if not loaded_any:
+        logger.warning(
+            "启动预加载未成功加载任何 pipeline（请检查 MODEL_GROUPS 与 Triton）；请求仍将走动态加载/LRU。"
         )
-    else:
-        logger.info("Pinned model group %s loaded at startup.", PINNED_PIPELINE_NAME)
 
 
 def warmup_model(model_name: str) -> None:
@@ -344,4 +351,4 @@ def warmup_model(model_name: str) -> None:
 
 if __name__ == "__main__":
     print("Loaded models:", get_loaded_models())
-    # print("ensure_model_loaded pinned:", ensure_model_loaded(PINNED_PIPELINE_NAME))
+    # print("ensure_model_loaded:", ensure_model_loaded(STARTUP_WARMUP_PIPELINES[0]))

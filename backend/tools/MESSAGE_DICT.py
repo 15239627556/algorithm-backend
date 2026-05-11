@@ -89,7 +89,16 @@ CELL_TYPES_X100 = {
     200034: ("Platelet", "血小板"),
 }
 
+CELL_TYPES_MEG = {
+    300000: ("Unclassified_MEG", "颗粒型巨核细胞"),
+    300001: ("Unclassified_RBC", "产板型巨核细胞"),
+    300002: ("Broken_Cell", "巨核细胞裸核"),
+    300003: ("Broken_Cell", "幼稚型巨核细胞"),
+    300004: ("Broken_Cell", "非巨核细胞"),
+    300005: ("Broken_Cell", "分类不明/无法分类巨核细胞"),
+}
+
 # 目前开放的DPI
-dpi_list = [40, 100]
+dpi_list = [40, 50, 100]
 # 允许上传的图片格式
 allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
