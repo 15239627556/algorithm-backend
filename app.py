@@ -101,17 +101,25 @@ class _StdoutTeeAppLog:
         self._buf = ""
 
     def write(self, s: str | bytes) -> int:
-        # Flask/Click 等有时写 str，极少数路径写 bytes；真实 stdout 为文本模式时只接收 str
+        # Flask/Click 等对 stdout.write 既有 str，也有 bytes / buffer；文本模式 __stdout__ 只收 str
         if not s:
             return 0
-        if isinstance(s, bytes):
-            s = s.decode(self.encoding, errors="replace")
-        self._raw.write(s)
-        self._buf += s
+        if isinstance(s, str):
+            text = s
+        elif isinstance(s, (bytes, bytearray)):
+            text = s.decode(self.encoding, errors="replace")
+        else:
+            try:
+                text = bytes(s).decode(self.encoding, errors="replace")
+            except (TypeError, ValueError, UnicodeDecodeError):
+                text = str(s)
+
+        self._raw.write(text)
+        self._buf += text
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
             self._log.info("[stdout] %s", line)
-        return len(s)
+        return len(text)
 
     def flush(self) -> None:
         if self._buf:
