@@ -49,20 +49,33 @@ def health():
 # ---------------------------------------------------------------------------
 # 日志：三文件 + 控制台
 #
-# app.log       — Flask app.logger、business(backend.*)、stdout tee，仅 INFO/WARNING（ERROR 不进此文件便于阅读）
-# error.log     — ERROR+（app.logger + root；root 接住第三方库的告警）
-# access.log    — 下面 after_request 里一行一条 HTTP 摘要
+# 轮转：RotatingFileHandler — 当前文件写到约 max_bytes 后重命名为 .1、.2…，再新建空文件；
+#       最多保留 1 个当前文件 + backup_count 个备份（旧备份会被删）。
+# app.log / error.log — 默认单文件上限 10MB，备份 5 个
+# access.log     — 单文件上限略大（请求多），但仍可配置，避免「单文件无限涨」
 #
-# propagate=False：日志不往上冒泡，避免与 root handler 双重输出。
-# werkzeug logger 提到 WARNING：否则每个请求两行访问日志（它一行 + access_logger 一行）。
-# print：sys.stdout 换成 Tee → 控制台照旧，并按行记入 app.logger → app.log；
-#        StreamHandler 必须绑在真实的 __stdout__ 上，不能绑 Tee，否则会 logging 递归。
-# backend.*：命名空间挂上与 app.logger 同一批 handler（root 默认 WARNING，否则 getLogger(__name__).info 被吃掉）。
+# app.log       — Flask app.logger、business(backend.*)、stdout tee；仅 INFO/WARNING
+# error.log     — ERROR+（app.logger + root）
+# access.log    — after_request 一行一条 HTTP 摘要
+#
+# propagate=False：不往上冒泡，避免与 root 重复输出。
+# werkzeug 提到 WARNING：避免与 access_logger 双份访问日志。
+# print → Tee 进 app.logger；StreamHandler 必须绑 __stdout__，否则会递归。
+# backend.* — 与 app.logger 共用 handler（root 默认 WARNING 会吞掉子 logger 的 INFO）。
 # ---------------------------------------------------------------------------
 
 LOG_DIR = os.path.join(root_dir, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 _MB = 1024 * 1024
+
+# 与下面 file_handler() 默认一致，集中改一处即可
+_LOG_APP_MB = 10
+_LOG_APP_BACKUPS = 5
+_ERROR_LOG_MB = 10
+_ERROR_LOG_BACKUPS = 5
+# 访问日志与 QPS 成正比；单文件上限仍强制轮转（可按流量把 _ACCESS_LOG_MB 调大/调小）
+_ACCESS_LOG_MB = 50
+_ACCESS_LOG_BACKUPS = 10
 _CONSOLE = getattr(sys, "__stdout__", sys.stdout)
 _FMT = logging.Formatter("[%(asctime)s] %(levelname)s [%(name)s] %(message)s")
 _FMT_ACC = logging.Formatter("[%(asctime)s] %(message)s")
@@ -87,9 +100,12 @@ class _StdoutTeeAppLog:
         self._log = app_log
         self._buf = ""
 
-    def write(self, s: str) -> int:
+    def write(self, s: str | bytes) -> int:
+        # Flask/Click 等有时写 str，极少数路径写 bytes；真实 stdout 为文本模式时只接收 str
         if not s:
             return 0
+        if isinstance(s, bytes):
+            s = s.decode(self.encoding, errors="replace")
         self._raw.write(s)
         self._buf += s
         while "\n" in self._buf:
@@ -119,8 +135,9 @@ def _setup_logging(flask_app: Flask):
     """一次性挂好 handler；返回 access_logger 供路由钩子里使用。"""
 
     def file_handler(path: str, level: int, fmt: logging.Formatter, *,
-                     mb: int = 10, backups: int = 5,
+                     mb: int = _LOG_APP_MB, backups: int = _LOG_APP_BACKUPS,
                      filt: logging.Filter | None = None):
+        # RotatingFileHandler：见文件头「轮转」说明
         h = RotatingFileHandler(
             os.path.join(LOG_DIR, path),
             maxBytes=mb * _MB,
@@ -149,7 +166,10 @@ def _setup_logging(flask_app: Flask):
             log.addHandler(h)
 
     # 两个 logger 共用同一 error 实体：谁触发就只 emit 一次，不会重复追加两条
-    error_fh = file_handler("error.log", logging.ERROR, _FMT)
+    error_fh = file_handler(
+        "error.log", logging.ERROR, _FMT,
+        mb=_ERROR_LOG_MB, backups=_ERROR_LOG_BACKUPS,
+    )
 
     attach(
         flask_app.logger,
@@ -163,7 +183,10 @@ def _setup_logging(flask_app: Flask):
     attach(
         acc,
         logging.INFO,
-        file_handler("access.log", logging.INFO, _FMT_ACC, mb=50, backups=10),
+        file_handler(
+            "access.log", logging.INFO, _FMT_ACC,
+            mb=_ACCESS_LOG_MB, backups=_ACCESS_LOG_BACKUPS,
+        ),
         stream(logging.INFO, _FMT_ACC),
     )
 
