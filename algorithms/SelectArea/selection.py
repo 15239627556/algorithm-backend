@@ -7,13 +7,140 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 from project.tiles import Tile
 
+import os
 import cv2
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
 
 from .heatmaps import HeatmapGrid
 from .config import BM40Config
 from .data_structure import SelectionResult, Rect
+
+
+def _search_one_window_angle(
+    args: Tuple[
+        int,
+        int,
+        int,
+        int,
+        np.ndarray,
+        np.ndarray,
+        Optional[np.ndarray],
+        Rect,
+        int,
+        float,
+        int,
+        int,
+        float,
+    ]
+) -> Optional[Tuple[int, bool, SelectionResult]]:
+    (
+        order_idx,
+        w,
+        h,
+        angle,
+        adjusted_score_map,
+        cell_matrix,
+        user_search_mask,
+        head_crop_rect,
+        orientation,
+        heatmap_penalty_value,
+        kernel_margin,
+        rows,
+        cols,
+    ) = args
+
+    area_pixels = float(w * h)
+
+    if angle == 0:
+        # 轴对齐矩形等价于 boxFilter，OpenCV 对该路径有积分图级别优化。
+        rect_pad_x, rect_pad_y = w // 2, h // 2
+        rect_padded_scores = cv2.copyMakeBorder(
+            adjusted_score_map,
+            rect_pad_y,
+            rect_pad_y,
+            rect_pad_x,
+            rect_pad_x,
+            cv2.BORDER_CONSTANT,
+            value=float(heatmap_penalty_value),
+        )
+        rect_padded_cells = cv2.copyMakeBorder(
+            cell_matrix,
+            rect_pad_y,
+            rect_pad_y,
+            rect_pad_x,
+            rect_pad_x,
+            cv2.BORDER_CONSTANT,
+            value=0.0,
+        )
+        sum_scores_full = cv2.boxFilter(rect_padded_scores, -1, (w, h), normalize=False)
+        sum_cells_full = cv2.boxFilter(rect_padded_cells, -1, (w, h), normalize=False)
+        sum_scores = sum_scores_full[rect_pad_y : rect_pad_y + rows, rect_pad_x : rect_pad_x + cols]
+        sum_cells = sum_cells_full[rect_pad_y : rect_pad_y + rows, rect_pad_x : rect_pad_x + cols]
+    else:
+        kernel_size = int(np.sqrt(w**2 + h**2)) + kernel_margin
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        pad = kernel_size // 2
+
+        padded_scores = cv2.copyMakeBorder(
+            adjusted_score_map,
+            pad,
+            pad,
+            pad,
+            pad,
+            cv2.BORDER_CONSTANT,
+            value=float(heatmap_penalty_value),
+        )
+        padded_cells = cv2.copyMakeBorder(
+            cell_matrix,
+            pad,
+            pad,
+            pad,
+            pad,
+            cv2.BORDER_CONSTANT,
+            value=0.0,
+        )
+
+        base_mask = np.zeros((kernel_size, kernel_size), dtype=np.float32)
+        pad_w, pad_h = (kernel_size - w) // 2, (kernel_size - h) // 2
+        base_mask[pad_h : pad_h + h, pad_w : pad_w + w] = 1.0
+
+        M = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), -angle, 1.0)
+        rotated_kernel = cv2.warpAffine(base_mask, M, (kernel_size, kernel_size), flags=cv2.INTER_NEAREST)
+
+        sum_scores_full = cv2.filter2D(padded_scores, -1, rotated_kernel)
+        sum_cells_full = cv2.filter2D(padded_cells, -1, rotated_kernel)
+        sum_scores = sum_scores_full[pad : pad + rows, pad : pad + cols]
+        sum_cells = sum_cells_full[pad : pad + rows, pad : pad + cols]
+
+    if user_search_mask is not None:
+        sum_scores = sum_scores.copy()
+        sum_scores[user_search_mask == 0] = -1e12
+
+    _, max_val, _, max_loc = cv2.minMaxLoc(sum_scores)
+    cx, cy = int(max_loc[0]), int(max_loc[1])
+    rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
+
+    if user_search_mask is not None:
+        pts_idx = rect_points.astype(np.int32)
+        for px, py in pts_idx:
+            if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
+                return None
+
+    extreme_x = np.max(rect_points[:, 0]) if orientation == 0 else np.min(rect_points[:, 0])
+    in_head = head_crop_rect.x <= extreme_x <= head_crop_rect.x2
+
+    res = SelectionResult(
+        area_score=max_val / area_pixels,
+        cell_count=int(sum_cells[cy, cx]),
+        angle=-angle,
+        center_grid=(cx, cy),
+        rect_size_grid=(w, h),
+        vertices_grid=rect_points,
+    )
+    return order_idx, in_head, res
 
 def find_candidate_regions(
     grid: HeatmapGrid,
@@ -49,70 +176,40 @@ def find_candidate_regions(
     head_results: List[SelectionResult] = []
     tail_results: List[SelectionResult] = []
 
-    # C. 滑动窗口搜索
-    for (w, h) in search_rects:
-        kernel_size = int(np.sqrt(w**2 + h**2)) + config.kernel_margin
-        if kernel_size % 2 == 0: kernel_size += 1
-        pad = kernel_size // 2
-        
-        # 填充边界
-        padded_scores = cv2.copyMakeBorder(adjusted_score_map, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=float(config.heatmap_penalty_value))
-        padded_cells = cv2.copyMakeBorder(cell_matrix, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0.0)
+    tasks = [
+        (
+            order_idx,
+            w,
+            h,
+            angle,
+            adjusted_score_map,
+            cell_matrix,
+            user_search_mask,
+            head_crop_rect,
+            orientation,
+            config.heatmap_penalty_value,
+            config.kernel_margin,
+            rows,
+            cols,
+        )
+        for order_idx, (w, h, angle) in enumerate(
+            (w, h, angle) for (w, h) in search_rects for angle in config.angles
+        )
+    ]
 
-        base_mask = np.zeros((kernel_size, kernel_size), dtype=np.float32)
-        pad_w, pad_h = (kernel_size - w) // 2, (kernel_size - h) // 2
-        base_mask[pad_h : pad_h + h, pad_w : pad_w + w] = 1.0
-        area_pixels = float(w * h)
+    cpu_count = os.cpu_count() or 1
+    max_workers = min(len(tasks), max(1, min(8, cpu_count)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        ordered_results = list(executor.map(_search_one_window_angle, tasks))
 
-        for angle in config.angles:
-            M = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), -angle, 1.0)
-            rotated_kernel = cv2.warpAffine(base_mask, M, (kernel_size, kernel_size), flags=cv2.INTER_NEAREST)
-            
-            # 卷积计算
-            sum_scores_full = cv2.filter2D(padded_scores, -1, rotated_kernel)
-            sum_cells_full = cv2.filter2D(padded_cells, -1, rotated_kernel)
-            
-            sum_scores = sum_scores_full[pad : pad + rows, pad : pad + cols]
-            sum_cells = sum_cells_full[pad : pad + rows, pad : pad + cols]
-            
-            # 1. 强制约束中心点坐标
-            if user_search_mask is not None:
-                sum_scores[user_search_mask == 0] = -1e12 
-            
-            _, max_val, _, max_loc = cv2.minMaxLoc(sum_scores)
-            cx, cy = int(max_loc[0]), int(max_loc[1])
-
-            # 2. 生成顶点并执行严格包含性检查
-            rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
-            
-            if user_search_mask is not None:
-                pts_idx = rect_points.astype(np.int32)
-                # 检查是否越界及四个角是否都在掩码内
-                is_valid = True
-                for px, py in pts_idx:
-                    if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
-                        is_valid = False
-                        break
-                if not is_valid:
-                    continue  # 丢弃这个结果，因为它超出了用户设定
-
-            # 3. 结果入库
-            extreme_x = np.max(rect_points[:, 0]) if orientation == 0 else np.min(rect_points[:, 0])
-            in_head = (head_crop_rect.x <= extreme_x <= head_crop_rect.x2)
-
-            res = SelectionResult(
-                area_score=max_val / area_pixels,
-                cell_count=int(sum_cells[cy, cx]),
-                angle=-angle,
-                center_grid=(cx, cy),
-                rect_size_grid=(w, h),
-                vertices_grid=rect_points
-            )
-
-            if in_head:
-                head_results.append(res)
-            else:
-                tail_results.append(res)
+    for item in ordered_results:
+        if item is None:
+            continue
+        _, in_head, res = item
+        if in_head:
+            head_results.append(res)
+        else:
+            tail_results.append(res)
 
     return {"head_results": head_results, "tail_results": tail_results}
 

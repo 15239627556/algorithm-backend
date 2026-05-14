@@ -21,7 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="40x tiles cell dedup runner")
     parser.add_argument(
         "--input-json",
-        default="/home/ubuntu/Downloads/b48bc82338654c8ea4ab9b74a21f46b0.json",
+        default="/home/ubuntu/Downloads/d1bde0b324bd41dc9fe8a1a4821e50bc.json",
         help="输入项目 JSON 路径",
     )
     parser.add_argument(

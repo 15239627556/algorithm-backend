@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Sequence
 from .config import BM40Config
 from .data_structure import TaskOutput, CellOutput
 from .setcover import solve, SetCoverSolverParameter
@@ -9,7 +9,7 @@ from .setcover import solve, SetCoverSolverParameter
 def generate_meg_view_tasks(
     meg_cell_bounds: np.ndarray,            # 过滤后的有效 MEG 细胞 (N, 4) [xmin, ymin, xmax, ymax]
     config: BM40Config,
-    wbc_rects: List[List[int]],          # 外部传入的 WBC 视野列表 [[X, Y, W, H], ...]
+    wbc_rects: Sequence[Sequence[float]] | np.ndarray,          # 外部传入的 WBC 视野列表/数组 [[X, Y, W, H], ...]
     params: Optional[SetCoverSolverParameter] = None,
 ) -> List[TaskOutput]:
     """
@@ -29,17 +29,19 @@ def generate_meg_view_tasks(
 
 
     # 2. 计算 WBC 中心点（用所有 WBC 视野中心的平均值）
-    if not wbc_rects:
+    if len(wbc_rects) == 0:
         wbc_center = None
         print("警告：无 WBC 细胞框，无法计算 WBC 中心点。")
     else:
         # wbc_rects: [[x, y, w, h], ...]
-        wbc_arr = np.asarray(wbc_rects, dtype=np.float32)  # shape (M, 4)
-        # 中心 = 左上角 + 宽高的一半
-        wbc_centers = np.empty((wbc_arr.shape[0], 2), dtype=np.float32)
-        wbc_centers[:, 0] = wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5  # cx
-        wbc_centers[:, 1] = wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5  # cy
-        wbc_center = wbc_centers.mean(axis=0)  # [cx, cy]
+        wbc_arr = np.asarray(wbc_rects, dtype=np.float32)  # ndarray 输入时不再复制
+        wbc_center = np.array(
+            [
+                np.mean(wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5),
+                np.mean(wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5),
+            ],
+            dtype=np.float32,
+        )
 
     # 3. 准备 set-cover 输入
     pad = config.setcover_pad

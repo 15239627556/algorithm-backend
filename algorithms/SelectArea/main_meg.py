@@ -28,7 +28,7 @@ from .pipeline_meg import MegSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/Downloads/c25a8f33793c43f4a164f5bbd4785e25.json"
+    json_path: str = "/home/ubuntu/Downloads/d1bde0b324bd41dc9fe8a1a4821e50bc.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -37,24 +37,30 @@ class VizConfigMeg:
 def collect_nucleated_wbc_rects_from_tiles(
     tiles: List[Tile],
     wbc_cell_type: int,
-) -> List[List[float]]:
+) -> np.ndarray:
     """
     从 40x tiles 中收集有核细胞矩形，全局坐标 [x, y, w, h]。
     过滤方式与 heatmaps.build_cell_count_grid 中一致（cell_type == WBC_cell_type）。
     """
-    wbc_rects: List[List[float]] = []
+    capacity = sum(len(tile.cells) for tile in tiles if tile.x is not None and tile.y is not None)
+    if capacity == 0:
+        return np.empty((0, 4), dtype=np.float32)
+
+    wbc_rects = np.empty((capacity, 4), dtype=np.float32)
+    count = 0
     for tile in tiles:
-        if tile.x is None or tile.y is None:
+        tx, ty = tile.x, tile.y
+        if tx is None or ty is None:
             continue
         for cell in tile.cells:
-            if getattr(cell, "cell_type", None) != wbc_cell_type:
+            if cell.cell_type != wbc_cell_type:
                 continue
-            x = float(tile.x + cell.cell_xmin)
-            y = float(tile.y + cell.cell_ymin)
-            w = float(cell.cell_xmax - cell.cell_xmin)
-            h = float(cell.cell_ymax - cell.cell_ymin)
-            wbc_rects.append([x, y, w, h])
-    return wbc_rects
+            wbc_rects[count, 0] = tx + cell.cell_xmin
+            wbc_rects[count, 1] = ty + cell.cell_ymin
+            wbc_rects[count, 2] = cell.cell_xmax - cell.cell_xmin
+            wbc_rects[count, 3] = cell.cell_ymax - cell.cell_ymin
+            count += 1
+    return wbc_rects[:count]
 
 
 # ===================== 可视化：MEG 任务 =====================
@@ -62,7 +68,7 @@ def visualize_meg_results(
     tasks: List[TaskOutput],
     grid_info: Any,
     save_path_base: Path,
-    wbc_rects: List[List[float]]
+    wbc_rects: np.ndarray
 ) -> None:
     """
     可视化 MEG 结果：
@@ -131,10 +137,9 @@ def visualize_meg_results(
         ax4.set_ylim(min(task_ys) - margin, max(task_ys) + margin)
 
     # === 新增：绘制 WBC 视野中心点（更明显） ===
-    if wbc_rects:
-        wbc_arr = np.asarray(wbc_rects, dtype=np.float32)  # [x, y, w, h]
-        wbc_cx = wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5
-        wbc_cy = wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5
+    if len(wbc_rects) > 0:
+        wbc_cx = wbc_rects[:, 0] + wbc_rects[:, 2] * 0.5
+        wbc_cy = wbc_rects[:, 1] + wbc_rects[:, 3] * 0.5
         # 用红色大十字标出有核视野中心
         ax4.scatter(
             wbc_cx,
@@ -202,7 +207,7 @@ def main() -> None:
 
     wbc_rects = collect_nucleated_wbc_rects_from_tiles(tiles, bm_cfg.WBC_cell_type)
     print(f"[INFO][MEG] 从 40x tiles 中解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
-    if not wbc_rects:
+    if len(wbc_rects) == 0:
         print(
             "[ERROR][MEG] 未解析到任何有核细胞（WBC_cell_type），"
             "无法计算 MEG 排序参考。"
@@ -210,13 +215,14 @@ def main() -> None:
         return
 
     import time
-    start_time = time.time()
-    pipeline = MegSamplingPipeline(bm_cfg)
-    end_time = time.time()
-    print(f"[INFO][MEG] 构造 MegSamplingPipeline 时间: {end_time - start_time} 秒")
+    # start_time = time.time()
+    # pipeline = MegSamplingPipeline(bm_cfg)
+    # end_time = time.time()
+    # print(f"[INFO][MEG] 构造 MegSamplingPipeline 时间: {end_time - start_time} 秒")
 
     start_time = time.time()
     # 4. 运行 MEG 采样
+    pipeline = MegSamplingPipeline(bm_cfg)
     meg_tasks: List[TaskOutput] = pipeline.run_meg(
         project=project,
         wbc_rects=wbc_rects,

@@ -1923,11 +1923,11 @@
     "task_index": 56,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 70425,
-    "view_ymin": 21599,
-    "view_xmax": 71625,
-    "view_ymax": 22599,
-    "region_name": "Extra_1",
+    "view_xmin": 70296,
+    "view_ymin": 21791,
+    "view_xmax": 71496,
+    "view_ymax": 22791,
+    "region_name": "Extra_2",
     "cell_list": [
       [
         70617,
@@ -2115,33 +2115,9 @@
     "task_index": 59,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 69428,
-    "view_ymin": 25706,
-    "view_xmax": 70628,
-    "view_ymax": 26706,
-    "region_name": "Extra_17",
-    "cell_list": [
-      [
-        69757,
-        26191,
-        69848,
-        26284
-      ],
-      [
-        70211,
-        26127,
-        70299,
-        26224
-      ]
-    ]
-  },
-  {
-    "task_index": 60,
-    "view_type": "RBC",
-    "smear_type": "BM",
-    "view_xmin": 69435,
+    "view_xmin": 69424,
     "view_ymin": 22006,
-    "view_xmax": 70635,
+    "view_xmax": 70624,
     "view_ymax": 23006,
     "region_name": "Extra_17",
     "cell_list": [
@@ -2180,6 +2156,30 @@
         22629,
         70410,
         22709
+      ]
+    ]
+  },
+  {
+    "task_index": 60,
+    "view_type": "RBC",
+    "smear_type": "BM",
+    "view_xmin": 69428,
+    "view_ymin": 25706,
+    "view_xmax": 70628,
+    "view_ymax": 26706,
+    "region_name": "Extra_17",
+    "cell_list": [
+      [
+        69757,
+        26191,
+        69848,
+        26284
+      ],
+      [
+        70211,
+        26127,
+        70299,
+        26224
       ]
     ]
   },
@@ -2691,11 +2691,11 @@
     "task_index": 70,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 66941,
+    "view_xmin": 66690,
     "view_ymin": 22940,
-    "view_xmax": 68141,
+    "view_xmax": 67890,
     "view_ymax": 23940,
-    "region_name": "Extra_28",
+    "region_name": "Extra_29",
     "cell_list": [
       [
         67586,
@@ -2847,9 +2847,9 @@
     "task_index": 75,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 65804,
+    "view_xmin": 65727,
     "view_ymin": 23038,
-    "view_xmax": 67004,
+    "view_xmax": 66927,
     "view_ymax": 24038,
     "region_name": "Extra_33",
     "cell_list": [
@@ -4810,6 +4810,24 @@
     "region_name": "Extra_87",
     "cell_list": [
       [
+        53626,
+        23383,
+        53678,
+        23435
+      ],
+      [
+        53767,
+        23210,
+        53853,
+        23294
+      ],
+      [
+        53793,
+        23829,
+        53851,
+        23884
+      ],
+      [
         53972,
         23549,
         54044,
@@ -4995,11 +5013,11 @@
     "task_index": 116,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 52626,
-    "view_ymin": 23060,
-    "view_xmax": 53826,
-    "view_ymax": 24060,
-    "region_name": "Extra_92",
+    "view_xmin": 52405,
+    "view_ymin": 23070,
+    "view_xmax": 53605,
+    "view_ymax": 24070,
+    "region_name": "Extra_93",
     "cell_list": [
       [
         53546,
@@ -5008,10 +5026,10 @@
         23520
       ],
       [
-        53626,
-        23383,
-        53678,
-        23435
+        52716,
+        23327,
+        52779,
+        23386
       ],
       [
         53383,
@@ -5020,22 +5038,10 @@
         23973
       ],
       [
-        53767,
-        23210,
-        53853,
-        23294
-      ],
-      [
         52990,
         23163,
         53048,
         23231
-      ],
-      [
-        53793,
-        23829,
-        53851,
-        23884
       ],
       [
         53560,
@@ -5157,18 +5163,12 @@
     "task_index": 119,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 51602,
-    "view_ymin": 23183,
-    "view_xmax": 52802,
-    "view_ymax": 24183,
-    "region_name": "Extra_96",
+    "view_xmin": 51401,
+    "view_ymin": 23066,
+    "view_xmax": 52601,
+    "view_ymax": 24066,
+    "region_name": "Extra_97",
     "cell_list": [
-      [
-        52716,
-        23327,
-        52779,
-        23386
-      ],
       [
         52310,
         23265,
@@ -5200,12 +5200,6 @@
         23485
       ],
       [
-        51917,
-        24048,
-        51967,
-        24092
-      ],
-      [
         51680,
         23452,
         51734,
@@ -5218,9 +5212,9 @@
     "view_type": "RBC",
     "smear_type": "BM",
     "view_xmin": 51229,
-    "view_ymin": 24218,
+    "view_ymin": 24018,
     "view_xmax": 52429,
-    "view_ymax": 25218,
+    "view_ymax": 25018,
     "region_name": "Extra_98",
     "cell_list": [
       [
@@ -5246,6 +5240,12 @@
         24444,
         51936,
         24494
+      ],
+      [
+        51917,
+        24048,
+        51967,
+        24092
       ],
       [
         51449,
@@ -6082,10 +6082,22 @@
         24669
       ],
       [
+        43122,
+        24727,
+        43180,
+        24781
+      ],
+      [
         43373,
         24869,
         43439,
         24931
+      ],
+      [
+        43152,
+        24547,
+        43206,
+        24603
       ],
       [
         43638,
@@ -6105,42 +6117,6 @@
     "task_index": 139,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 42099,
-    "view_ymin": 23907,
-    "view_xmax": 43299,
-    "view_ymax": 24907,
-    "region_name": "Extra_139",
-    "cell_list": [
-      [
-        42214,
-        24280,
-        42283,
-        24350
-      ],
-      [
-        42698,
-        24386,
-        42752,
-        24442
-      ],
-      [
-        43122,
-        24727,
-        43180,
-        24781
-      ],
-      [
-        43152,
-        24547,
-        43206,
-        24603
-      ]
-    ]
-  },
-  {
-    "task_index": 140,
-    "view_type": "RBC",
-    "smear_type": "BM",
     "view_xmin": 41863,
     "view_ymin": 26338,
     "view_xmax": 43063,
@@ -6156,13 +6132,37 @@
     ]
   },
   {
+    "task_index": 140,
+    "view_type": "RBC",
+    "smear_type": "BM",
+    "view_xmin": 41886,
+    "view_ymin": 23864,
+    "view_xmax": 43086,
+    "view_ymax": 24864,
+    "region_name": "Extra_140",
+    "cell_list": [
+      [
+        42214,
+        24280,
+        42283,
+        24350
+      ],
+      [
+        42698,
+        24386,
+        42752,
+        24442
+      ]
+    ]
+  },
+  {
     "task_index": 141,
     "view_type": "RBC",
     "smear_type": "BM",
-    "view_xmin": 41256,
-    "view_ymin": 23117,
-    "view_xmax": 42456,
-    "view_ymax": 24117,
+    "view_xmin": 41259,
+    "view_ymin": 23158,
+    "view_xmax": 42459,
+    "view_ymax": 24158,
     "region_name": "Extra_142",
     "cell_list": [
       [

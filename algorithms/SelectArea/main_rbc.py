@@ -160,8 +160,12 @@ def main() -> None:
                         View_type="RBC", 
                         Smear_type=project.smear_type)
 
+    import time
+    start_time = time.time()
     pipeline = RBCSamplingPipeline(bm_cfg)
     final_task_list = pipeline.run(project)
+    end_time = time.time()
+    print(f"[INFO][RBC] 算法执行时间: {end_time - start_time} 秒")
     print(f"[INFO][RBC] 算法执行完成，生成了 {len(final_task_list)} 个拍摄视野")
 
     json_ready_results = [task.to_dict() for task in final_task_list]

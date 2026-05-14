@@ -1,6 +1,6 @@
 # pipeline_meg.py
 import numpy as np
-from typing import List
+from typing import List, Sequence
 import math
 import sys
 from pathlib import Path
@@ -31,8 +31,7 @@ def _collect_meg_cells_fast(tiles, meg_type: int):
             continue
 
         for c in t.cells:
-            # cell_type 正常情况下均存在，这里保留 getattr 以兼容异常数据。
-            if getattr(c, "cell_type", None) != meg_type:
+            if c.cell_type != meg_type:
                 continue
             append(
                 [
@@ -87,7 +86,7 @@ class MegSamplingPipeline:
     def run_meg(
         self,
         project: SmearProject,
-        wbc_rects: List[List[int]],
+        wbc_rects: Sequence[Sequence[float]] | np.ndarray,
     ) -> List[TaskOutput]:
         # 1. 从项目中提取 40x 扫描层
         dpi = self.cfg.dpi
@@ -102,7 +101,7 @@ class MegSamplingPipeline:
             print("[ERROR][MEG] 40x 层中没有找到有效的 Tile 数据")
             return []
 
-        if not wbc_rects:
+        if len(wbc_rects) == 0:
             print(
                 "[ERROR][MEG] 未传入任何有核细胞，"
                 "无法计算 MEG 排序参考。"

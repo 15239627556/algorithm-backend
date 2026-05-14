@@ -50,14 +50,19 @@ def affinity_matrix(rects, points):
 
 def solve_set_cover(aff):
     n_rects, n_points = aff.shape
+    if n_rects == 0 or n_points == 0:
+        return []
+
+    # 相同覆盖模式的点会生成完全相同的约束，去重不改变最优解但能显著减少 SCIP 约束数。
+    unique_point_patterns = np.unique(aff.T, axis=0)
     model = pyscipopt.Model('Set Cover')
     model.setParam('display/verblevel', 0)
     vars = [model.addVar(vtype="B", name=f"rect_{i}") for i in range(n_rects)]
-    for j in range(n_points):
-        covering_rects = np.where(aff[:, j])[0]
-        assert len(covering_rects) > 0, "No covering rects for point {}".format(j)
+    for j, pattern in enumerate(unique_point_patterns):
+        covering_rects = np.flatnonzero(pattern)
+        assert len(covering_rects) > 0, "No covering rects for coverage pattern {}".format(j)
         model.addCons(pyscipopt.quicksum(vars[i] for i in covering_rects) >= 1,
-                      name=f"cover_point_{j}")
+                      name=f"cover_pattern_{j}")
     model.setObjective(pyscipopt.quicksum(vars), "minimize")
     model.optimize()
     selected = [j for j in range(n_rects) if model.getVal(vars[j]) > 0.5]
@@ -80,9 +85,9 @@ def generate_candidate_rects(image_r, points, params: SetCoverSolverParameter):
     window_shape = np.array([params.rect_width, params.rect_height])
     windows = np.hstack((window, window_shape[None, :].repeat(window.shape[0], axis=0)))
     aff = affinity_matrix(windows, points)
-    empty_rect_index = np.where(~aff.any(axis=1))[0]
-    windows = np.delete(windows, empty_rect_index, axis=0)
-    aff = np.delete(aff, empty_rect_index, axis=0)
+    has_points = aff.any(axis=1)
+    windows = windows[has_points]
+    aff = aff[has_points]
     return windows, aff
 
 def pairwise_iou(rects):
@@ -208,6 +213,8 @@ def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParamet
     # 同时要求候选窗口不超过阈值，才真正进入 base case
     if base_ok and nwin_est <= MAX_WINDOWS:
         rects, aff = generate_candidate_rects(image_r, points, params)
+        if rects.size == 0:
+            return np.empty((0, 4), dtype=np.int32)
         selected = solve_set_cover(aff)
         rects = rects[selected]
         # 为顶层 refine/校正准备一次最新 aff
@@ -272,6 +279,9 @@ def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParamet
         rects = np.vstack((rects1, rects2))
 
     # 顶层再做一次 set cover（在合并候选上），以获得更紧的解
+    if rects.size == 0:
+        return np.empty((0, 4), dtype=np.int32)
+
     if rec_depth == 0:
         aff = affinity_matrix(rects, points)
         selected = solve_set_cover(aff)

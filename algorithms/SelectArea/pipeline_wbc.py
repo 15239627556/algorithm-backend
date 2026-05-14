@@ -1,4 +1,5 @@
 # pipeline.py
+import os
 import numpy as np
 from typing import List, Optional
 
@@ -11,7 +12,7 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput
-from .heatmaps import build_score_heatmap, build_cell_count_grid
+from .heatmaps import build_score_heatmap
 from .geometry import compute_head_crop, generate_search_window_sizes
 from .selection import (
     find_candidate_regions, 
@@ -27,25 +28,45 @@ from .task_wbc import (
     generate_wbc_view_tasks
 )
 
-def _collect_cells_by_type(tiles, target_type: int):
-    """收集指定 cell_type 的全局坐标，避免重复遍历 tiles。"""
-    all_cells_list = []
-    append = all_cells_list.append
+def _collect_cells_by_type(tiles, target_type: int) -> np.ndarray:
+    """收集指定 cell_type 的全局坐标，预分配 ndarray 避免构造百万级 Python list。"""
+    capacity = sum(len(t.cells) for t in tiles if t.x is not None and t.y is not None)
+    if capacity == 0:
+        return np.empty((0, 4), dtype=np.float32)
 
+    all_cells_array = np.empty((capacity, 4), dtype=np.float32)
+    count = 0
     for t in tiles:
         tx, ty = t.x, t.y
         if tx is None or ty is None:
             continue
         for c in t.cells:
-            if getattr(c, "cell_type", None) != target_type:
+            if c.cell_type != target_type:
                 continue
-            append([
-                c.cell_xmin + tx,
-                c.cell_ymin + ty,
-                c.cell_xmax + tx,
-                c.cell_ymax + ty
-            ])
-    return all_cells_list
+            all_cells_array[count, 0] = c.cell_xmin + tx
+            all_cells_array[count, 1] = c.cell_ymin + ty
+            all_cells_array[count, 2] = c.cell_xmax + tx
+            all_cells_array[count, 3] = c.cell_ymax + ty
+            count += 1
+
+    if count == 0:
+        return np.empty((0, 4), dtype=np.float32)
+    return all_cells_array[:count]
+
+
+def _build_cell_count_grid_from_bounds(all_cells_array: np.ndarray, grid) -> np.ndarray:
+    """基于已收集的细胞坐标向量化生成细胞密度矩阵，避免再次扫描 tiles。"""
+    rows, cols = grid.values.shape
+    cell_count_matrix = np.zeros((rows, cols), dtype=np.float32)
+    if all_cells_array.size == 0:
+        return cell_count_matrix
+
+    centers = 0.5 * (all_cells_array[:, 0:2] + all_cells_array[:, 2:4])
+    g_cols = ((centers[:, 0] - grid.origin_x) // grid.cell_size).astype(np.int32)
+    g_rows = ((centers[:, 1] - grid.origin_y) // grid.cell_size).astype(np.int32)
+    in_bounds = (g_rows >= 0) & (g_rows < rows) & (g_cols >= 0) & (g_cols < cols)
+    flat_idx = g_rows[in_bounds] * cols + g_cols[in_bounds]
+    return np.bincount(flat_idx, minlength=rows * cols).reshape(rows, cols).astype(np.float32, copy=False)
 
 class WBCSamplingPipeline:
     def __init__(self, config: BM40Config):
@@ -84,15 +105,13 @@ class WBCSamplingPipeline:
             print(f"target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，将返回空的 wbc_tasks。")
             return []
 
-        all_cells_list = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
-        if not all_cells_list:
-            print("[INFO] 未在 40x tiles 中找到任何有核细胞。")
-            return []
-        all_cells_array = np.array(all_cells_list, dtype=np.float32)
-        
         # 1. 基础数据准备
         self.grid = build_score_heatmap(tiles, config=self.cfg)
-        self.cell_matrix = build_cell_count_grid(tiles, self.grid, config=self.cfg)
+        all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        if all_cells_array.size == 0:
+            print("[INFO] 未在 40x tiles 中找到任何有核细胞。")
+            return []
+        self.cell_matrix = _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
 
         rows, cols = self.cell_matrix.shape
 
@@ -184,7 +203,8 @@ class WBCSamplingPipeline:
                 all_cell_count=all_cell_count
             )
             print(f"[INFO][RBC] 过滤后的候选区域数量: {len(selected_list)}")
-            print(f"[INFO][RBC] 候选区域: {selected_list}")
+            if os.getenv("SELECT_AREA_DEBUG_CANDIDATES") == "1":
+                print(f"[INFO][RBC] 候选区域: {selected_list}")
 
             # 7. 均匀性评估：选出最佳选区
             self.best_res = select_best_uniform_region(
