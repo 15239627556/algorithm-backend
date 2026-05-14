@@ -9,10 +9,9 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from project.smear_project import SmearProject
-from project.tiles import Tile
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, List
 
 import json
 import numpy as np
@@ -34,33 +33,28 @@ class VizConfigMeg:
     meg_result_json: str = "results_meg.json"
 
 
-def collect_nucleated_wbc_rects_from_tiles(
-    tiles: List[Tile],
-    wbc_cell_type: int,
-) -> np.ndarray:
+def collect_wbc_view_rects_from_results(
+    results_json_path: Path,
+) -> List[List[int]]:
     """
-    从 40x tiles 中收集有核细胞矩形，全局坐标 [x, y, w, h]。
-    过滤方式与 heatmaps.build_cell_count_grid 中一致（cell_type == WBC_cell_type）。
+    从 WBC 输出 results.json 中读取视野边界，并转换为 [x, y, w, h]。
     """
-    capacity = sum(len(tile.cells) for tile in tiles if tile.x is not None and tile.y is not None)
-    if capacity == 0:
-        return np.empty((0, 4), dtype=np.float32)
+    with open(results_json_path, "r", encoding="utf-8") as f:
+        task_results = json.load(f)
 
-    wbc_rects = np.empty((capacity, 4), dtype=np.float32)
-    count = 0
-    for tile in tiles:
-        tx, ty = tile.x, tile.y
-        if tx is None or ty is None:
-            continue
-        for cell in tile.cells:
-            if cell.cell_type != wbc_cell_type:
-                continue
-            wbc_rects[count, 0] = tx + cell.cell_xmin
-            wbc_rects[count, 1] = ty + cell.cell_ymin
-            wbc_rects[count, 2] = cell.cell_xmax - cell.cell_xmin
-            wbc_rects[count, 3] = cell.cell_ymax - cell.cell_ymin
-            count += 1
-    return wbc_rects[:count]
+    wbc_rects: List[List[int]] = []
+    for task in task_results:
+        view_xmin = int(task["view_xmin"])
+        view_ymin = int(task["view_ymin"])
+        view_xmax = int(task["view_xmax"])
+        view_ymax = int(task["view_ymax"])
+        wbc_rects.append([
+            view_xmin,
+            view_ymin,
+            view_xmax - view_xmin,
+            view_ymax - view_ymin,
+        ])
+    return wbc_rects
 
 
 # ===================== 可视化：MEG 任务 =====================
@@ -68,7 +62,7 @@ def visualize_meg_results(
     tasks: List[TaskOutput],
     grid_info: Any,
     save_path_base: Path,
-    wbc_rects: np.ndarray
+    wbc_rects: List[List[int]]
 ) -> None:
     """
     可视化 MEG 结果：
@@ -138,8 +132,9 @@ def visualize_meg_results(
 
     # === 新增：绘制 WBC 视野中心点（更明显） ===
     if len(wbc_rects) > 0:
-        wbc_cx = wbc_rects[:, 0] + wbc_rects[:, 2] * 0.5
-        wbc_cy = wbc_rects[:, 1] + wbc_rects[:, 3] * 0.5
+        wbc_arr = np.asarray(wbc_rects, dtype=np.float32)
+        wbc_cx = wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5
+        wbc_cy = wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5
         # 用红色大十字标出有核视野中心
         ax4.scatter(
             wbc_cx,
@@ -194,22 +189,13 @@ def main() -> None:
                         View_type="MEG", 
                         Smear_type=project.smear_type)
 
-    # 3. 从 40x 层 tiles 中收集有核细胞 rect（与 pipeline_wbc 取层/tiles、heatmaps 按类型过滤一致）
-    dpi = bm_cfg.dpi
-    layer_40x = project.get_layer(dpi)
-    if not layer_40x:
-        print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
-        return
-    tiles = list(layer_40x.tiles.values())
-    if not tiles:
-        print("[ERROR][MEG] 40x 层中没有找到有效的 Tile 数据")
-        return
-
-    wbc_rects = collect_nucleated_wbc_rects_from_tiles(tiles, bm_cfg.WBC_cell_type)
-    print(f"[INFO][MEG] 从 40x tiles 中解析到 {len(wbc_rects)} 个有核细胞框用于 MEG 排序。")
+    # 3. 从 WBC 选区结果读取视野边界，用于 MEG 排序参考
+    wbc_results_path = out_dir / "results.json"
+    wbc_rects = collect_wbc_view_rects_from_results(wbc_results_path)
+    print(f"[INFO][MEG] 从 WBC results.json 中解析到 {len(wbc_rects)} 个拍摄视野用于 MEG 排序。")
     if len(wbc_rects) == 0:
         print(
-            "[ERROR][MEG] 未解析到任何有核细胞（WBC_cell_type），"
+            "[ERROR][MEG] 未解析到任何 WBC 拍摄视野，"
             "无法计算 MEG 排序参考。"
         )
         return

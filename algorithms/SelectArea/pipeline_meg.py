@@ -1,6 +1,6 @@
 # pipeline_meg.py
 import numpy as np
-from typing import List, Sequence
+from typing import List
 import math
 import sys
 from pathlib import Path
@@ -86,7 +86,7 @@ class MegSamplingPipeline:
     def run_meg(
         self,
         project: SmearProject,
-        wbc_rects: Sequence[Sequence[float]] | np.ndarray,
+        wbc_rects: List[List[int]],
     ) -> List[TaskOutput]:
         # 1. 从项目中提取 40x 扫描层
         dpi = self.cfg.dpi
@@ -107,6 +107,7 @@ class MegSamplingPipeline:
                 "无法计算 MEG 排序参考。"
             )
             return []
+        wbc_rects_array = np.asarray(wbc_rects, dtype=np.float32)
 
         # 3. 先提取巨核细胞全局坐标（根据 config.MEG_cell_type）。
         # 这样在“无巨核细胞”时可直接返回，避免无意义地构建热力图和禁区掩码。
@@ -157,7 +158,7 @@ class MegSamplingPipeline:
         meg_tasks = generate_meg_view_tasks(
             meg_cell_bounds=valid_meg_cells,
             config=self.cfg,
-            wbc_rects=wbc_rects,
+            wbc_rects=wbc_rects_array,
         )
 
         return meg_tasks
@@ -172,7 +173,7 @@ class MegSamplingPipeline:
 #     对外的一键 MEG 采样入口：
 #     - project: SmearProject 实例
 #     - config: BM40Config（包含 MEG_cell_type / target_cell_num_MEG 等）
-#     - wbc_rects: 外部传入的 WBC 视野列表 [[X, Y, W, H], ...]
+#     - wbc_rects: 外部传入的 WBC 视野列表 [[x, y, w, h], ...]
 #     """
 #     pipeline = MegSamplingPipeline(config=config)
 #     return pipeline.run_meg(project=project, wbc_rects=wbc_rects)
