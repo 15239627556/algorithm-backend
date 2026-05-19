@@ -731,7 +731,9 @@ def infer(
     PIPELINE_SERVER_BASE_URL（推荐）、MULTI_PIPELINE_PORT、PIPELINE_147246_INFER_URL（仅覆盖 147246 或作兄弟路径推导）。
     """
     model = get_model_by_dpi(dpi, smear_type=smear_type, algorithm_types=algorithm_types)
-
+    ok, err = ensure_model_loaded(model)
+    if not ok:
+        raise RuntimeError(f"Error: Model {model} load failed: {err}")
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
