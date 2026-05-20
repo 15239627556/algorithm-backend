@@ -197,7 +197,7 @@ class TaskService:
         task_id = uuid.uuid4().hex
         task_info['smear_type'] = task_info.get('smear_type', 'BM')
         task_info['task_status'] = RetCode.TASK_RUNNING.value
-        task_info['heatmap_orientation'] = int(task_info.get('heatmap_orientation', 1))
+        task_info['heatmap_orientation'] = int(task_info.get('heatmap_orientation', -1))
         task_info['finished'] = False
         task_info['matcher'] = {}
         project = SmearProject(smear_type=task_info['smear_type'])
@@ -631,7 +631,7 @@ class TaskService:
             }
         smear_type = (ctx.info or {}).get("smear_type")
         dpi = info.get("dpi")
-        heatmap_orientation = info.get('heatmap_orientation', 1)
+        heatmap_orientation = info.get('heatmap_orientation', -1)
         if not smear_type:
             smear_type = "BM"
 
