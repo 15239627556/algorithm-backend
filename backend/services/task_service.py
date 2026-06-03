@@ -156,7 +156,7 @@ class TaskService:
         file_path = os.path.join(upload_folder, f"{task_id}.json")
         if not os.path.exists(file_path):
             return {"ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "ret_desc": 'Task ID not found',
                     'reason': 'Task ID not found',
                     'msg': f"file for task_id '{task_id}' not found."}
         project = SmearProject.load_json(file_path)
@@ -191,7 +191,7 @@ class TaskService:
         if not ok:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': err,
                 'reason': err,
             }
         task_id = uuid.uuid4().hex
@@ -322,7 +322,7 @@ class TaskService:
         if row_index is None or col_index is None:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Task mode requires row_index and col_index',
                 'reason': 'Task mode requires row_index and col_index',
             }
         if task_id not in self.tasks:
@@ -332,7 +332,7 @@ class TaskService:
             if task_id not in self.tasks:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': RetDesc.CLIENT_ERROR.value,
+                    'ret_desc': 'Task ID not found',
                     'reason': 'Task ID not found',
                 }
 
@@ -396,7 +396,7 @@ class TaskService:
             logger.exception("Triton inference failed for task %s: %s", task_id, e)
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': str(e),
                 'reason': str(e),
             }
 
@@ -478,7 +478,7 @@ class TaskService:
             if not ctx:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': RetDesc.CLIENT_ERROR.value,
+                    'ret_desc': 'Task ID not found',
                     'reason': 'Task ID not found',
                 }
             self._touch_task(task_id)
@@ -490,7 +490,7 @@ class TaskService:
         except Exception as e:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetCode.CLIENT_ERROR.value,
+                'ret_desc': str(e),
                 'reason': str(e)
             }
 
@@ -503,7 +503,7 @@ class TaskService:
         if not ctx:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Task ID not found',
                 'reason': 'Task ID not found'
         }
         self._touch_task(task_id)
@@ -525,7 +525,7 @@ class TaskService:
             if task_id not in self.tasks:
                 return {
                     'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': RetDesc.CLIENT_ERROR.value,
+                    'ret_desc': 'Task ID not found',
                     'reason': 'Task ID not found',
                     'result': {},
                 }
@@ -534,7 +534,7 @@ class TaskService:
         if not info.get('finished', False):
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Task not completed',
                 'reason': 'Task not completed',
                 'result': {},
             }
@@ -616,7 +616,7 @@ class TaskService:
         if not ctx:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Task ID not found',
                 'reason': 'Task ID not found',
                 'result': {},
             }
@@ -625,7 +625,7 @@ class TaskService:
         if not info.get('finished', False):
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Task not completed',
                 'reason': 'Task not completed',
                 'result': {},
             }
@@ -648,7 +648,7 @@ class TaskService:
         if normalized_task_type not in allowed_task_types:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "ret_desc": f"Invalid task_type: {task_type}. Allowed: {sorted(list(allowed_task_types))}",
                 "reason": f"Invalid task_type: {task_type}. Allowed: {sorted(list(allowed_task_types))}",
             }
 
@@ -670,59 +670,59 @@ class TaskService:
                 if not required_wbc or required_wbc <= 0:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Missing required_num.WBC for BM WBC",
                         "reason": "Missing required_num.WBC for BM WBC",
                     }
             elif normalized_task_type == "MEG":
                 if not required_meg or required_meg <= 0:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Missing required_num.MEG for BM MEG",
                         "reason": "Missing required_num.MEG for BM MEG",
                     }
                 if not isinstance(kwargs.get("wbc_points"), list) or not kwargs.get("wbc_points"):
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Missing kwargs.wbc_points for BM MEG",
                         "reason": "Missing kwargs.wbc_points for BM MEG",
                     }
             elif normalized_task_type == "WBC_MEG":
                 if not required_wbc or required_wbc <= 0:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Missing required_num.WBC or required_num.WBC is 0 for BM WBC_MEG",
                         "reason": "Missing required_num.WBC or required_num.WBC is 0 for BM WBC_MEG",
                     }
                 # 屏蔽这种情况,允许MGE为0
                 if required_meg is None:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Missing required_num.MEG for BM WBC_MEG",
                         "reason": "Missing required_num.MEG for BM WBC_MEG",
                     }
             elif normalized_task_type == "RBC":
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "ret_desc": "Invalid combo: BM does not support task_type=RBC",
                     "reason": "Invalid combo: BM does not support task_type=RBC",
                 }
         elif smear_type == "PB":
             if normalized_task_type != "WBC":
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "ret_desc": f"Invalid combo: PB only supports task_type=WBC, got {task_type}",
                     "reason": f"Invalid combo: PB only supports task_type=WBC, got {task_type}",
                 }
             if not required_wbc and required_wbc <= 0:
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "ret_desc": "Missing required_num.WBC for PB WBC",
                     "reason": "Missing required_num.WBC for PB WBC",
                 }
         else:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "ret_desc": f"Unsupported smear_type: {smear_type}",
                 "reason": f"Unsupported smear_type: {smear_type}",
             }
 
@@ -766,7 +766,7 @@ class TaskService:
                         if not wbc_rects_meg:
                             return {
                                 "ret_code": RetCode.CLIENT_ERROR.value,
-                                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                                "ret_desc": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
                                 "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
                             }
                         bm_cfg.target_cell_num_MEG = required_meg
@@ -781,7 +781,7 @@ class TaskService:
                             logger.exception("MEG roi_selection failed: %s", e)
                             return {
                                 "ret_code": RetCode.CLIENT_ERROR.value,
-                                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                                "ret_desc": str(e),
                                 "reason": str(e),
                             }
                         final_task_list = wbc_task_rects + meg_task_rects
@@ -818,7 +818,7 @@ class TaskService:
                 if not wbc_rects:
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": "Invalid kwargs.wbc_points: empty or not parseable",
                         "reason": "Invalid kwargs.wbc_points: empty or not parseable",
                     }
                 try:
@@ -829,7 +829,7 @@ class TaskService:
                     logger.exception("MEG roi_selection failed: %s", e)
                     return {
                         "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": RetDesc.CLIENT_ERROR.value,
+                        "ret_desc": str(e),
                         "reason": str(e),
                     }
 
@@ -850,7 +850,7 @@ class TaskService:
             else:
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": RetDesc.CLIENT_ERROR.value,
+                    "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                     "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 }
 
@@ -884,7 +884,7 @@ class TaskService:
         if not rects:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': 'Must provide rects',
                 'reason': 'Must provide rects',
                 'rects': [],
             }
@@ -928,7 +928,7 @@ class TaskService:
             logger.exception("Setcover solve failed: %s", e)
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
+                'ret_desc': str(e),
                 'reason': str(e),
                 'rects': [],
             }
@@ -956,7 +956,7 @@ class TaskService:
         if not ok:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "ret_desc": err,
                 "reason": err,
             }
 
@@ -971,7 +971,7 @@ class TaskService:
             logger.exception("Triton infer failed: %s", e)
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": RetDesc.CLIENT_ERROR.value,
+                "ret_desc": str(e),
                 "reason": str(e),
             }
         cells = result.get("cells", [])
