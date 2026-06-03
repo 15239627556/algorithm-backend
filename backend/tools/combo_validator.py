@@ -6,11 +6,11 @@ from __future__ import annotations
 # dpi 匹配 ±10%: 144750(130275-159225), 357378(321640-393116), 714756(643280-786232)
 VALID_COMBINATIONS = {
     (144750, "BM"): {"WBC", "MEG"},
-    (144750, "PB"): {"WBC", "RBC", "PLAT"},
-    (357378, "BM"): {"MEG", "WBC"},
+    (144750, "PB"): {"WBC", "RBC"},
+    (357378, "BM"): {"WBC", "MEG"},
     (357378, "PB"): {"WBC", "RBC"},
-    (714756, "BM"): {"WBC", "RBC", "MEG"},
-    (714756, "PB"): {"WBC", "RBC", "MEG"},
+    (714756, "BM"): {"WBC", "RBC", "MEG","PLAT"},
+    (714756, "PB"): {"WBC", "RBC", "MEG","PLAT"},
     (714756, "CF"): {"WBC"},
 }
 TOLERANCE = 0.1

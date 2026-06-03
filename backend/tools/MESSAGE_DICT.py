@@ -49,6 +49,9 @@ CELL_TYPES_X40 = {
     100001: ("Unclassified_MEG", "未分类巨核细胞"),
     100002: ("Unclassified_RBC", "未分类红细胞"),
     100003: ("Broken_Cell", "破碎细胞"),
+    100004: ("Unclassified_PLT", "未分类血小板"),
+    100005: ("RBC", "已分类红细胞"),
+    100006: ("PLT", "已分类血小板"),
 }
 
 CELL_TYPES_X100 = {

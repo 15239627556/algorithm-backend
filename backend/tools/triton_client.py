@@ -13,19 +13,22 @@ if __name__ == "__main__":
         sys.path.insert(0, _root)
 
 import json
+import logging
 import threading
-import uuid
-import urllib.error
-import urllib.request
 from urllib.parse import urlparse
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional
 
 import numpy as np
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from project.cells import Cell
 from backend.tools.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG
 from config import TRITON_URL, TRITON_IP
+
+logger = logging.getLogger(__name__)
 
 # DPI 基准值（±10% 容差），仅以 DPI 选择模型，不再使用倍率缩写
 DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
@@ -52,6 +55,38 @@ _PIPELINE_SERVER_BASE_URL_RAW = os.environ.get("PIPELINE_SERVER_BASE_URL", "").s
 _PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
 
 PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
+
+# 连接建立阶段的超时（秒）。读取阶段用 PIPELINE_HTTP_TIMEOUT_S，推理耗时较长故单独区分。
+PIPELINE_HTTP_CONNECT_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_CONNECT_TIMEOUT_S", "10"))
+# 仅对“连接建立失败”做有限重试；推理 POST 非幂等，故不重试已发出的请求（read/status 不重试）。
+_PIPELINE_HTTP_CONNECT_RETRIES = int(os.environ.get("PIPELINE_HTTP_CONNECT_RETRIES", "2"))
+
+_pipeline_session: requests.Session | None = None
+_pipeline_session_lock = threading.Lock()
+
+
+def _get_pipeline_session() -> requests.Session:
+    """进程内共享的 requests.Session（连接池复用 + 有限的连接重试），线程安全懒加载。"""
+    global _pipeline_session
+    if _pipeline_session is not None:
+        return _pipeline_session
+    with _pipeline_session_lock:
+        if _pipeline_session is None:
+            session = requests.Session()
+            retry = Retry(
+                total=_PIPELINE_HTTP_CONNECT_RETRIES,
+                connect=_PIPELINE_HTTP_CONNECT_RETRIES,
+                read=0,
+                status=0,
+                redirect=0,
+                backoff_factor=0.5,
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=retry)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            _pipeline_session = session
+    return _pipeline_session
 
 
 def _normalize_http_url(url_or_hostport: str) -> str:
@@ -113,6 +148,74 @@ def _multi_pipeline_infer_url(target: str) -> str:
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
 CSF_CLASS_NAMES = [f"CF_{i+1}" for i in range(12)]
 
+# 714756 RED 分类 head：label_id <-> class_id（与 pipeline 训练 meta 一致）
+RED_COLOR_MAP = {"1": 0, "23": 1, "24": 2, "25": 3}
+RED_STRUCT_MAP = {"1": 0, "27": 1, "28": 2, "29": 3, "30": 4, "31": 5, "32": 6}
+RED_MORPH_MAP = {
+    "1": 0,
+    "3": 1, "4": 2, "5": 3, "6": 4, "7": 5,
+    "8": 6, "9": 7, "10": 8, "11": 9, "12": 10,
+    "13": 11, "14": 12, "15": 13, "17": 14,
+}
+# 单个细胞 agg=0；凝集 34->1，35->2
+RED_AGG_MAP = {"0": 0, "34": 1, "35": 2}
+
+RED_STRUCT_LABELS = {
+    "1": "无结构异常",
+    "27": "嗜碱性点彩红细胞",
+    "28": "豪-乔小体",
+    "29": "Heinz小体",
+    "30": "卡波环",
+    "31": "Pappenheimer小体",
+    "32": "寄生虫",
+}
+RED_COLOR_LABELS = {
+    "1": "无颜色异常",
+    "23": "低色素",
+    "24": "高色素",
+    "25": "嗜多色性红细胞",
+}
+RED_MORPH_LABELS = {
+    "1": "无形状异常",
+    "3": "球形红细胞",
+    "4": "椭圆形红细胞",
+    "5": "靶形红细胞",
+    "6": "镰状红细胞",
+    "7": "泪滴形红细胞",
+    "8": "口形红细胞",
+    "9": "裂红细胞",
+    "10": "棘形红细胞",
+    "11": "皱缩红细胞",
+    "12": "咬痕红细胞",
+    "13": "水泡红细胞",
+    "14": "盔形红细胞",
+    "15": "新月形红细胞",
+    "17": "不规则红细胞",
+}
+RED_AGG_LABELS = {
+    "0": "单个细胞",
+    "34": "缗钱状红细胞",
+    "35": "凝集红细胞",
+}
+
+
+def _red_inv_from_map(label_map: dict[str, int]) -> List[str]:
+    """由 label_id->class_id 反查 class_id->label_id 列表。"""
+    if not label_map:
+        return []
+    n = max(label_map.values()) + 1
+    inv = [""] * n
+    for label_id, idx in label_map.items():
+        if 0 <= idx < n:
+            inv[idx] = label_id
+    return inv
+
+
+RED_STRUCT_INV = _red_inv_from_map(RED_STRUCT_MAP)
+RED_COLOR_INV = _red_inv_from_map(RED_COLOR_MAP)
+RED_MORPH_INV = _red_inv_from_map(RED_MORPH_MAP)
+RED_AGG_INV = _red_inv_from_map(RED_AGG_MAP)
+
 _triton_client = None
 _triton_client_lock = threading.Lock()
 
@@ -138,23 +241,22 @@ def get_model_by_dpi(
     - 714756 ± 10%: BM(WBC,RBC) / PB(WBC,RBC) / CF(WBC) → MODEL_714756_CF(CF) / MODEL_714756_BM(BM/PB)
     """
     # 遗留倍率缩写 → 实际 DPI
+    st = smear_type.strip().upper()
+    at = algorithm_types.strip().upper()
     if dpi in (40, 50, 100):
         dpi = {40: DPI_144750, 50: DPI_357378, 100: DPI_714756}[dpi]
     if _in_dpi_range(dpi, DPI_144750):
         return MODEL_144750
     if _in_dpi_range(dpi, DPI_357378):
-        st = (smear_type or "BM").strip().upper()
-        at = (algorithm_types or "").upper()
-        # 暂无 DPI357378 的 BM WBC 专用模型：仅 WBC（不含 MEG）时临时使用 714756 BM/PB pipeline
         if st == "BM" and "WBC" in at and "MEG" not in at:
             return MODEL_714756_BM
         if st == "PB" and ("WBC" in at or "RBC" in at):
             return MODEL_714756_BM
         return MODEL_357378
     if _in_dpi_range(dpi, DPI_714756):
-        if (smear_type or "").upper() == "CF":
+        if st == "CF":
             return MODEL_714756_CF
-        if (smear_type or "").upper() == "MEG":
+        if "MEG" in at:
             return MODEL_357378
         return MODEL_714756_BM
     return MODEL_144750
@@ -170,57 +272,41 @@ def _post_multipart_pipeline_infer(
     """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 task_mode；147246 为 enable_meg）。"""
     if not url.lower().startswith("http"):
         url = f"http://{url}"
-    boundary = uuid.uuid4().hex
-    bnd = boundary.encode("ascii")
-    crlf = b"\r\n"
-    chunks: list[bytes] = []
 
-    if extra_form:
-        for name, value in extra_form.items():
-            chunks.append(b"--" + bnd + crlf)
-            chunks.append(
-                f'Content-Disposition: form-data; name="{name}"'.encode("utf-8") + crlf + crlf
-            )
-            chunks.append(str(value).encode("utf-8") + crlf)
-
-    disp = (f'Content-Disposition: form-data; name="image"; filename="{filename}"').encode("utf-8")
-    chunks.append(b"--" + bnd + crlf)
-    chunks.append(disp + crlf)
-    chunks.append(b"Content-Type: image/jpeg" + crlf + crlf)
-    chunks.append(image_bytes + crlf)
-    chunks.append(b"--" + bnd + b"--" + crlf)
-    body = b"".join(chunks)
-
-    req = urllib.request.Request(
-        url=url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
+    # requests 自动生成 boundary 并设置 Content-Type；普通字段走 data，文件走 files。
+    data = {name: str(value) for name, value in extra_form.items()} if extra_form else None
+    files = {"image": (filename, image_bytes, "image/jpeg")}
+    logger.info("pipeline_server 请求参数: %s", data)
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as e:
+        resp = _get_pipeline_session().post(
+            url,
+            data=data,
+            files=files,
+            timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+        )
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
+
+    if resp.status_code >= 400:
+        err_body = resp.text
         try:
-            err_body = e.read().decode("utf-8", errors="replace")
-        except Exception:
-            err_body = str(e)
-        try:
-            err_json = json.loads(err_body)
-        except json.JSONDecodeError:
-            raise RuntimeError(f"pipeline_server HTTP {e.code}: {err_body}") from e
+            err_json = resp.json()
+        except ValueError:
+            raise RuntimeError(f"pipeline_server HTTP {resp.status_code}: {err_body}")
         if isinstance(err_json, dict) and err_json.get("error") is not None:
             typ = err_json.get("type", "")
             suf = f" [{typ}]" if typ else ""
-            raise RuntimeError(f"pipeline_server HTTP {e.code}{suf}: {err_json['error']}") from e
-        raise RuntimeError(f"pipeline_server HTTP {e.code}: {err_body}") from e
+            raise RuntimeError(
+                f"pipeline_server HTTP {resp.status_code}{suf}: {err_json['error']}"
+            )
+        raise RuntimeError(f"pipeline_server HTTP {resp.status_code}: {err_body}")
 
-    if not raw:
+    if not resp.content:
         return {}
     try:
-        return json.loads(raw.decode("utf-8"))
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"pipeline_server 返回非 JSON: {raw[:500]!r}") from e
+        return resp.json()
+    except ValueError as e:
+        raise RuntimeError(f"pipeline_server 返回非 JSON: {resp.content[:500]!r}") from e
 
 
 def _post_multipart_infer_147246(
@@ -441,16 +527,155 @@ def _infer_357378_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
 
+def _res_get(res: dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if k in res and res[k] is not None:
+            return res[k]
+    return None
+
+
+def _as_float64_array(value: Any) -> Optional[np.ndarray]:
+    if value is None:
+        return None
+    return np.asarray(value, dtype=np.float64)
+
+
+def _prepare_xywh_detections(det_raw: Any, num_det: int) -> tuple[Optional[np.ndarray], int]:
+    det = _as_float64_array(det_raw)
+    if det is None or det.size == 0:
+        return None, 0
+    boxes = det.reshape(-1, det.shape[-1]) if det.ndim >= 2 else det.reshape(1, -1)
+    if num_det <= 0:
+        num_det = len(boxes)
+    return boxes, min(num_det, len(boxes))
+
+
+def _flatten_det_scores(scores_raw: Any) -> Optional[np.ndarray]:
+    scores = _as_float64_array(scores_raw)
+    if scores is None:
+        return None
+    return scores.flatten()
+
+
+def _array_at(arr: Optional[np.ndarray], i: int) -> Optional[float]:
+    if arr is None:
+        return None
+    flat = np.asarray(arr).flatten()
+    if i < 0 or i >= len(flat):
+        return None
+    return float(flat[i])
+
+
+def _cell_type_name(cell_type: int, default: str) -> str:
+    type_info = CELL_TYPES_X40.get(cell_type)
+    if type_info and isinstance(type_info, (tuple, list)):
+        return type_info[1]
+    return default
+
+
+def _cells_from_xywh_detections(
+    boxes: np.ndarray,
+    count: int,
+    det_scores: Optional[np.ndarray],
+    cell_type: int,
+    default_type_name: str,
+    extra_builder: Optional[Callable[[int], dict[str, Any]]] = None,
+) -> List[Cell]:
+    type_name = _cell_type_name(cell_type, default_type_name)
+    cells: List[Cell] = []
+    for i in range(count):
+        row = np.asarray(boxes[i]).flatten()
+        if len(row) < 4:
+            continue
+        x, y, w, h = float(row[0]), float(row[1]), float(row[2]), float(row[3])
+        det_score = float(det_scores[i]) if det_scores is not None and i < len(det_scores) else 1.0
+        extra = extra_builder(i) if extra_builder else {}
+        cells.append(Cell(
+            cell_xmin=int(x),
+            cell_ymin=int(y),
+            cell_xmax=int(x + w),
+            cell_ymax=int(y + h),
+            cell_type=cell_type,
+            cell_type_name=type_name,
+            class_confidence=det_score,
+            bbox_confidence=det_score,
+            extra=extra,
+        ))
+    return cells
+
+
+def _red_label_name(inv: List[str], labels: dict[str, str], class_id: int) -> tuple[str, str]:
+    label_id = inv[class_id] if 0 <= class_id < len(inv) else str(class_id)
+    return label_id, labels.get(label_id, label_id)
+
+
+def _append_red_abnormality_extra(
+    extra: dict[str, Any],
+    key: str,
+    inv: List[str],
+    labels: dict[str, str],
+    class_arr: Optional[np.ndarray],
+    prob_arr: Optional[np.ndarray],
+    i: int,
+) -> None:
+    class_raw = _array_at(class_arr, i)
+    if class_raw is None:
+        return
+    class_id = int(class_raw)
+    # if class_id == 0:
+    #     return
+    label_id, name = _red_label_name(inv, labels, class_id)
+    prob = _array_at(prob_arr, i)
+    extra[key] = {
+        "name": name,
+        "label_id": label_id,
+        "confidence": float(prob) if prob is not None else None,
+    }
+
+
+def _build_red_rbc_extra(
+    i: int,
+    struct: Optional[np.ndarray],
+    struct_prob: Optional[np.ndarray],
+    color: Optional[np.ndarray],
+    color_prob: Optional[np.ndarray],
+    morph: Optional[np.ndarray],
+    morph_prob: Optional[np.ndarray],
+    agg: Optional[np.ndarray],
+    agg_prob: Optional[np.ndarray],
+) -> dict[str, Any]:
+    """仅在有异常时写入 extra：结构/颜色/形态/聚集及对应置信度。"""
+    extra: dict[str, Any] = {}
+    _append_red_abnormality_extra(extra, "STRUCT", RED_STRUCT_INV, RED_STRUCT_LABELS, struct, struct_prob, i)
+    _append_red_abnormality_extra(extra, "COLOR", RED_COLOR_INV, RED_COLOR_LABELS, color, color_prob, i)
+    _append_red_abnormality_extra(extra, "MORPH", RED_MORPH_INV, RED_MORPH_LABELS, morph, morph_prob, i)
+    _append_red_abnormality_extra(extra, "AGG", RED_AGG_INV, RED_AGG_LABELS, agg, agg_prob, i)
+    return extra
+
+
 def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
+    # logger.info("714756_bm pipeline 原始返回:\n%s", res)
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
-    boxes_raw = res.get("boxes") if res.get("boxes") is not None else res.get("BOXES")
-    scores_raw = res.get("scores") if res.get("scores") is not None else res.get("SCORES")
-    class_ids_raw = res.get("class_ids") if res.get("class_ids") is not None else res.get("CLASS_IDS")
-    red_det_raw = res.get("red_detections") if res.get("red_detections") is not None else res.get("RED_DETECTIONS")
+
+    boxes_raw = _res_get(res, "boxes", "BOXES")
+    scores_raw = _res_get(res, "scores", "SCORES")
+    class_ids_raw = _res_get(res, "class_ids", "CLASS_IDS")
 
     wbc_num = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=-1)
-    boxes = np.asarray(boxes_raw, dtype=np.float64) if boxes_raw is not None else None
+    red_num = _scalar_int(res, "red_num_detections", "RED_NUM_DETECTIONS", "red_num", default=-1)
+    plat_num = _scalar_int(res, "plat_num_detections", "PLAT_NUM_DETECTIONS", "plat_num", default=-1)
+
+    red_class_struct = _as_float64_array(_res_get(res, "red_class_struct", "RED_CLASS_STRUCT"))
+    red_class_struct_prob = _as_float64_array(_res_get(res, "red_class_struct_prob", "RED_CLASS_STRUCT_PROB"))
+    red_class_color = _as_float64_array(_res_get(res, "red_class_color", "RED_CLASS_COLOR"))
+    red_class_color_prob = _as_float64_array(_res_get(res, "red_class_color_prob", "RED_CLASS_COLOR_PROB"))
+    red_class_morph = _as_float64_array(_res_get(res, "red_class_morph", "RED_CLASS_MORPH"))
+    red_class_morph_prob = _as_float64_array(_res_get(res, "red_class_morph_prob", "RED_CLASS_MORPH_PROB"))
+    red_class_agg = _as_float64_array(_res_get(res, "red_class_agg", "RED_CLASS_AGG"))
+    red_class_agg_prob = _as_float64_array(_res_get(res, "red_class_agg_prob", "RED_CLASS_AGG_PROB"))
+
+    boxes = _as_float64_array(boxes_raw)
     if boxes is None or boxes.size == 0:
         boxes = np.zeros((0, 4), dtype=np.float64)
         wbc_num = 0
@@ -467,16 +692,15 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
             else:
                 wbc_num = min(wbc_num, nbox)
 
-    red_num = _scalar_int(res, "red_num_detections", "RED_NUM_DETECTIONS", "red_num", default=-1)
-
-    scores = np.asarray(scores_raw, dtype=np.float64) if scores_raw is not None else None
+    scores = _as_float64_array(scores_raw)
     class_ids = np.asarray(class_ids_raw, dtype=np.int32) if class_ids_raw is not None else None
 
     cells: List[Cell] = []
     scores_out: List[float] = []
     cell_list: List[Any] = []
-    wbc_names = [CELL_TYPES_X100.get(200000 + i, ("?", f"cell_{i}"))[1] for i in range(35)]
+
     if wbc_num > 0 and boxes is not None:
+        wbc_names = [CELL_TYPES_X100.get(200000 + i, ("?", f"cell_{i}"))[1] for i in range(35)]
         b = boxes[:wbc_num]
         s = scores[:wbc_num] if scores is not None and scores.size >= wbc_num else np.ones(wbc_num)
         c = (
@@ -501,40 +725,39 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
             _cells_to_cell_list_top5(wbc_cells, cids_arr, cprobs_for_top5, 200000, CELL_TYPES_X100, wbc_names)
         )
 
-    red_det = np.asarray(red_det_raw, dtype=np.float64) if red_det_raw is not None else None
-    if red_det is not None and red_det.size > 0:
-        rd = red_det.reshape(-1, red_det.shape[-1]) if red_det.ndim >= 2 else red_det.reshape(1, -1)
-        if red_num <= 0:
-            red_num = len(rd)
-        red_num = min(red_num, len(rd))
-    else:
-        rd = None
-        red_num = 0
-
+    rd, red_num = _prepare_xywh_detections(_res_get(res, "red_detections", "RED_DETECTIONS"), red_num)
+    red_scores = _flatten_det_scores(_res_get(res, "red_det_scores", "RED_DET_SCORES"))
     if red_num > 0 and rd is not None:
-        rbc_cells: List[Cell] = []
-        for r in rd[:red_num]:
-            rl = np.asarray(r).flatten().tolist()
-            if len(rl) < 4:
-                continue
-            x, y, w, h = float(rl[0]), float(rl[1]), float(rl[2]), float(rl[3])
-            conf = float(rl[4]) if len(rl) > 4 else 1.0
-            type_info = CELL_TYPES_X40.get(100002, ("Unclassified_RBC", "未分类红细胞"))
-            type_name = type_info[1] if isinstance(type_info, (tuple, list)) else "未分类红细胞"
-            cell = Cell(
-                cell_xmin=int(x),
-                cell_ymin=int(y),
-                cell_xmax=int(x + w),
-                cell_ymax=int(y + h),
-                cell_type=100002,
-                cell_type_name=type_name,
-                class_confidence=conf,
-                bbox_confidence=1.0,
+
+        def _red_extra(i: int) -> dict[str, Any]:
+            return _build_red_rbc_extra(
+                i,
+                red_class_struct,
+                red_class_struct_prob,
+                red_class_color,
+                red_class_color_prob,
+                red_class_morph,
+                red_class_morph_prob,
+                red_class_agg,
+                red_class_agg_prob,
             )
-            cells.append(cell)
-            rbc_cells.append(cell)
-            scores_out.append(conf)
+
+        rbc_cells = _cells_from_xywh_detections(
+            rd, red_num, red_scores, 100005, "已分类红细胞", extra_builder=_red_extra,
+        )
+        cells.extend(rbc_cells)
+        scores_out.extend([c.bbox_confidence for c in rbc_cells])
         cell_list.extend(_cells_to_cell_list_single(rbc_cells))
+
+    pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
+    plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
+    if plat_num > 0 and pd is not None:
+        plat_cells = _cells_from_xywh_detections(
+            pd, plat_num, plat_scores, 100004, "血小板",
+        )
+        cells.extend(plat_cells)
+        scores_out.extend([c.bbox_confidence for c in plat_cells])
+        cell_list.extend(_cells_to_cell_list_single(plat_cells))
 
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
@@ -633,9 +856,10 @@ def _boxes_xyxy_to_cells(
 
 
 def _cells_to_cell_list_single(cells: List[Cell]) -> list:
-    """无 TOP5 时：每个 cell 的 tops 只放一项"""
-    return [
-        {
+    """无 TOP5 时：每个 cell 的 tops 只放一项；有 extra 异常信息时一并写出"""
+    out: list[dict[str, Any]] = []
+    for c in cells:
+        item: dict[str, Any] = {
             "cell_xmin": c.cell_xmin,
             "cell_ymin": c.cell_ymin,
             "cell_xmax": c.cell_xmax,
@@ -647,8 +871,10 @@ def _cells_to_cell_list_single(cells: List[Cell]) -> list:
                 "bbox_confidence": float(c.bbox_confidence),
             }],
         }
-        for c in cells
-    ]
+        if c.extra:
+            item["extra"] = c.extra
+        out.append(item)
+    return out
 
 
 def _cells_to_cell_list_top5(
@@ -733,7 +959,8 @@ def infer(
     model = get_model_by_dpi(dpi, smear_type=smear_type, algorithm_types=algorithm_types)
     ok, err = ensure_model_loaded(model)
     if not ok:
-        raise RuntimeError(f"Error: Model {model} load failed: {err}")
+        Error = f"Error: Model {model} load failed: {err}"
+        raise RuntimeError(Error)
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
@@ -753,16 +980,19 @@ def infer(
         return _infer_357378_from_pipeline_json(res_json)
 
     if model == MODEL_714756_BM:
-        task_mode = 0
-        if "RBC" in (algorithm_types or "") or "RED" in (algorithm_types or ""):
-            task_mode = 2 if "WBC" in (algorithm_types or "") or "MEG" in (algorithm_types or "") else 1
+        # task_mode = 0
+        # if "RBC" in (algorithm_types or "") or "RED" in (algorithm_types or ""):
+        #     task_mode = 2 if "WBC" in (algorithm_types or "") or "MEG" in (algorithm_types or "") else 1
+        tasks = ",".join(t.strip() for t in algorithm_types.lower().split(","))
+        if "rbc" in tasks:
+            tasks = tasks.replace("rbc", "red")
         url = _multi_pipeline_infer_url("714756")
         res_json = _post_multipart_pipeline_infer(
             url,
             image_bytes,
             "tile.jpg",
             PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={"task_mode": str(int(task_mode))},
+            extra_form={"tasks": tasks},
         )
         return _infer_714756_bm_from_pipeline_json(res_json)
 
