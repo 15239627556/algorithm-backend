@@ -218,7 +218,7 @@ result_x100.add_argument('position_ymax', type=int, required=False, help='右下
 result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
 result_x100.add_argument('dpi', type=int, required=True, help='DPI，模型据此选择: 144750/357378/714756', location='form')
 result_x100.add_argument('target_cell_types', type=str, required=True,
-                         help='目标细胞类型如 WBC,MEG / WBC,RBC / MEG 等，见有效组合表', location='form')
+                         help='目标细胞类型如 WBC,MEG / WBC,RBC,PLAT / MEG 等，见有效组合表', location='form')
 result_x100.add_argument('smear_type', type=str, required=False, help='涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取', location='form')
 result_x100.add_argument(
     'edge_cell_filter',

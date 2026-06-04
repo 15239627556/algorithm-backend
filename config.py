@@ -35,8 +35,8 @@ TRITON_PINNED_PIPELINE_NAME = os.environ.get(
 
 # ========== Flask 应用配置 ==========
 FLASK_HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
-FLASK_PORT = int(os.environ.get("FLASK_PORT", "5000"))
+FLASK_PORT = int(os.environ.get("FLASK_PORT", "3090"))
 
 # 配置算法服务版本以及doc的开关
-sufa_version = "2026.05.07"
+sufa_version = "2026.06.04"
 is_doc = True # 是否开启doc

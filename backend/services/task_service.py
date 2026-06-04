@@ -208,15 +208,26 @@ class TaskService:
             self.tasks[task_id] = TaskContext(project=project, info=task_info)
             self._task_last_access[task_id] = time.time()
         _save_task_info(task_id, task_info)
-        model_name = get_model_by_dpi(dpi, smear_type=task_info.get('smear_type', 'BM'), algorithm_types=task_info.get('target_cell_types', ''))
+        model_name, model_warning = get_model_by_dpi(
+            dpi,
+            smear_type=task_info.get('smear_type', 'BM'),
+            algorithm_types=task_info.get('target_cell_types', ''),
+            return_warning=True,
+        )
         warmup_model(model_name)
+        warning = err or model_warning
+        if warning:
+            logger.warning("创建任务 DPI 告警：%s, dpi=%s, model=%s", warning, dpi, model_name)
         logger.info('创建任务成功：%s', task_id)
 
-        return {
+        response = {
             'task_id': task_id,
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value
         }
+        if warning:
+            response['warning'] = warning
+        return response
 
     def update_coordinates(self, task_id, tiles_msg):
         t0 = time.time()
@@ -959,6 +970,7 @@ class TaskService:
                 "ret_desc": err,
                 "reason": err,
             }
+        warning = err
 
         try:
             result = infer(
@@ -998,9 +1010,12 @@ class TaskService:
                     "get_task_result_x100: edge_cell_filter skipped (image decode failed): %s",
                     e,
                 )
-        return {
+        response = {
             "ret_code": RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
             'cell_count': len(cell_list),
             'cell_list': cell_list
         }
+        if warning:
+            response['warning'] = warning
+        return response

@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
 DPI_357378 = 357378  # 巨核细胞定位分类
 DPI_714756 = 714756  # 有核细胞/成熟红细胞
+DPI_BASES = (DPI_144750, DPI_357378, DPI_714756)
+DPI_OUT_OF_RANGE_WARNING = "DPI out of valid range (144750/357378/714756 ±10%)"
 TOLERANCE = 0.1
 
 # 模型名称常量：144750 常驻 pipeline 见 config.TRITON_PINNED_PIPELINE_NAME（各组预估显存须与 GROUP_VRAM_GB 一致）
@@ -227,11 +229,23 @@ def _in_dpi_range(value: int, base: int) -> bool:
     return low <= value <= high
 
 
+def _get_dpi_bucket(dpi: int) -> tuple[int, str | None]:
+    """返回 DPI 所属 bucket；超出范围时返回最近 bucket 和告警。"""
+    if dpi in (40, 50, 100):
+        return {40: DPI_144750, 50: DPI_357378, 100: DPI_714756}[dpi], None
+    for base in DPI_BASES:
+        if _in_dpi_range(dpi, base):
+            return base, None
+    return min(DPI_BASES, key=lambda base: abs(dpi - base)), DPI_OUT_OF_RANGE_WARNING
+
+
 def get_model_by_dpi(
     dpi: int,
     smear_type: str = "BM",
     algorithm_types: str = "",
-) -> str:
+    *,
+    return_warning: bool = False,
+) -> str | tuple[str, str | None]:
     """
     仅根据 DPI 选择 Triton 模型（与 smear_type、target_cell_types 组合见下方有效表）。
 
@@ -239,27 +253,30 @@ def get_model_by_dpi(
     - 144750 ± 10%: BM(WBC,MEG) / PB(WBC,RBC,PLAT) → MODEL_144750
     - 357378 ± 10%: BM(MEG) → MODEL_357378；BM(WBC) 暂无专用模型，临时走 MODEL_714756_BM（与 714756 BM WBC 同 pipeline）
     - 714756 ± 10%: BM(WBC,RBC) / PB(WBC,RBC) / CF(WBC) → MODEL_714756_CF(CF) / MODEL_714756_BM(BM/PB)
+    超出范围时使用绝对差最小的 DPI bucket，并可通过 return_warning 返回告警。
     """
-    # 遗留倍率缩写 → 实际 DPI
     st = smear_type.strip().upper()
     at = algorithm_types.strip().upper()
-    if dpi in (40, 50, 100):
-        dpi = {40: DPI_144750, 50: DPI_357378, 100: DPI_714756}[dpi]
-    if _in_dpi_range(dpi, DPI_144750):
-        return MODEL_144750
-    if _in_dpi_range(dpi, DPI_357378):
+    bucket, warning = _get_dpi_bucket(dpi)
+    if bucket == DPI_144750:
+        model = MODEL_144750
+    elif bucket == DPI_357378:
         if st == "BM" and "WBC" in at and "MEG" not in at:
-            return MODEL_714756_BM
-        if st == "PB" and ("WBC" in at or "RBC" in at):
-            return MODEL_714756_BM
-        return MODEL_357378
-    if _in_dpi_range(dpi, DPI_714756):
+            model = MODEL_714756_BM
+        elif st == "PB" and ("WBC" in at or "RBC" in at):
+            model = MODEL_714756_BM
+        else:
+            model = MODEL_357378
+    else:
         if st == "CF":
-            return MODEL_714756_CF
-        if "MEG" in at:
-            return MODEL_357378
-        return MODEL_714756_BM
-    return MODEL_144750
+            model = MODEL_714756_CF
+        elif "MEG" in at:
+            model = MODEL_357378
+        else:
+            model = MODEL_714756_BM
+    if return_warning:
+        return model, warning
+    return model
 
 
 def _post_multipart_pipeline_infer(
@@ -956,7 +973,12 @@ def infer(
     URL 与 multi_pipeline_server 一致，见 _multi_pipeline_infer_url；环境变量：
     PIPELINE_SERVER_BASE_URL（推荐）、MULTI_PIPELINE_PORT、PIPELINE_147246_INFER_URL（仅覆盖 147246 或作兄弟路径推导）。
     """
-    model = get_model_by_dpi(dpi, smear_type=smear_type, algorithm_types=algorithm_types)
+    model, warning = get_model_by_dpi(
+        dpi,
+        smear_type=smear_type,
+        algorithm_types=algorithm_types,
+        return_warning=True,
+    )
     ok, err = ensure_model_loaded(model)
     if not ok:
         Error = f"Error: Model {model} load failed: {err}"
@@ -968,16 +990,22 @@ def infer(
             url, image_bytes, "tile.jpg", enable_meg, PIPELINE_HTTP_TIMEOUT_S
         )
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
-        return _infer_147246_finalize(
+        result = _infer_147246_finalize(
             algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc
         )
+        if warning:
+            result["warning"] = warning
+        return result
 
     if model == MODEL_357378:
         url = _multi_pipeline_infer_url("357378")
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, "tile.jpg", PIPELINE_HTTP_TIMEOUT_S
         )
-        return _infer_357378_from_pipeline_json(res_json)
+        result = _infer_357378_from_pipeline_json(res_json)
+        if warning:
+            result["warning"] = warning
+        return result
 
     if model == MODEL_714756_BM:
         # task_mode = 0
@@ -994,9 +1022,15 @@ def infer(
             PIPELINE_HTTP_TIMEOUT_S,
             extra_form={"tasks": tasks},
         )
-        return _infer_714756_bm_from_pipeline_json(res_json)
+        result = _infer_714756_bm_from_pipeline_json(res_json)
+        if warning:
+            result["warning"] = warning
+        return result
 
-    return {"cells": [], "scores": [], "cell_list": []}
+    result = {"cells": [], "scores": [], "cell_list": []}
+    if warning:
+        result["warning"] = warning
+    return result
 
 
 def infer_image_enhance(image_bytes: bytes) -> bytes:
