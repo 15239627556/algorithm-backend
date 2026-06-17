@@ -160,7 +160,7 @@ RED_MORPH_MAP = {
     "13": 11, "14": 12, "15": 13, "17": 14,
 }
 # 单个细胞 agg=0；凝集 34->1，35->2
-RED_AGG_MAP = {"0": 0, "34": 1, "35": 2}
+RED_AGG_MAP = {"1": 0, "34": 1, "35": 2}
 
 RED_STRUCT_LABELS = {
     "1": "无结构异常",
@@ -195,7 +195,7 @@ RED_MORPH_LABELS = {
     "17": "不规则红细胞",
 }
 RED_AGG_LABELS = {
-    "0": "单个细胞",
+    "1": "单个细胞",
     "34": "缗钱状红细胞",
     "35": "凝集红细胞",
 }
@@ -663,9 +663,13 @@ def _build_red_rbc_extra(
 ) -> dict[str, Any]:
     """仅在有异常时写入 extra：结构/颜色/形态/聚集及对应置信度。"""
     extra: dict[str, Any] = {}
+    # 结构异常
     _append_red_abnormality_extra(extra, "STRUCT", RED_STRUCT_INV, RED_STRUCT_LABELS, struct, struct_prob, i)
+    # 颜色异常
     _append_red_abnormality_extra(extra, "COLOR", RED_COLOR_INV, RED_COLOR_LABELS, color, color_prob, i)
+    # 形态异常
     _append_red_abnormality_extra(extra, "MORPH", RED_MORPH_INV, RED_MORPH_LABELS, morph, morph_prob, i)
+    # 聚集异常
     _append_red_abnormality_extra(extra, "AGG", RED_AGG_INV, RED_AGG_LABELS, agg, agg_prob, i)
     return extra
 
