@@ -293,7 +293,7 @@ def _post_multipart_pipeline_infer(
     # requests 自动生成 boundary 并设置 Content-Type；普通字段走 data，文件走 files。
     data = {name: str(value) for name, value in extra_form.items()} if extra_form else None
     files = {"image": (filename, image_bytes, "image/jpeg")}
-    logger.info("pipeline_server 请求参数: %s", data)
+    # logger.info("pipeline_server 请求参数: %s", data)
     try:
         resp = _get_pipeline_session().post(
             url,
