@@ -122,21 +122,21 @@ CELL_TYPE_CSF = {
 # 巨核细胞：Megakaryocyte
 def get_counting_cell_type(cell_id):
     if cell_id in CELL_TYPES_X40:
-        return "Excluded from the count"
+        return "EFC"
     elif cell_id in CELL_TYPES_X100:
         if cell_id in list(range(200000, 200028)):
-            return "Nucleated_Cell"
+            return "WBC"
         else:
-            return "Excluded from the count"
+            return "EFC"
     elif cell_id in CELL_TYPES_MEG:
         if cell_id in list(range(300000, 300004)):
-            return "Megakaryocyte"
+            return "MEG"
         else:
-            return "Excluded from the count"
+            return "EFC"
     elif cell_id in CELL_TYPE_CSF:
-        return "Excluded from the count"
+        return "EFC"
     else:
-        return "Excluded from the count"
+        return "EFC"
 
 # 目前开放的DPI
 dpi_list = [40, 50, 100]
