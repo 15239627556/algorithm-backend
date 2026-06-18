@@ -349,11 +349,12 @@ class TaskService:
 
         ctx = self.tasks[task_id]
         row_index, col_index = int(row_index), int(col_index)
-        with ctx.lock:
-            matcher = ctx.info.get('matcher')
-            if not matcher:
-                matcher = {}
-                ctx.info['matcher'] = matcher
+        # with ctx.lock:
+        #     matcher = ctx.info.get('matcher')
+        #     if not matcher:
+        #         matcher = {}
+        #         ctx.info['matcher'] = matcher
+        matcher = ctx.info.get('matcher')
         image_uid = matcher.get((row_index, col_index))
         project = ctx.project
         dpi = ctx.info.get('dpi', 144750)
