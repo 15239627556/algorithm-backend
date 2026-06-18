@@ -101,6 +101,43 @@ CELL_TYPES_MEG = {
     300005: ("Broken_Cell", "分类不明/无法分类巨核细胞"),
 }
 
+CELL_TYPE_CSF = {
+    400000: ("Neutrophil", "中性粒细胞"),
+    400001: ("Monocyte", "单核细胞"),
+    400002: ("Macrophage", "吞噬细胞"),
+    400003: ("Basophil", "嗜碱性粒细胞"),
+    400004: ("Eosinophil", "嗜酸性粒细胞"),
+    400005: ("Plasma_Cell", "浆细胞"),
+    400006: ("Mature_Lymphocyte", "成熟淋巴细胞"),
+    400007: ("Broken_Cell", "破碎细胞"),
+    400008: ("Tumor_Cell", "肿瘤细胞"),
+    400009: ("Cryptococcus", "隐球菌"),
+    400010: ("Leukemic_Cell", "白血病细胞"),
+    400011: ("Lymphoma_Cell", "淋巴瘤细胞"),
+}
+
+# 根据细胞ID返回计数类别
+# 不参与计数：Excluded from the count
+# 有核细胞：Nucleated_Cell
+# 巨核细胞：Megakaryocyte
+def get_counting_cell_type(cell_id):
+    if cell_id in CELL_TYPES_X40:
+        return "Excluded from the count"
+    elif cell_id in CELL_TYPES_X100:
+        if cell_id in list(range(200000, 200028)):
+            return "Nucleated_Cell"
+        else:
+            return "Excluded from the count"
+    elif cell_id in CELL_TYPES_MEG:
+        if cell_id in list(range(300000, 300004)):
+            return "Megakaryocyte"
+        else:
+            return "Excluded from the count"
+    elif cell_id in CELL_TYPE_CSF:
+        return "Excluded from the count"
+    else:
+        return "Excluded from the count"
+
 # 目前开放的DPI
 dpi_list = [40, 50, 100]
 # 允许上传的图片格式

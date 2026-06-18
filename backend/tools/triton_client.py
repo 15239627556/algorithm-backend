@@ -25,7 +25,7 @@ from urllib3.util.retry import Retry
 
 from project.cells import Cell
 from backend.tools.model_control import ensure_model_loaded
-from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG
+from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
 from config import TRITON_URL, TRITON_IP
 
 logger = logging.getLogger(__name__)
@@ -887,6 +887,7 @@ def _cells_to_cell_list_single(cells: List[Cell]) -> list:
             "cell_ymax": c.cell_ymax,
             "tops": [{
                 "cell_type": c.cell_type,
+                "count_type": get_counting_cell_type(c.cell_type),
                 "cell_type_name": c.cell_type_name,
                 "class_confidence": float(c.class_confidence),
                 "bbox_confidence": float(c.bbox_confidence),
@@ -941,6 +942,7 @@ def _cells_to_cell_list_top5(
                 "cell_type_name": type_name,
                 "class_confidence": prob,
                 "bbox_confidence": float(c.bbox_confidence),
+                "count_type": get_counting_cell_type(c.cell_type),
             })
         out.append({
             "cell_xmin": c.cell_xmin,
