@@ -122,6 +122,10 @@ CELL_TYPE_CSF = {
 # 巨核细胞：Megakaryocyte
 def get_counting_cell_type(cell_id):
     if cell_id in CELL_TYPES_X40:
+        if cell_id == 100000:
+            return "WBC"
+        elif cell_id == 100001:
+            return "MEG"
         return "EFC"
     elif cell_id in CELL_TYPES_X100:
         if cell_id in list(range(200000, 200028)):
