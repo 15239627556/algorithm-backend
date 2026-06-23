@@ -6,6 +6,7 @@ import time
 import uuid
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, Any, Optional
 
 from cachetools import TTLCache
@@ -327,6 +328,8 @@ class TaskService:
         return out
 
     def upload_image(self, task_id, row_index, col_index, tile_image):
+        # 记录日志，task_id,row_index,col_index,接收到图片的时间,转换为时分秒毫秒
+        logger.info("task_id=%s, row_index=%s, col_index=%s, 接收到图片的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
         image_bytes = tile_image.read()
 
@@ -382,12 +385,16 @@ class TaskService:
         else:
             tile = layer.get_tile(image_uid)
         try:
+            # 记录日志，task_id,row_index,col_index,发送请求的时间
+            logger.info("task_id=%s, row_index=%s, col_index=%s, 发送请求的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             result = infer(
                 image_bytes,
                 dpi=int(dpi),
                 smear_type=smear_type,
                 algorithm_types=target_cell_types or "",
             )
+            # 记录日志，task_id,row_index,col_index,推理完成的时间
+            logger.info("task_id=%s, row_index=%s, col_index=%s, 推理完成的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             cells = result["cells"]
             scores = result.get("scores", [])
             cell_list = result.get("cell_list", [])
@@ -398,6 +405,8 @@ class TaskService:
             tile.meta["scores"] = _ensure_json_serializable(scores)
             if cells:
                 tile.add_cells(cells)
+            # 记录日志，task_id,row_index,col_index,返回结果的时间
+            logger.info("task_id=%s, row_index=%s, col_index=%s, 返回结果的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -667,15 +676,15 @@ class TaskService:
         def _get_required_int(key: str) -> int | None:
             value = required_num.get(key)
             if value is None:
-                return None
+                return 0
             try:
                 return int(value)
             except (TypeError, ValueError):
-                return None
+                return 0
 
-        required_wbc = _get_required_int("WBC")
-        required_meg = _get_required_int("MEG")
-        required_rbc = _get_required_int("RBC")
+        required_wbc = _get_required_int("WBC") * 3
+        required_meg = _get_required_int("MEG") * 3
+        required_rbc = _get_required_int("RBC") * 3
 
         if smear_type == "BM":
             if normalized_task_type == "WBC":

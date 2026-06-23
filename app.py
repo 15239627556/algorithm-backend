@@ -1,8 +1,10 @@
 import os
 import sys
 import time
+import atexit
+import queue
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, QueueHandler, QueueListener
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.join(root_dir, 'backend')
@@ -92,6 +94,21 @@ class _LtLevel(logging.Filter):
         return record.levelno < self._level
 
 
+class _NameAllow(logging.Filter):
+    """只接受指定 logger 域的记录（用于把 root 冒上来的非 ERROR 记录挡在 app.log 之外）。"""
+
+    def __init__(self, names: list[str]) -> None:
+        super().__init__()
+        self._names = tuple(names)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return any(record.name == n or record.name.startswith(n + ".") for n in self._names)
+
+
+# 持有所有后台日志监听线程；进程退出时统一 stop() 以 flush 队列中残留日志
+_log_listeners: list[QueueListener] = []
+
+
 class _StdoutTeeAppLog:
     """把 write 进 sys.stdout 的内容镜像到 app.logger（进 app.log）。"""
 
@@ -166,55 +183,78 @@ def _setup_logging(flask_app: Flask):
             h.addFilter(filt)
         return h
 
-    def attach(log: logging.Logger, level: int, *handlers: logging.Handler) -> None:
+    # —— 用队列把 logger 与真实 handler 解耦：logger 只挂 QueueHandler，
+    #    真实 file/console handler 的 emit（格式化 + 落盘）都在后台线程执行 ——
+    def queue_listener(*handlers: logging.Handler) -> "queue.Queue":
+        q: "queue.Queue" = queue.Queue(-1)  # 无界队列，避免高峰丢日志
+        # respect_handler_level=True：后台 listener 仍尊重各 handler 的 level/filter
+        listener = QueueListener(q, *handlers, respect_handler_level=True)
+        listener.start()
+        _log_listeners.append(listener)
+        return q
+
+    def attach_q(log: logging.Logger, level: int, q: "queue.Queue") -> None:
         log.handlers.clear()
         log.setLevel(level)
         log.propagate = False
-        for h in handlers:
-            log.addHandler(h)
+        log.addHandler(QueueHandler(q))
 
-    # 两个 logger 共用同一 error 实体：谁触发就只 emit 一次，不会重复追加两条
+    # —— 真实 handler（其 emit 只在后台线程跑）——
+    # error.log 单实例：谁触发就只 emit 一次，不会重复追加两条
     error_fh = file_handler(
         "error.log", logging.ERROR, _FMT,
         mb=_ERROR_LOG_MB, backups=_ERROR_LOG_BACKUPS,
     )
-
-    attach(
-        flask_app.logger,
-        logging.INFO,
-        file_handler("app.log", logging.INFO, _FMT, filt=_LtLevel(logging.ERROR)),
-        error_fh,
-        stream(logging.INFO, _FMT),
+    app_fh = file_handler("app.log", logging.INFO, _FMT, filt=_LtLevel(logging.ERROR))
+    console_app = stream(logging.INFO, _FMT)
+    access_fh = file_handler(
+        "access.log", logging.INFO, _FMT_ACC,
+        mb=_ACCESS_LOG_MB, backups=_ACCESS_LOG_BACKUPS,
     )
+    console_acc = stream(logging.INFO, _FMT_ACC)
 
+    # app.log / 控制台只收 app 域（flask.app + backend），挡掉 root 冒上来的非 ERROR 记录
+    app_domain = _NameAllow([flask_app.logger.name, "backend"])
+    app_fh.addFilter(app_domain)
+    console_app.addFilter(app_domain)
+
+    # 主域队列：flask.app、backend、root 共用同一队列与 error_fh 实例
+    q_main = queue_listener(app_fh, error_fh, console_app)
+    attach_q(flask_app.logger, logging.INFO, q_main)
+    attach_q(logging.getLogger("backend"), logging.INFO, q_main)
+
+    # 访问日志独立队列
     acc = logging.getLogger("flask.access")
-    attach(
-        acc,
-        logging.INFO,
-        file_handler(
-            "access.log", logging.INFO, _FMT_ACC,
-            mb=_ACCESS_LOG_MB, backups=_ACCESS_LOG_BACKUPS,
-        ),
-        stream(logging.INFO, _FMT_ACC),
-    )
+    q_acc = queue_listener(access_fh, console_acc)
+    attach_q(acc, logging.INFO, q_acc)
 
     # 保留 werkzeug 自带 handler，只抬高级别，避免清掉后连 WARNING 也看不见
     wz = logging.getLogger("werkzeug")
     wz.setLevel(logging.WARNING)
     wz.propagate = False
 
+    # root：走主队列，error_fh(ERROR) 负责落盘；非 ERROR 被 app_domain 过滤掉
     root = logging.getLogger()
     for h in list(root.handlers):
         root.removeHandler(h)
     root.setLevel(logging.WARNING)
-    root.addHandler(error_fh)
+    root.addHandler(QueueHandler(q_main))
 
-    attach(logging.getLogger("backend"), logging.INFO, *list(flask_app.logger.handlers))
     sys.stdout = _StdoutTeeAppLog(_CONSOLE, flask_app.logger)
     return acc
 
 
 access_logger = _setup_logging(app)
+
+
+@atexit.register
+def _flush_logs() -> None:
+    """进程退出时停止后台监听线程，确保队列中残留日志被写完。"""
+    for listener in _log_listeners:
+        try:
+            listener.stop()
+        except Exception:
+            pass
 
 
 @app.before_request
