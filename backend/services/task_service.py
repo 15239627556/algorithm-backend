@@ -328,11 +328,11 @@ class TaskService:
         return out
 
     def upload_image(self, task_id, row_index, col_index, tile_image):
-        # 记录日志，task_id,row_index,col_index,接收到图片的时间,转换为时分秒毫秒
-        logger.info("task_id=%s, row_index=%s, col_index=%s, 接收到图片的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
+        filename = f"{task_id}_{row_index}_{col_index}.jpg"
+        # 记录日志，task_id,file_name,接收到图片的时间,转换为时分秒毫秒
+        logger.info("task_id=%s, file_name=%s, 接收到图片的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         image_bytes = tile_image.read()
-
         if row_index is None or col_index is None:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -363,8 +363,6 @@ class TaskService:
         dpi = ctx.info.get('dpi', 144750)
         layer = project.get_layer(dpi)
         task_info = ctx.info
-        file_name = tile_image.filename
-
         smear_type = task_info.get('smear_type', 'BM')
         target_cell_types = task_info.get('target_cell_types', '')
 
@@ -374,7 +372,7 @@ class TaskService:
                 w=task_info['tile_width'],
                 h=task_info['tile_height'],
                 image_data=None,
-                image_path=file_name,
+                image_path=filename,
                 extra_meta={
                     'row_index': row_index,
                     'col_index': col_index,
@@ -385,16 +383,17 @@ class TaskService:
         else:
             tile = layer.get_tile(image_uid)
         try:
-            # 记录日志，task_id,row_index,col_index,发送请求的时间
-            logger.info("task_id=%s, row_index=%s, col_index=%s, 发送请求的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            # 记录日志，task_id,file_name,发送请求的时间
+            logger.info("task_id=%s, file_name=%s, 发送请求的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             result = infer(
                 image_bytes,
                 dpi=int(dpi),
                 smear_type=smear_type,
                 algorithm_types=target_cell_types or "",
+                filename=filename,
             )
-            # 记录日志，task_id,row_index,col_index,推理完成的时间
-            logger.info("task_id=%s, row_index=%s, col_index=%s, 推理完成的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            # 记录日志，task_id,file_name,推理完成的时间
+            logger.info("task_id=%s, file_name=%s, 推理完成的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             cells = result["cells"]
             scores = result.get("scores", [])
             cell_list = result.get("cell_list", [])
@@ -405,8 +404,8 @@ class TaskService:
             tile.meta["scores"] = _ensure_json_serializable(scores)
             if cells:
                 tile.add_cells(cells)
-            # 记录日志，task_id,row_index,col_index,返回结果的时间
-            logger.info("task_id=%s, row_index=%s, col_index=%s, 返回结果的时间：%s", task_id, row_index, col_index, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            # 记录日志，task_id,file_name,返回结果的时间
+            logger.info("task_id=%s, file_name=%s, 返回结果的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -661,8 +660,9 @@ class TaskService:
         if not isinstance(required_num, dict):
             required_num = {}
 
-        index_offset = int(kwargs.get("index_offset", 0) or 0)
-        request_task_num = int(kwargs.get("request_task_num", 100) or 100)
+        # 去掉分页参数，每次都返回所有任务
+        # index_offset = int(kwargs.get("index_offset", 0) or 0)
+        # request_task_num = int(kwargs.get("request_task_num", 100) or 100)
 
         normalized_task_type = (task_type or "").strip().upper()
         allowed_task_types = {"WBC", "MEG", "WBC_MEG", "RBC"}
@@ -746,147 +746,131 @@ class TaskService:
                 "ret_desc": f"Unsupported smear_type: {smear_type}",
                 "reason": f"Unsupported smear_type: {smear_type}",
             }
-
         project = ctx.project
+        if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
+            bm_cfg = BM40Config(
+                user_choice_area=user_choice_area,
+                target_cell_num_WBC=required_wbc,
+                x100_rect_width=int(view_width),
+                x100_rect_height=int(view_height),
+                heatmap_orientation=heatmap_orientation,
+                dpi=dpi,
+                View_type="WBC",
+                Smear_type=smear_type,
+            )
+            pipeline = WBCSamplingPipeline(bm_cfg)
+            wbc_tasks = pipeline.run(project)
+            wbc_task_rects = [task.to_dict() for task in wbc_tasks]
 
-        area_str = json.dumps(user_choice_area or {}, sort_keys=True) if isinstance(user_choice_area, dict) else str(user_choice_area)
-        cache_key = f"{task_id}_{smear_type}_{normalized_task_type}_{area_str}_{view_width}_{view_height}_{required_wbc}_{required_meg}_{required_rbc}"
-        with self.project_x100_lock:
-            final_task_list = self.project_x100.get(cache_key)
-
-        if final_task_list is None:
-            if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
-                bm_cfg = BM40Config(
-                    user_choice_area=user_choice_area,
-                    target_cell_num_WBC=required_wbc,
-                    x100_rect_width=int(view_width),
-                    x100_rect_height=int(view_height),
-                    heatmap_orientation=heatmap_orientation,
-                    dpi=dpi,
-                    View_type="WBC",
-                    Smear_type=smear_type,
-                )
-                pipeline = WBCSamplingPipeline(bm_cfg)
-                wbc_tasks = pipeline.run(project)
-                wbc_task_rects = [task.to_dict() for task in wbc_tasks]
-
-                if normalized_task_type == "WBC":
-                    final_task_list = wbc_task_rects
-                else:
-                    if required_meg > 0:
-                        # WBC_MEG：与 main_meg.py 一致，仅使用 view_type=="WBC" 的视野，转为 [[x,y,w,h]] 再 run_meg
-                        wbc_rects_meg: list[list[float]] = []
-                        for task in wbc_tasks:
-                            if task.view_type != "WBC":
-                                continue
-                            x = float(task.view_xmin)
-                            y = float(task.view_ymin)
-                            w = float(task.view_xmax - task.view_xmin)
-                            h = float(task.view_ymax - task.view_ymin)
-                            wbc_rects_meg.append([x, y, w, h])
-                        if not wbc_rects_meg:
-                            return {
-                                "ret_code": RetCode.CLIENT_ERROR.value,
-                                "ret_desc": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
-                                "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
-                            }
-                        bm_cfg.target_cell_num_MEG = required_meg
-                        bm_cfg.View_type = "MEG"
-                        try:
-                            meg_pipeline = MegSamplingPipeline(bm_cfg)
-                            meg_tasks = meg_pipeline.run_meg(
-                                project=project, wbc_rects=wbc_rects_meg
-                            )
-                            meg_task_rects = [task.to_dict() for task in meg_tasks]
-                        except Exception as e:
-                            logger.exception("MEG roi_selection failed: %s", e)
-                            return {
-                                "ret_code": RetCode.CLIENT_ERROR.value,
-                                "ret_desc": str(e),
-                                "reason": str(e),
-                            }
-                        final_task_list = wbc_task_rects + meg_task_rects
-                    else:
-                        final_task_list = wbc_task_rects
-
-            elif smear_type == "BM" and normalized_task_type == "MEG":
-                bm_cfg = BM40Config(
-                    user_choice_area=user_choice_area,
-                    target_cell_num_WBC=required_wbc or 0,
-                    x100_rect_width=int(view_width),
-                    x100_rect_height=int(view_height),
-                    heatmap_orientation=heatmap_orientation,
-                    dpi=dpi,
-                    Smear_type="BM",
-                    View_type="MEG"
-                )
-                bm_cfg.target_cell_num_MEG = required_meg
-
-                wbc_points = kwargs.get("wbc_points") or []
-                wbc_rects: list[list[float]] = []
-                for p in wbc_points:
-                    if not isinstance(p, dict):
-                        continue
-                    try:
-                        x = float(p.get("x"))
-                        y = float(p.get("y"))
-                        w = float(p.get("w"))
-                        h = float(p.get("h"))
-                    except (TypeError, ValueError):
-                        continue
-                    wbc_rects.append([x, y, w, h])
-
-                if not wbc_rects:
-                    return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": "Invalid kwargs.wbc_points: empty or not parseable",
-                        "reason": "Invalid kwargs.wbc_points: empty or not parseable",
-                    }
-                try:
-                    meg_pipeline = MegSamplingPipeline(bm_cfg)
-                    meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
-                    final_task_list = [task.to_dict() for task in meg_tasks]
-                except Exception as e:
-                    logger.exception("MEG roi_selection failed: %s", e)
-                    return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": str(e),
-                        "reason": str(e),
-                    }
-
-            elif smear_type == "PB" and normalized_task_type == "WBC":
-                bm_cfg = BM40Config(
-                    user_choice_area=user_choice_area,
-                    target_cell_num_WBC=required_wbc,
-                    x100_rect_width=int(view_width),
-                    x100_rect_height=int(view_height),
-                    heatmap_orientation=heatmap_orientation,
-                    dpi=dpi,
-                    View_type="WBC",
-                    Smear_type="PB",
-                )
-                pipeline = WBCSamplingPipeline(bm_cfg)
-                wbc_tasks = pipeline.run(project)
-                final_task_list = [task.to_dict() for task in wbc_tasks]
+            if normalized_task_type == "WBC":
+                final_task_list = wbc_task_rects
             else:
+                if required_meg > 0:
+                    # WBC_MEG：与 main_meg.py 一致，仅使用 view_type=="WBC" 的视野，转为 [[x,y,w,h]] 再 run_meg
+                    wbc_rects_meg: list[list[float]] = []
+                    for task in wbc_tasks:
+                        if task.view_type != "WBC":
+                            continue
+                        x = float(task.view_xmin)
+                        y = float(task.view_ymin)
+                        w = float(task.view_xmax - task.view_xmin)
+                        h = float(task.view_ymax - task.view_ymin)
+                        wbc_rects_meg.append([x, y, w, h])
+                    if not wbc_rects_meg:
+                        return {
+                            "ret_code": RetCode.CLIENT_ERROR.value,
+                            "ret_desc": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
+                            "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
+                        }
+                    bm_cfg.target_cell_num_MEG = required_meg
+                    bm_cfg.View_type = "MEG"
+                    try:
+                        meg_pipeline = MegSamplingPipeline(bm_cfg)
+                        meg_tasks = meg_pipeline.run_meg(
+                            project=project, wbc_rects=wbc_rects_meg
+                        )
+                        meg_task_rects = [task.to_dict() for task in meg_tasks]
+                    except Exception as e:
+                        logger.exception("MEG roi_selection failed: %s", e)
+                        return {
+                            "ret_code": RetCode.CLIENT_ERROR.value,
+                            "ret_desc": str(e),
+                            "reason": str(e),
+                        }
+                    final_task_list = wbc_task_rects + meg_task_rects
+                else:
+                    final_task_list = wbc_task_rects
+
+        elif smear_type == "BM" and normalized_task_type == "MEG":
+            bm_cfg = BM40Config(
+                user_choice_area=user_choice_area,
+                target_cell_num_WBC=required_wbc or 0,
+                x100_rect_width=int(view_width),
+                x100_rect_height=int(view_height),
+                heatmap_orientation=heatmap_orientation,
+                dpi=dpi,
+                Smear_type="BM",
+                View_type="MEG"
+            )
+            bm_cfg.target_cell_num_MEG = required_meg
+
+            wbc_points = kwargs.get("wbc_points") or []
+            wbc_rects: list[list[float]] = []
+            for p in wbc_points:
+                if not isinstance(p, dict):
+                    continue
+                try:
+                    x = float(p.get("x"))
+                    y = float(p.get("y"))
+                    w = float(p.get("w"))
+                    h = float(p.get("h"))
+                except (TypeError, ValueError):
+                    continue
+                wbc_rects.append([x, y, w, h])
+
+            if not wbc_rects:
                 return {
                     "ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
-                    "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+                    "ret_desc": "Invalid kwargs.wbc_points: empty or not parseable",
+                    "reason": "Invalid kwargs.wbc_points: empty or not parseable",
+                }
+            try:
+                meg_pipeline = MegSamplingPipeline(bm_cfg)
+                meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
+                final_task_list = [task.to_dict() for task in meg_tasks]
+            except Exception as e:
+                logger.exception("MEG roi_selection failed: %s", e)
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": str(e),
+                    "reason": str(e),
                 }
 
-            with self.project_x100_lock:
-                self.project_x100[cache_key] = final_task_list
-
-        task_list = final_task_list[index_offset:index_offset + request_task_num]
-        if (index_offset + request_task_num) >= len(final_task_list):
-            with self.project_x100_lock:
-                self.project_x100.pop(cache_key, None)
+        elif smear_type == "PB" and normalized_task_type == "WBC":
+            bm_cfg = BM40Config(
+                user_choice_area=user_choice_area,
+                target_cell_num_WBC=required_wbc,
+                x100_rect_width=int(view_width),
+                x100_rect_height=int(view_height),
+                heatmap_orientation=heatmap_orientation,
+                dpi=dpi,
+                View_type="WBC",
+                Smear_type="PB",
+            )
+            pipeline = WBCSamplingPipeline(bm_cfg)
+            wbc_tasks = pipeline.run(project)
+            final_task_list = [task.to_dict() for task in wbc_tasks]
+        else:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+                "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+            }
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
             "task_list_num": len(final_task_list),
-            "task_list": task_list,
+            "task_list": final_task_list,
         }
 
     def generate_views(

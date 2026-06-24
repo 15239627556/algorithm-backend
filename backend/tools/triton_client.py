@@ -969,6 +969,7 @@ def infer(
     dpi: int,
     smear_type: str = "BM",
     algorithm_types: str = "",
+    filename: str = "tile.jpg",
 ) -> dict:
     """
     细胞检测推理，仅根据 DPI 选择模型。单图识别与任务模式均使用此接口。
@@ -993,7 +994,7 @@ def infer(
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
         res_json = _post_multipart_infer_147246(
-            url, image_bytes, "tile.jpg", enable_meg, PIPELINE_HTTP_TIMEOUT_S
+            url, image_bytes, filename, enable_meg, PIPELINE_HTTP_TIMEOUT_S
         )
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
         result = _infer_147246_finalize(
@@ -1006,7 +1007,7 @@ def infer(
     if model == MODEL_357378:
         url = _multi_pipeline_infer_url("357378")
         res_json = _post_multipart_pipeline_infer(
-            url, image_bytes, "tile.jpg", PIPELINE_HTTP_TIMEOUT_S
+            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
         )
         result = _infer_357378_from_pipeline_json(res_json)
         if warning:
@@ -1024,7 +1025,7 @@ def infer(
         res_json = _post_multipart_pipeline_infer(
             url,
             image_bytes,
-            "tile.jpg",
+            filename,
             PIPELINE_HTTP_TIMEOUT_S,
             extra_form={"tasks": tasks},
         )
