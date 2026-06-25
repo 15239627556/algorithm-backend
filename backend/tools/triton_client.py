@@ -26,7 +26,17 @@ from urllib3.util.retry import Retry
 from project.cells import Cell
 from backend.tools.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
-from config import TRITON_URL, TRITON_IP
+from config import TRITON_URL, TRITON_IP, TRITON_HTTP_URL
+
+from triton import pipeline_api
+
+pipeline_api.configure(
+    triton_grpc_url=TRITON_URL,
+    triton_http_url=TRITON_HTTP_URL,
+)
+pipeline_api.init_147246()
+pipeline_api.init_357378()
+pipeline_api.init_714756()
 
 logger = logging.getLogger(__name__)
 
@@ -334,13 +344,14 @@ def _post_multipart_infer_147246(
     timeout_s: float,
 ) -> dict[str, Any]:
     """enable_meg + image（同 multi_pipeline_server /147246/infer Form）。"""
-    return _post_multipart_pipeline_infer(
-        url,
-        image_bytes,
-        filename,
-        timeout_s,
-        extra_form={"enable_meg": str(int(enable_meg))},
-    )
+    return pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg)
+    # return _post_multipart_pipeline_infer(
+    #     url,
+    #     image_bytes,
+    #     filename,
+    #     timeout_s,
+    #     extra_form={"enable_meg": str(int(enable_meg))},
+    # )
 
 
 def _scalar_int(payload: dict[str, Any], *keys: str, default: int = 0) -> int:
@@ -993,9 +1004,10 @@ def infer(
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
-        res_json = _post_multipart_infer_147246(
-            url, image_bytes, filename, enable_meg, PIPELINE_HTTP_TIMEOUT_S
-        )
+        res_json = pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg)
+        # res_json = _post_multipart_infer_147246(
+        #     url, image_bytes, filename, enable_meg, PIPELINE_HTTP_TIMEOUT_S
+        # )
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
         result = _infer_147246_finalize(
             algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc
@@ -1006,9 +1018,10 @@ def infer(
 
     if model == MODEL_357378:
         url = _multi_pipeline_infer_url("357378")
-        res_json = _post_multipart_pipeline_infer(
-            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
-        )
+        res_json = pipeline_api.infer_357378(image_bytes)
+        # res_json = _post_multipart_pipeline_infer(
+        #     url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
+        # )
         result = _infer_357378_from_pipeline_json(res_json)
         if warning:
             result["warning"] = warning
@@ -1022,13 +1035,14 @@ def infer(
         if "rbc" in tasks:
             tasks = tasks.replace("rbc", "red")
         url = _multi_pipeline_infer_url("714756")
-        res_json = _post_multipart_pipeline_infer(
-            url,
-            image_bytes,
-            filename,
-            PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={"tasks": tasks},
-        )
+        res_json = pipeline_api.infer_714756(image_bytes, tasks=tasks)
+        # res_json = _post_multipart_pipeline_infer(
+        #     url,
+        #     image_bytes,
+        #     filename,
+        #     PIPELINE_HTTP_TIMEOUT_S,
+        #     extra_form={"tasks": tasks},
+        # )
         result = _infer_714756_bm_from_pipeline_json(res_json)
         if warning:
             result["warning"] = warning

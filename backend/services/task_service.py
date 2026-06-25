@@ -438,24 +438,6 @@ class TaskService:
                 task_id[:8],
                 (t6 - t5) * 1000,
             )
-            info = ctx.info
-            task_tw = info.get("tile_width")
-            task_th = info.get("tile_height")
-            if task_tw is None and tiles:
-                task_tw = tiles[0].w
-            if task_th is None and tiles:
-                task_th = tiles[0].h
-            if task_tw is not None and task_th is not None:
-                filter_edge_incomplete_cells(
-                    tiles,
-                    task_tile_w=int(task_tw),
-                    task_tile_h=int(task_th),
-                )
-            else:
-                logger.warning(
-                    "Task %s: skip filter_edge_incomplete_cells (no tile_width/tile_height)",
-                    task_id,
-                )
             for one_tile in tiles:
                 layer.tiles[one_tile.image_uid] = one_tile
             t9 = time.time()
@@ -866,6 +848,7 @@ class TaskService:
                 "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
             }
+        logger.info("task_id=%s, task_list_num=%s", task_id, len(final_task_list))
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
