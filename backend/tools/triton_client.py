@@ -32,7 +32,6 @@ from triton_service import pipeline_api
 
 pipeline_api.configure(
     triton_grpc_url=TRITON_URL,
-    triton_http_url=TRITON_HTTP_URL,
 )
 pipeline_api.init_147246()
 pipeline_api.init_357378()
@@ -1004,7 +1003,7 @@ def infer(
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
-        res_json = pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg)
+        res_json = pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg, filename=filename)
         # res_json = _post_multipart_infer_147246(
         #     url, image_bytes, filename, enable_meg, PIPELINE_HTTP_TIMEOUT_S
         # )

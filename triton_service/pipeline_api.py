@@ -14,7 +14,7 @@ Triton server 提供（gRPC），本模块只负责在客户端进程内做解�
     init_target(target)              # 按 target/别名/DPI 单独构建某一套
     close(target=None)               # 释放资源：None 全部，否则仅指定套
     is_ready(target=None) -> bool    # None 表示三套都就绪
-    infer_147246(image_bytes, enable_meg=None) -> dict   # 需先 init_147246()，未初始化将报错
+    infer_147246(image_bytes, enable_meg=None, filename=None) -> dict   # 需先 init_147246()，未初始化将报错
     infer_357378(image_bytes) -> dict                    # 需先 init_357378()
     infer_714756(image_bytes, tasks=None, task_mode=None) -> dict  # 需先 init_714756()
 
@@ -27,6 +27,8 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -35,6 +37,23 @@ from dpi147246_cpu_profile import ACTIVE_PROFILE, DEFAULT_KWARGS
 from dpi147246_cuda_pipeline import BatchedCudaWbcMegPipeline, get_cuda_pipeline
 from dpi714756_bm_pb_local_pipeline import LocalBmpbPipeline714756
 from dpi357378_local_pipeline import LocalMegPipeline357378
+from service_logging import (
+    DEFAULT_LOG_BACKUP_COUNT,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_LOG_MAX_MB,
+    configure_dedicated_file_logger,
+)
+from p147246_lifecycle import (
+    finish_error,
+    finish_ok,
+    new_trace,
+    set_field,
+    set_result,
+    stage_end,
+    stage_instant,
+    stage_start,
+    to_json_line,
+)
 
 try:
     import tritonclient.grpc as grpcclient
@@ -44,6 +63,13 @@ except ImportError:  # pragma: no cover - 友好报错
     )
 
 logger = logging.getLogger("pipeline_api")
+logger.disabled = True
+request_logger = logging.getLogger("pipeline_api.p147246_requests")
+request_logger.disabled = True
+_LOG_FILE_PATH: str | None = None
+_REQUEST_LOG_FILE_PATH: str | None = None
+_DEFAULT_LOG_FILE = str(Path(__file__).resolve().parent / "logs" / "pipeline_api.log")
+_DEFAULT_147246_REQUEST_LOG_FILE = str(Path(__file__).resolve().parent / "logs" / "p147246_requests.log")
 
 _P147246 = DEFAULT_KWARGS
 
@@ -54,6 +80,11 @@ class PipelineConfig:
     # Triton 推理地址（gRPC 用于推理，HTTP 仅用于可选的模型状态查询）
     triton_grpc_url: str = "localhost:8001"
     triton_http_url: str = "http://localhost:8000"
+    log_enabled: bool = True
+    log_file: str = _DEFAULT_LOG_FILE
+    log_max_mb: int = DEFAULT_LOG_MAX_MB
+    log_backup_count: int = DEFAULT_LOG_BACKUP_COUNT
+    log_level: str | int = DEFAULT_LOG_LEVEL
 
     # 147246（默认随 dpi147246_cpu_profile 预设）
     p147246_cpu_profile: str = ACTIVE_PROFILE
@@ -69,6 +100,11 @@ class PipelineConfig:
     p147246_decode_workers: int = _P147246["decode_workers"]
     p147246_heavy_post_mode: str = _P147246.get("heavy_post_mode", "serial")
     p147246_heavy_post_workers: int = _P147246.get("heavy_post_workers", _P147246["num_slots"])
+    p147246_log_requests: bool = True
+    p147246_request_log_file: str = _DEFAULT_147246_REQUEST_LOG_FILE
+    p147246_request_log_max_mb: int = 50
+    p147246_request_log_backup_count: int = 10
+    p147246_request_log_level: str | int = "INFO"
 
     # 714756
     p714756_batch_size: int = 8
@@ -92,11 +128,75 @@ class PipelineConfig:
 
 _CFG = PipelineConfig()
 
+
+def _apply_logging_config() -> None:
+    """按配置启停本模块文件日志，不依赖调用方配置 logging。"""
+    global _LOG_FILE_PATH
+
+    if not _CFG.log_enabled:
+        logger.disabled = True
+        for old_handler in list(logger.handlers):
+            logger.removeHandler(old_handler)
+            old_handler.close()
+        _LOG_FILE_PATH = None
+        return
+
+    logger.disabled = False
+    _LOG_FILE_PATH = configure_dedicated_file_logger(
+        "pipeline_api",
+        log_file=_CFG.log_file,
+        log_max_mb=_CFG.log_max_mb,
+        log_backup_count=_CFG.log_backup_count,
+        log_level=_CFG.log_level,
+    )
+    logger.info(
+        "pipeline_api logging initialized | file=%s max_mb=%s backups=%s level=%s",
+        _LOG_FILE_PATH,
+        _CFG.log_max_mb,
+        _CFG.log_backup_count,
+        _CFG.log_level,
+    )
+
+
+def _apply_147246_request_logging_config() -> None:
+    """按配置启停 147246 每张图生命周期日志。"""
+    global _REQUEST_LOG_FILE_PATH
+
+    if not _CFG.p147246_log_requests:
+        request_logger.disabled = True
+        for old_handler in list(request_logger.handlers):
+            request_logger.removeHandler(old_handler)
+            old_handler.close()
+        _REQUEST_LOG_FILE_PATH = None
+        return
+
+    request_logger.disabled = False
+    _REQUEST_LOG_FILE_PATH = configure_dedicated_file_logger(
+        "pipeline_api.p147246_requests",
+        log_file=_CFG.p147246_request_log_file,
+        log_max_mb=_CFG.p147246_request_log_max_mb,
+        log_backup_count=_CFG.p147246_request_log_backup_count,
+        log_level=_CFG.p147246_request_log_level,
+    )
+    logger.info(
+        "p147246 request logging initialized | file=%s max_mb=%s backups=%s level=%s",
+        _REQUEST_LOG_FILE_PATH,
+        _CFG.p147246_request_log_max_mb,
+        _CFG.p147246_request_log_backup_count,
+        _CFG.p147246_request_log_level,
+    )
+
+
+_apply_logging_config()
+_apply_147246_request_logging_config()
+
 _PIPE_147246: BatchedCudaWbcMegPipeline | None = None
 _PIPE_714756: LocalBmpbPipeline714756 | None = None
 _PIPE_357378: LocalMegPipeline357378 | None = None
 
 _thread_local_grpc = threading.local()
+_grpc_clients_lock = threading.Lock()
+_grpc_clients: list[Any] = []
 _PREP_EXEC_714756: ThreadPoolExecutor | None = None
 _PREP_EXEC_357378: ThreadPoolExecutor | None = None
 # 限制 714756 / 357378 同时在跑的请求数，避免 GPU 过载（与原服务 num_slots 一致）
@@ -117,6 +217,15 @@ _INIT_LOCK = threading.RLock()
 _INIT_147246 = False
 _INIT_357378 = False
 _INIT_714756 = False
+_147246_IMAGE_SEQ = 0
+_147246_IMAGE_SEQ_LOCK = threading.Lock()
+
+
+def _next_147246_image_seq() -> int:
+    global _147246_IMAGE_SEQ
+    with _147246_IMAGE_SEQ_LOCK:
+        _147246_IMAGE_SEQ += 1
+        return _147246_IMAGE_SEQ
 
 
 def _grpc_client() -> "grpcclient.InferenceServerClient":
@@ -127,7 +236,22 @@ def _grpc_client() -> "grpcclient.InferenceServerClient":
     c = grpcclient.InferenceServerClient(url=_CFG.triton_grpc_url)
     _thread_local_grpc.client = c
     _thread_local_grpc.url = _CFG.triton_grpc_url
+    with _grpc_clients_lock:
+        _grpc_clients.append(c)
     return c
+
+
+def _close_all_grpc_clients() -> None:
+    """显式关闭所有 thread-local 创建的 gRPC 客户端，避免进程退出时 __del__ 报错。"""
+    global _grpc_clients
+    with _grpc_clients_lock:
+        clients = list(_grpc_clients)
+        _grpc_clients.clear()
+    for client in clients:
+        try:
+            client.close()
+        except Exception:
+            logger.exception("gRPC client close 失败")
 
 
 def _to_jsonable(x: Any) -> Any:
@@ -163,7 +287,10 @@ def configure(**overrides: Any) -> None:
     """更新运行参数（PipelineConfig 字段），不构建任何管线。
 
     注意：仅影响“之后才初始化”的管线；已构建的管线不会因此重建。
-    常用: triton_grpc_url、triton_http_url、p*_num_slots、p*_batch_size 等。
+    常用: triton_grpc_url、triton_http_url、log_enabled、log_file、log_max_mb、
+    log_backup_count、log_level、p147246_log_requests、p147246_request_log_file、
+    p147246_request_log_max_mb、p147246_request_log_backup_count、
+    p147246_request_log_level、p*_num_slots、p*_batch_size 等。
     """
     with _INIT_LOCK:
         for key, value in overrides.items():
@@ -173,6 +300,8 @@ def configure(**overrides: Any) -> None:
                 logger.warning("pipeline_api.configure: 未知配置项 %s 已忽略", key)
                 continue
             setattr(_CFG, key, value)
+        _apply_logging_config()
+        _apply_147246_request_logging_config()
 
 
 def init_147246() -> None:
@@ -299,23 +428,85 @@ def close(target: Any = None) -> None:
             _SEM_357378 = None
             _INIT_357378 = False
             logger.info("pipeline_api 357378 stopped")
+        if not _INIT_714756 and not _INIT_357378:
+            _close_all_grpc_clients()
 
 
-def infer_147246(image_bytes: bytes, enable_meg: bool | None = None, trace: Any = None) -> dict:
+def infer_147246(
+    image_bytes: bytes,
+    enable_meg: bool | None = None,
+    trace: Any = None,
+    filename: str | None = None,
+) -> dict:
     """147246（BM/PB WBC+MEG）推理。需先调用 init_147246()。返回结构同原 /147246/infer。"""
-    if not _INIT_147246:
-        raise RuntimeError("147246 管线未初始化，请先调用 pipeline_api.init_147246()")
+    image_seq = _next_147246_image_seq()
+    t_enter_ns = time.perf_counter_ns()
     t0 = time.perf_counter()
-    res, timing = _PIPE_147246.submit(
-        image_bytes,
-        enable_meg=enable_meg,
-        return_timing=True,
-        lifecycle_trace=trace,
+    wall_enter = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    req_trace = trace or (
+        new_trace(
+            image_seq=image_seq,
+            route="pipeline_api.infer_147246",
+            filename=filename,
+            enable_meg=enable_meg,
+        )
+        if _CFG.p147246_log_requests
+        else None
     )
-    out = _to_jsonable(res)
-    out["latency_ms"] = round((time.perf_counter() - t0) * 1000.0, 3)
-    out["timing"] = timing
-    return out
+    set_field(req_trace, "image_seq", image_seq)
+    set_field(req_trace, "filename", filename)
+    stage_instant(req_trace, "request_received")
+    try:
+        if not _INIT_147246:
+            raise RuntimeError("147246 管线未初始化，请先调用 pipeline_api.init_147246()")
+
+        stage_start(req_trace, "payload_read")
+        set_field(req_trace, "payload_bytes", len(image_bytes))
+        stage_end(req_trace, "payload_read")
+
+        stage_start(req_trace, "pipeline_call")
+        res, timing = _PIPE_147246.submit(
+            image_bytes,
+            enable_meg=enable_meg,
+            return_timing=True,
+            lifecycle_trace=req_trace,
+        )
+        stage_end(req_trace, "pipeline_call")
+
+        out = _to_jsonable(res)
+        compute_done_wall = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        request_total_ms = round((time.perf_counter_ns() - t_enter_ns) / 1_000_000.0, 3)
+        out["latency_ms"] = round((time.perf_counter() - t0) * 1000.0, 3)
+        out["timing"] = timing
+        out["payload_bytes"] = len(image_bytes)
+        out["request_total_ms"] = request_total_ms
+        out["image_seq"] = image_seq
+        if filename is not None:
+            out["filename"] = filename
+        out["request_enter_wall"] = wall_enter
+        out["compute_done_wall"] = compute_done_wall
+        set_result(req_trace, wbc_num=out.get("wbc_num"), meg_num=out.get("meg_num"))
+        stage_instant(req_trace, "response_ready")
+        finish_ok(req_trace, request_total_ms=request_total_ms)
+        if _CFG.p147246_log_requests and req_trace is not None:
+            request_logger.info(to_json_line(req_trace))
+        return out
+    except Exception as e:
+        request_total_ms = round((time.perf_counter_ns() - t_enter_ns) / 1_000_000.0, 3)
+        stage_instant(req_trace, "response_ready")
+        finish_error(req_trace, e, request_total_ms=request_total_ms)
+        if _CFG.p147246_log_requests and req_trace is not None:
+            request_logger.info(to_json_line(req_trace))
+        logger.warning(
+            "147246 infer_error | image_seq=%s | filename=%s | route=pipeline_api.infer_147246 | "
+            "request_enter_wall=%s | error_type=%s | error=%s",
+            image_seq,
+            filename,
+            wall_enter,
+            type(e).__name__,
+            e,
+        )
+        raise
 
 
 def infer_714756(image_bytes: bytes, tasks: str | None = None, task_mode: int | None = None) -> dict:
