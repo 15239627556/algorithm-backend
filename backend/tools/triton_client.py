@@ -28,7 +28,7 @@ from backend.tools.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
 from config import TRITON_URL, TRITON_IP, TRITON_HTTP_URL
 
-from triton import pipeline_api
+from triton_service import pipeline_api
 
 pipeline_api.configure(
     triton_grpc_url=TRITON_URL,
