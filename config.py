@@ -7,7 +7,7 @@ import os
 # ========== Triton 推理服务配置 ==========
 # 默认：本机 127.0.0.1
 # 端口：8000(HTTP 模型加载/卸载)、8001(gRPC 推理)、8002(Metrics)
-TRITON_IP = os.environ.get("TRITON_IP", "127.0.0.1")
+TRITON_IP = os.environ.get("TRITON_IP", "triton")
 TRITON_HTTP_PORT = int(os.environ.get("TRITON_HTTP_PORT", "8000"))
 TRITON_GRPC_PORT = int(os.environ.get("TRITON_GRPC_PORT", "8001"))
 TRITON_METRICS_PORT = int(os.environ.get("TRITON_METRICS_PORT", "8002"))

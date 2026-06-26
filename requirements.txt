@@ -23,6 +23,7 @@ torchvision==0.23.0
 
 # HTTP client (multi_pipeline_server multipart 推理)
 requests>=2.31.0
+requests-unixsocket==0.4.1
 
 # Triton inference
 tritonclient[grpc]

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import sys
+import requests_unixsocket
+from requests_unixsocket.adapters import UnixAdapter
 
 # 直接运行本文件时（python -m backend.tools.triton_client）将项目根加入 path
 if __name__ == "__main__":
@@ -15,7 +17,7 @@ if __name__ == "__main__":
 import json
 import logging
 import threading
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from typing import Any, Callable, List, Optional
 
 import numpy as np
@@ -27,15 +29,6 @@ from project.cells import Cell
 from backend.tools.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
 from config import TRITON_URL, TRITON_IP, TRITON_HTTP_URL
-
-from triton_service import pipeline_api
-
-pipeline_api.configure(
-    triton_grpc_url=TRITON_URL,
-)
-pipeline_api.init_147246()
-pipeline_api.init_357378()
-pipeline_api.init_714756()
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +69,14 @@ _pipeline_session: requests.Session | None = None
 _pipeline_session_lock = threading.Lock()
 
 
-def _get_pipeline_session() -> requests.Session:
+def _get_pipeline_session() -> requests_unixsocket.Session:
     """进程内共享的 requests.Session（连接池复用 + 有限的连接重试），线程安全懒加载。"""
     global _pipeline_session
     if _pipeline_session is not None:
         return _pipeline_session
     with _pipeline_session_lock:
         if _pipeline_session is None:
-            session = requests.Session()
+            session = requests_unixsocket.Session()
             retry = Retry(
                 total=_PIPELINE_HTTP_CONNECT_RETRIES,
                 connect=_PIPELINE_HTTP_CONNECT_RETRIES,
@@ -93,9 +86,17 @@ def _get_pipeline_session() -> requests.Session:
                 backoff_factor=0.5,
                 raise_on_status=False,
             )
-            adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=retry)
-            session.mount("http://", adapter)
-            session.mount("https://", adapter)
+            # 👉 核心修改 1：使用 UnixAdapter 替代普通的 HTTPAdapter
+            adapter = UnixAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry)
+            
+            # 👉 核心修改 2：挂载到 http+unix:// 协议上
+            session.mount("http+unix://", adapter)
+            
+            # 如果你这个 session 偶尔还会发普通的公网或局域网 http 请求，可以保留下面两行；
+            # 如果这个 session 是纯为了和内部 triton 通信的，下面两行可以删掉。
+            # session.mount("http://", HTTPAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry))
+            # session.mount("https://", HTTPAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry))
+            
             _pipeline_session = session
     return _pipeline_session
 
@@ -126,34 +127,13 @@ def _strip_plain_infer_suffix(url: str) -> str | None:
 
 
 def _multi_pipeline_infer_url(target: str) -> str:
-    """与 multi_pipeline_server 一致的路径：/{target}/infer（multipart）。"""
+    """经 Unix socket 访问 multi_pipeline_server：/{target}/infer（multipart）。"""
     if target not in _MULTI_PIPELINE_TARGETS:
         raise ValueError(f"invalid multi pipeline target: {target!r}")
 
-    bs_raw = _PIPELINE_SERVER_BASE_URL_RAW
-    ov_raw = _PIPELINE_147246_INFER_URL_RAW
-
-    if target == "147246" and ov_raw:
-        ov = _normalize_http_url(ov_raw)
-        root = _strip_plain_infer_suffix(ov)
-        if root is not None:
-            return f"{root}/{target}/infer"
-        return ov
-
-    if bs_raw:
-        bs = _normalize_http_url(bs_raw)
-        return f"{bs.rstrip('/')}/{target}/infer"
-
-    if ov_raw:
-        ov = _normalize_http_url(ov_raw)
-        root = _strip_plain_infer_suffix(ov)
-        if root is not None:
-            return f"{root}/{target}/infer"
-        if "147246" in ov:
-            return ov.replace("147246", target, 1)
-
-    db = _default_multi_pipeline_base()
-    return f"{db.rstrip('/')}/{target}/infer"
+    sock_path = "/tmp/sockets/triton.sock"
+    sock_url = quote(sock_path, safe="")
+    return f"http+unix://{sock_url}/{target}/infer"
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
@@ -333,24 +313,6 @@ def _post_multipart_pipeline_infer(
         return resp.json()
     except ValueError as e:
         raise RuntimeError(f"pipeline_server 返回非 JSON: {resp.content[:500]!r}") from e
-
-
-def _post_multipart_infer_147246(
-    url: str,
-    image_bytes: bytes,
-    filename: str,
-    enable_meg: int,
-    timeout_s: float,
-) -> dict[str, Any]:
-    """enable_meg + image（同 multi_pipeline_server /147246/infer Form）。"""
-    return pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg)
-    # return _post_multipart_pipeline_infer(
-    #     url,
-    #     image_bytes,
-    #     filename,
-    #     timeout_s,
-    #     extra_form={"enable_meg": str(int(enable_meg))},
-    # )
 
 
 def _scalar_int(payload: dict[str, Any], *keys: str, default: int = 0) -> int:
@@ -1003,10 +965,14 @@ def infer(
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
-        res_json = pipeline_api.infer_147246(image_bytes, enable_meg=enable_meg, filename=filename)
-        # res_json = _post_multipart_infer_147246(
-        #     url, image_bytes, filename, enable_meg, PIPELINE_HTTP_TIMEOUT_S
-        # )
+        res_json = _post_multipart_pipeline_infer(
+            url,
+            image_bytes,
+            filename,
+            PIPELINE_HTTP_TIMEOUT_S,
+            extra_form={"enable_meg": str(int(enable_meg))},
+        )
+
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
         result = _infer_147246_finalize(
             algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc
@@ -1017,31 +983,26 @@ def infer(
 
     if model == MODEL_357378:
         url = _multi_pipeline_infer_url("357378")
-        res_json = pipeline_api.infer_357378(image_bytes)
-        # res_json = _post_multipart_pipeline_infer(
-        #     url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
-        # )
+        res_json = _post_multipart_pipeline_infer(
+            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
+        )
         result = _infer_357378_from_pipeline_json(res_json)
         if warning:
             result["warning"] = warning
         return result
 
     if model == MODEL_714756_BM:
-        # task_mode = 0
-        # if "RBC" in (algorithm_types or "") or "RED" in (algorithm_types or ""):
-        #     task_mode = 2 if "WBC" in (algorithm_types or "") or "MEG" in (algorithm_types or "") else 1
         tasks = ",".join(t.strip() for t in algorithm_types.lower().split(","))
         if "rbc" in tasks:
             tasks = tasks.replace("rbc", "red")
         url = _multi_pipeline_infer_url("714756")
-        res_json = pipeline_api.infer_714756(image_bytes, tasks=tasks)
-        # res_json = _post_multipart_pipeline_infer(
-        #     url,
-        #     image_bytes,
-        #     filename,
-        #     PIPELINE_HTTP_TIMEOUT_S,
-        #     extra_form={"tasks": tasks},
-        # )
+        res_json = _post_multipart_pipeline_infer(
+            url,
+            image_bytes,
+            filename,
+            PIPELINE_HTTP_TIMEOUT_S,
+            extra_form={"tasks": tasks},
+        )
         result = _infer_714756_bm_from_pipeline_json(res_json)
         if warning:
             result["warning"] = warning
