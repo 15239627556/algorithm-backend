@@ -1,3 +1,7 @@
+# --- 必须放在 app.py 的第一行和第二行！ ---
+from gevent import monkey
+monkey.patch_all()
+
 import os
 import sys
 import time
@@ -17,13 +21,19 @@ sys.path.append(algorithms_dir)
 sys.path.append(project_dir)
 sys.path.append(triton_dir)
 
-from flask import Flask, request
+from flask import Flask, request, Request
 from flask_cors import CORS
 from flask_restx import Api
-
+import tempfile
 from backend.routes.task import task
 from backend.routes.ImgFilter import ImgFilter
 from config import FLASK_HOST, FLASK_PORT, sufa_version, is_doc
+
+class FastMemoryRequest(Request):
+    def _get_file_stream(self, total_content_length, content_type, filename=None, content_length=None):
+        # 将内存阈值提高到 15MB (15 * 1024 * 1024)
+        # 只要上传的图片小于 15MB，它就会一直驻留在 RAM (内存) 中，绝不写磁盘！
+        return tempfile.SpooledTemporaryFile(max_size=15 * 1024 * 1024, mode="wb+")
 
 is_doc = '/' if is_doc else False
 
@@ -34,6 +44,7 @@ api = Api(
     )
 
 app = Flask(__name__, static_url_path='/uploads', static_folder='uploads')
+app.request_class = FastMemoryRequest
 api.init_app(app)
 CORS(app, supports_credentials=True)
 app.secret_key = 'Donghuan@2020'

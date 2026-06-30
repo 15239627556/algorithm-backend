@@ -331,7 +331,7 @@ class TaskService:
         """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
         filename = f"{row_index}_{col_index}.jpg"
         # 记录日志，task_id,file_name,接收到图片的时间,转换为时分秒毫秒
-        logger.info("task_id=%s, file_name=%s, 接收到图片的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        logger.info("file_name=%s, 接收到图片的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         image_bytes = tile_image.read()
         if row_index is None or col_index is None:
             return {
@@ -383,8 +383,6 @@ class TaskService:
         else:
             tile = layer.get_tile(image_uid)
         try:
-            # 记录日志，task_id,file_name,发送请求的时间
-            logger.info("task_id=%s, file_name=%s, 发送请求的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             result = infer(
                 image_bytes,
                 dpi=int(dpi),
@@ -393,7 +391,7 @@ class TaskService:
                 filename=filename,
             )
             # 记录日志，task_id,file_name,推理完成的时间
-            logger.info("task_id=%s, file_name=%s, 推理完成的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            logger.info("file_name=%s, 推理完成的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             cells = result["cells"]
             scores = result.get("scores", [])
             cell_list = result.get("cell_list", [])
@@ -405,7 +403,7 @@ class TaskService:
             if cells:
                 tile.add_cells(cells)
             # 记录日志，task_id,file_name,返回结果的时间
-            logger.info("task_id=%s, file_name=%s, 返回结果的时间：%s", task_id, filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            logger.info("file_name=%s, 返回结果的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -955,6 +953,7 @@ class TaskService:
                 dpi=int(dpi),
                 smear_type=smear_type,
                 algorithm_types=target_cell_types or "",
+                filename=image_file.filename,
             )
         except Exception as e:
             logger.exception("Triton infer failed: %s", e)

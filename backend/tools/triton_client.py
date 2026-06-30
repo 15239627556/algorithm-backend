@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import os
 import sys
-import requests_unixsocket
-from requests_unixsocket.adapters import UnixAdapter
 
 # 直接运行本文件时（python -m backend.tools.triton_client）将项目根加入 path
 if __name__ == "__main__":
@@ -24,6 +22,7 @@ import numpy as np
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from datetime import datetime
 
 from project.cells import Cell
 from backend.tools.model_control import ensure_model_loaded
@@ -69,14 +68,14 @@ _pipeline_session: requests.Session | None = None
 _pipeline_session_lock = threading.Lock()
 
 
-def _get_pipeline_session() -> requests_unixsocket.Session:
+def _get_pipeline_session() -> requests.Session:
     """进程内共享的 requests.Session（连接池复用 + 有限的连接重试），线程安全懒加载。"""
     global _pipeline_session
     if _pipeline_session is not None:
         return _pipeline_session
     with _pipeline_session_lock:
         if _pipeline_session is None:
-            session = requests_unixsocket.Session()
+            session = requests.Session()
             retry = Retry(
                 total=_PIPELINE_HTTP_CONNECT_RETRIES,
                 connect=_PIPELINE_HTTP_CONNECT_RETRIES,
@@ -86,17 +85,9 @@ def _get_pipeline_session() -> requests_unixsocket.Session:
                 backoff_factor=0.5,
                 raise_on_status=False,
             )
-            # 👉 核心修改 1：使用 UnixAdapter 替代普通的 HTTPAdapter
-            adapter = UnixAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry)
-            
-            # 👉 核心修改 2：挂载到 http+unix:// 协议上
-            session.mount("http+unix://", adapter)
-            
-            # 如果你这个 session 偶尔还会发普通的公网或局域网 http 请求，可以保留下面两行；
-            # 如果这个 session 是纯为了和内部 triton 通信的，下面两行可以删掉。
-            # session.mount("http://", HTTPAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry))
-            # session.mount("https://", HTTPAdapter(pool_connections=24, pool_maxsize=24, max_retries=retry))
-            
+            adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=retry)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
             _pipeline_session = session
     return _pipeline_session
 
@@ -127,13 +118,35 @@ def _strip_plain_infer_suffix(url: str) -> str | None:
 
 
 def _multi_pipeline_infer_url(target: str) -> str:
-    """经 Unix socket 访问 multi_pipeline_server：/{target}/infer（multipart）。"""
+    """与 multi_pipeline_server 一致的路径：/{target}/infer（multipart）。"""
     if target not in _MULTI_PIPELINE_TARGETS:
         raise ValueError(f"invalid multi pipeline target: {target!r}")
 
-    sock_path = "/tmp/sockets/triton.sock"
-    sock_url = quote(sock_path, safe="")
-    return f"http+unix://{sock_url}/{target}/infer"
+    bs_raw = _PIPELINE_SERVER_BASE_URL_RAW
+    ov_raw = _PIPELINE_147246_INFER_URL_RAW
+
+    if target == "147246" and ov_raw:
+        ov = _normalize_http_url(ov_raw)
+        root = _strip_plain_infer_suffix(ov)
+        if root is not None:
+            return f"{root}/{target}/infer"
+        return ov
+
+    if bs_raw:
+        bs = _normalize_http_url(bs_raw)
+        return f"{bs.rstrip('/')}/{target}/infer"
+
+    if ov_raw:
+        ov = _normalize_http_url(ov_raw)
+        root = _strip_plain_infer_suffix(ov)
+        if root is not None:
+            return f"{root}/{target}/infer"
+        if "147246" in ov:
+            return ov.replace("147246", target, 1)
+
+    db = _default_multi_pipeline_base()
+    return f"{db.rstrip('/')}/{target}/infer"
+
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
 X50_CLASS_NAMES = [f"类{i}" for i in range(14)]
@@ -268,6 +281,59 @@ def get_model_by_dpi(
     return model
 
 
+def _post_raw_pipeline_infer(
+    url: str,
+    image_bytes: bytes,
+    filename: str,  # 保留用于日志打印
+    timeout_s: float,
+    extra_form: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """直接发送二进制流（裸流），参数对齐 multi_pipeline_server（通过 URL Query 传递）。"""
+    if not url.lower().startswith("http"):
+        url = f"http://{url}"
+
+    # 将原先的表单参数整理好，准备放到 URL 后面
+    params = {name: str(value) for name, value in extra_form.items()} if extra_form else None
+
+    # 把filename也放在params中
+    params["filename"] = filename
+    
+    # 记录日志，task_id,file_name,发送请求的时间
+    logger.info("file_name=%s, 发送请求的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+    
+    try:
+        resp = _get_pipeline_session().post(
+            url,
+            params=params,        # 👈 核心改动 1：参数走 URL Query
+            data=image_bytes,     # 👈 核心改动 2：直接塞入纯 bytes
+            headers={"Content-Type": "application/octet-stream"}, # 👈 核心改动 3：明确告诉服务端这是纯二进制
+            timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+        )
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
+
+    if resp.status_code >= 400:
+        err_body = resp.text
+        try:
+            err_json = resp.json()
+        except ValueError:
+            raise RuntimeError(f"pipeline_server HTTP {resp.status_code}: {err_body}")
+        if isinstance(err_json, dict) and err_json.get("error") is not None:
+            typ = err_json.get("type", "")
+            suf = f" [{typ}]" if typ else ""
+            raise RuntimeError(
+                f"pipeline_server HTTP {resp.status_code}{suf}: {err_json['error']}"
+            )
+        raise RuntimeError(f"pipeline_server HTTP {resp.status_code}: {err_body}")
+
+    if not resp.content:
+        return {}
+    try:
+        return resp.json()
+    except ValueError as e:
+        raise RuntimeError(f"pipeline_server 返回非 JSON: {resp.content[:500]!r}") from e
+
+
 def _post_multipart_pipeline_infer(
     url: str,
     image_bytes: bytes,
@@ -282,7 +348,8 @@ def _post_multipart_pipeline_infer(
     # requests 自动生成 boundary 并设置 Content-Type；普通字段走 data，文件走 files。
     data = {name: str(value) for name, value in extra_form.items()} if extra_form else None
     files = {"image": (filename, image_bytes, "image/jpeg")}
-    # logger.info("pipeline_server 请求参数: %s", data)
+    # 记录日志，task_id,file_name,发送请求的时间
+    logger.info("file_name=%s, 发送请求的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
     try:
         resp = _get_pipeline_session().post(
             url,
@@ -965,7 +1032,7 @@ def infer(
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246")
-        res_json = _post_multipart_pipeline_infer(
+        res_json = _post_raw_pipeline_infer(
             url,
             image_bytes,
             filename,
