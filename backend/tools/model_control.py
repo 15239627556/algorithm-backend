@@ -1,13 +1,4 @@
 # model_control.py
-"""
-Triton 模型动态加载/卸载。需 Triton 以 --model-control-mode=explicit 启动。
-按模型组管理：STARTUP_WARMUP_PIPELINES 中的 pipeline 在启动时预载，对应组不参与 LRU；另若 config.TRITON_PINNED_PIPELINE_NAME
-为非空且在 MODEL_GROUPS 中，其组一并视为常驻。
-若上述集合为空（无可用预载/常驻项），则全部走动态加载与 LRU。
-其余组在「预估显存占用 + 常驻组」超过 GPU 预算（见本模块 TRITON_GPU_VRAM_GB − 预留）时，
-按 LRU（最久未访问）淘汰整组，直至能装入目标组（槽位数不再固定为 3）。
-每次 ensure_model_loaded 调用都更新该组最后访问时间；淘汰仅从非常驻组中选择。
-"""
 from __future__ import annotations
 
 import json
@@ -18,7 +9,7 @@ import time
 import urllib.request
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
-from config import TRITON_HTTP_URL, TRITON_PINNED_PIPELINE_NAME
+from config import TRITON_HTTP_URL
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +71,6 @@ def _pinned_group_keys() -> FrozenSet[str]:
     keys: set[str] = set()
     for pname in STARTUP_WARMUP_PIPELINES:
         entry = MODEL_GROUPS.get(pname)
-        if entry:
-            keys.add(entry[0])
-    extra = (TRITON_PINNED_PIPELINE_NAME or "").strip()
-    if extra:
-        entry = MODEL_GROUPS.get(extra)
         if entry:
             keys.add(entry[0])
     return frozenset(keys)
@@ -221,15 +207,6 @@ def ensure_model_loaded(
     max_models: Optional[int] = None,
     max_groups: Optional[int] = None,
 ) -> Tuple[bool, str]:
-    """
-    确保模型组已加载。model_name 为 pipeline 名称（见 MODEL_GROUPS 键等）。
-    容量规则：PINNED_GROUP_KEYS 中的组永不被 LRU 卸载；若无常驻组集合则全部组均可淘汰。其余组在
-    「当前已加载组预估显存之和 + 待加载组预估显存」超过 TRITON_GPU_VRAM_GB − 预留时，
-    在非常驻组中按 LRU 整组卸载，直至预算足够（不再使用固定「最多 3 组」）。
-    max_groups / max_models 若传入则额外限制「已加载组数量」上限（兼容旧调用），默认不限制仅按显存。
-    每次调用都会更新该组的最后访问时间戳。
-    返回 (成功, 错误信息)
-    """
     global _group_last_used
     use_count_cap = max_groups is not None or max_models is not None
     count_cap = max_groups if max_groups is not None else max_models
@@ -318,15 +295,6 @@ def ensure_model_loaded(
 
 
 def warmup_pinned_models_at_startup() -> None:
-    """Web 服务启动时按 STARTUP_WARMUP_PIPELINES 依次预加载；失败打 ERROR 日志。"""
-    logger.info(
-        "Triton VRAM policy: effective budget %.1fGB (GPU %.1fGB − reserve %.1fGB); warmup=%s pinned_group_keys=%s",
-        _effective_vram_budget_gb(),
-        TRITON_GPU_VRAM_GB,
-        TRITON_VRAM_RESERVE_GB,
-        STARTUP_WARMUP_PIPELINES,
-        tuple(sorted(PINNED_GROUP_KEYS)),
-    )
     loaded_any = False
     for pname in STARTUP_WARMUP_PIPELINES:
         if pname not in MODEL_GROUPS:
@@ -345,12 +313,6 @@ def warmup_pinned_models_at_startup() -> None:
 
 
 def warmup_model(model_name: str) -> None:
-    """模型预热：创建任务或单张识别前调用，确保模型组已加载。失败时记录日志，不抛异常。"""
     ok, msg = ensure_model_loaded(model_name)
     if not ok:
         logger.warning("Model warmup failed for %s: %s", model_name, msg)
-
-
-if __name__ == "__main__":
-    print("Loaded models:", get_loaded_models())
-    # print("ensure_model_loaded:", ensure_model_loaded(STARTUP_WARMUP_PIPELINES[0]))

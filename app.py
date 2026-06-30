@@ -14,19 +14,17 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.join(root_dir, 'backend')
 algorithms_dir = os.path.join(root_dir, 'algorithms')
 project_dir = os.path.join(root_dir, 'project')
-triton_dir = os.path.join(root_dir, 'triton_service')
 sys.path.append(root_dir)
 sys.path.append(backend_dir)
 sys.path.append(algorithms_dir)
 sys.path.append(project_dir)
-sys.path.append(triton_dir)
 
 from flask import Flask, request, Request
 from flask_cors import CORS
 from flask_restx import Api
 import tempfile
 from backend.routes.task import task
-from backend.routes.ImgFilter import ImgFilter
+# from backend.routes.ImgFilter import ImgFilter
 from config import FLASK_HOST, FLASK_PORT, sufa_version, is_doc
 
 class FastMemoryRequest(Request):
@@ -50,11 +48,11 @@ CORS(app, supports_credentials=True)
 app.secret_key = 'Donghuan@2020'
 
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['STATIC_FOLDER'] = 'static'
+app.config['TMP_FOLDER'] = 'tmp'
 os.makedirs('backend/uploads', exist_ok=True)
-os.makedirs('backend/images', exist_ok=True)
+os.makedirs('backend/tmp', exist_ok=True)
 api.add_namespace(task)
-api.add_namespace(ImgFilter)
+# api.add_namespace(ImgFilter)
 
 @app.route("/health")
 def health():
@@ -291,8 +289,7 @@ def _log_request(response):
     )
     return response
 
-
-# Triton：常驻 pipeline（config.TRITON_PINNED_PIPELINE_NAME）在进程启动时预加载，不参与 LRU 淘汰（见 backend.tools.model_control）
+# 启动项目预加载模型
 try:
     from backend.tools.model_control import warmup_pinned_models_at_startup
 
