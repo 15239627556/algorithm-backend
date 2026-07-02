@@ -37,9 +37,12 @@ class BM40Config:
 
     # --- 选区算法参数 ---
     angles: Tuple[int, ...] = field(default=(0, 15, 75), init=False)   # 旋转角度候选
-    search_area_scales: Tuple[float, ...] = field(
+    search_area_scales_bm: Tuple[float, ...] = field(
         default=(4, 5, 6, 8, 10, 15, 20, 30, 40, 60, 100), init=False
-    )   # 面积跨度候选（相对于标准 Tile 面积的倍数）
+    )   # 骨髓选区面积跨度候选（相对于标准 Tile 面积的倍数）
+    search_area_scales_pb: Tuple[float, ...] = field(
+        default=(20, 30, 40, 60, 100, 150, 200, 300, 400, 500, 600, 800), init=False
+    )   # 血片选区面积跨度候选（有核细胞稀疏，需更大窗口）
     window_aspect_ratios: Tuple[Tuple[float, float], ...] = field(
         default=((1.25, 1.0), (2.0, 1.0), (3.5, 1.0), (5.0, 1.0),
                  (1.0, 1.25), (1.0, 2.0), (1.0, 3.5), (1.0, 5.0)), init=False
@@ -65,3 +68,9 @@ class BM40Config:
     MEG_cell_type: int = field(default=100001, init=False)  # MEG 细胞类型
     WBC_cell_type: int = field(default=100000, init=False)  # WBC 细胞类型 
     RBC_cell_type: int = field(default=100002, init=False)  # RBC 细胞类型 
+
+    def get_search_area_scales(self) -> Tuple[float, ...]:
+        """按涂片类型返回搜索窗口面积跨度。"""
+        if self.Smear_type.upper() == "PB":
+            return self.search_area_scales_pb
+        return self.search_area_scales_bm

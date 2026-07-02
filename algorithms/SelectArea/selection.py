@@ -129,7 +129,9 @@ def _search_one_window_angle(
             if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
                 return None
 
-    extreme_x = np.max(rect_points[:, 0]) if orientation == 0 else np.min(rect_points[:, 0])
+    # 头尾判定：对旋转后略出网格边界的顶点做裁剪，避免如 x=-1 导致误判为尾部
+    cls_x = np.clip(rect_points[:, 0], 0, cols - 1)
+    extreme_x = float(np.max(cls_x) if orientation == 0 else np.min(cls_x))
     in_head = head_crop_rect.x <= extreme_x <= head_crop_rect.x2
 
     res = SelectionResult(

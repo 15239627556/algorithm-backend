@@ -61,7 +61,7 @@ def generate_search_window_sizes(config: BM40Config) -> List[Tuple[int, int]]:
     
     rect_sizes = []
 
-    for scale in config.search_area_scales:
+    for scale in config.get_search_area_scales():
         # 目标总网格面积
         target_grid_area = scale * one_tile_grid_area
         

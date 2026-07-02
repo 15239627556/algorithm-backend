@@ -29,7 +29,7 @@ class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/Downloads/d1bde0b324bd41dc9fe8a1a4821e50bc.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/选区视野不连续-20260630/20260625018/751cfe29a98c464e9ba9cb236cb678df.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
 
     def get_color(self, region_name: str) -> str:
@@ -157,6 +157,19 @@ def visualize_results(
         )
         ax4.add_patch(rect)
 
+        # 在视野框中心标注拍摄顺序，字体颜色与框线一致
+        ax4.text(
+            task.view_xmin + width / 2,
+            task.view_ymin + height / 2,
+            str(task.task_index),
+            color=color,
+            ha='center',
+            va='center',
+            fontsize=5,
+            fontweight='bold',
+            zorder=7,
+        )
+
         # 2. 绘制视野内的细胞点
         if task.cell_list:
             c_xs = [(c.cell_xmin + c.cell_xmax) / 2 for c in task.cell_list]
@@ -196,12 +209,12 @@ def main() -> None:
 
     # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
     # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num_WBC=300)
-    bm_cfg = BM40Config(target_cell_num_WBC=300, 
+    bm_cfg = BM40Config(target_cell_num_WBC=200, 
                         dpi=138430, 
                         x100_rect_width=384,
                         x100_rect_height=283,
                         View_type="WBC", 
-                        heatmap_orientation=-1,
+                        heatmap_orientation=1,
                         Smear_type=project.smear_type)
     # pipeline = WBCSamplingPipeline(bm_cfg)
     
