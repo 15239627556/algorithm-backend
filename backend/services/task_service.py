@@ -608,6 +608,7 @@ class TaskService:
         kwargs: dict | None,
         required_num: dict | None,
     ):
+        logger.info("roi_selection task_id=%s, task_type=%s, user_choice_area=%s, view_width=%s, view_height=%s, kwargs=%s, required_num=%s", task_id, task_type, user_choice_area, view_width, view_height, kwargs, required_num)
         if task_id not in self.tasks:
             result = self.load_data(task_id)
             if result:
@@ -846,7 +847,7 @@ class TaskService:
                 "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
             }
-        logger.info("task_id=%s, task_list_num=%s", task_id, len(final_task_list))
+        logger.info("roi_selection task_id=%s, task_list=%s", task_id, str(final_task_list))
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
