@@ -664,7 +664,7 @@ class TaskService:
                 return 0
 
         required_wbc = _get_required_int("WBC")
-        required_meg = _get_required_int("MEG")
+        required_meg = _get_required_int("MEG") * 3
         required_rbc = _get_required_int("RBC")
 
         if smear_type == "BM":
