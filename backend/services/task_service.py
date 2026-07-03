@@ -662,9 +662,9 @@ class TaskService:
             except (TypeError, ValueError):
                 return 0
 
-        required_wbc = _get_required_int("WBC") * 3
-        required_meg = _get_required_int("MEG") * 3
-        required_rbc = _get_required_int("RBC") * 3
+        required_wbc = _get_required_int("WBC")
+        required_meg = _get_required_int("MEG")
+        required_rbc = _get_required_int("RBC")
 
         if smear_type == "BM":
             if normalized_task_type == "WBC":
