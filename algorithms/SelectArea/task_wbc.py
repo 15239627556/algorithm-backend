@@ -123,9 +123,6 @@ def generate_wbc_view_tasks(
                 assigned_idx = i
                 break
         
-        # 映射区域名称：0 -> 初始拍摄框, 1+ -> 补拍1, 补拍2...
-        region_label = config.Initial_name if assigned_idx == 0 else config.Extra_name + "_" + str(assigned_idx)
-
         # c. 实例化 TaskOutput
         task_obj = TaskOutput(
             task_index=0,  # 占位
@@ -135,7 +132,7 @@ def generate_wbc_view_tasks(
             view_ymin=int(round(ry)),
             view_xmax=int(round(rx + rw)),
             view_ymax=int(round(ry + rh)),
-            region_name=region_label,
+            region_name="",
             cell_list=current_cell_outputs
         )
         temp_grouped[assigned_idx].append(task_obj)
@@ -143,11 +140,22 @@ def generate_wbc_view_tasks(
     # 4. 排序、平铺并分配全局索引
     final_flattened_list: List[TaskOutput] = []
     global_counter = 1
+    extra_idx_remap = {}
+    next_extra_idx = 1
 
-    for group in temp_grouped:
+    for original_idx in range(1, len(temp_grouped)):
+        if temp_grouped[original_idx]:
+            extra_idx_remap[original_idx] = next_extra_idx
+            next_extra_idx += 1
+
+    for group_idx, group in enumerate(temp_grouped):
         # 区域内按坐标排序以优化移动路径
         group.sort(key=lambda t: (t.view_xmin, t.view_ymin))
         for task in group:
+            if group_idx == 0:
+                task.region_name = config.Initial_name
+            else:
+                task.region_name = f"{config.Extra_name}_{extra_idx_remap[group_idx]}"
             task.task_index = global_counter
             final_flattened_list.append(task)
             global_counter += 1

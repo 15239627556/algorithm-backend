@@ -73,16 +73,14 @@ def build_forbidden_mask(
 
 
 
-def find_initial_task(
+def _find_initial_task_bm(
     grid: HeatmapGrid,
     cell_matrix: np.ndarray,
     valid_search_mask: np.ndarray,
     config: BM40Config,
     target_cells: int
 ) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
-    """
-    修正版：在选区内寻找满足目标细胞数范围（上下波动）且分值尽可能高的矩形。
-    """
+    """骨髓初始框：阈值二分 + 最大高分连通域外接矩形。"""
     score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
     valid_scores = score_map[valid_search_mask > 0]
     
@@ -150,8 +148,129 @@ def find_initial_task(
 
     res_rect = best_rect if best_rect else fallback_rect
     res_th = best_th if best_th is not None else fallback_th
-    
     return res_rect, res_th
+
+
+def _find_initial_task_pb(
+    grid: HeatmapGrid,
+    cell_matrix: np.ndarray,
+    valid_search_mask: np.ndarray,
+    config: BM40Config,
+    target_cells: int
+) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
+    """血片初始框：局部滑窗搜索目标细胞数窗口，避免退化为整片连通域外接矩形。"""
+    score_map = grid.finalize(fill_value=config.heatmap_penalty_value).astype(np.float32, copy=False)
+    valid_mask = (valid_search_mask > 0).astype(np.float32, copy=False)
+    valid_scores = score_map[valid_search_mask > 0]
+    if valid_scores.size == 0:
+        return None, None
+
+    masked_cells = cell_matrix.astype(np.float32, copy=False) * valid_mask
+    masked_scores = score_map * valid_mask
+    rows, cols = cell_matrix.shape
+
+    valid_area = float(np.count_nonzero(valid_search_mask))
+    total_cells = float(np.sum(masked_cells))
+    density = total_cells / max(valid_area, 1.0)
+    density = max(density, 1e-6)
+
+    target_area = max(9.0, target_cells / density)
+    area_scales = (0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+    lower_bound = target_cells * (1 - config.init_task_select_ratio)
+    upper_bound = target_cells * (1 + config.init_task_select_ratio)
+
+    candidate_sizes = set()
+    for area_scale in area_scales:
+        area = target_area * area_scale
+        for rw, rh in config.window_aspect_ratios:
+            w = max(3, int(round(np.sqrt(area * rw / rh))))
+            h = max(3, int(round(np.sqrt(area * rh / rw))))
+            w = min(cols, w)
+            h = min(rows, h)
+            if w > 0 and h > 0:
+                candidate_sizes.add((w, h))
+
+    if not candidate_sizes:
+        return None, None
+
+    best_in_range = None
+    best_fallback = None
+    best_fallback_key = None
+    min_valid_ratio = 0.6
+
+    for w, h in sorted(candidate_sizes, key=lambda s: (s[0] * s[1], s[0])):
+        area = float(w * h)
+        valid_count = cv2.boxFilter(valid_mask, ddepth=-1, ksize=(w, h), normalize=False, borderType=cv2.BORDER_CONSTANT)
+        cell_sum = cv2.boxFilter(masked_cells, ddepth=-1, ksize=(w, h), normalize=False, borderType=cv2.BORDER_CONSTANT)
+        score_sum = cv2.boxFilter(masked_scores, ddepth=-1, ksize=(w, h), normalize=False, borderType=cv2.BORDER_CONSTANT)
+
+        valid_centers = np.where(valid_count >= max(9.0, area * min_valid_ratio))
+        if valid_centers[0].size == 0:
+            continue
+
+        counts = cell_sum[valid_centers]
+        score_avgs = score_sum[valid_centers] / np.maximum(valid_count[valid_centers], 1.0)
+
+        in_range_mask = (counts >= lower_bound) & (counts <= upper_bound)
+        if np.any(in_range_mask):
+            in_scores = score_avgs[in_range_mask]
+            in_rows = valid_centers[0][in_range_mask]
+            in_cols = valid_centers[1][in_range_mask]
+            best_idx = int(np.argmax(in_scores))
+            candidate = (
+                float(in_scores[best_idx]),
+                int(round(float(counts[in_range_mask][best_idx]))),
+                int(in_cols[best_idx] - w // 2),
+                int(in_rows[best_idx] - h // 2),
+                w,
+                h,
+            )
+            if best_in_range is None or candidate[0] > best_in_range[0]:
+                best_in_range = candidate
+
+        count_delta = np.abs(counts - target_cells)
+        best_idx = int(np.lexsort((-score_avgs, count_delta))[0])
+        fallback_key = (float(count_delta[best_idx]), float(-score_avgs[best_idx]))
+        fallback = (
+            float(score_avgs[best_idx]),
+            int(round(float(counts[best_idx]))),
+            int(valid_centers[1][best_idx] - w // 2),
+            int(valid_centers[0][best_idx] - h // 2),
+            w,
+            h,
+        )
+        if best_fallback is None or fallback_key < best_fallback_key:
+            best_fallback = fallback
+            best_fallback_key = fallback_key
+
+    chosen = best_in_range or best_fallback
+    if chosen is None:
+        return None, None
+
+    _, _, x, y, w, h = chosen
+    x = max(0, min(cols - w, x))
+    y = max(0, min(rows - h, y))
+
+    score_threshold = float(np.nanmedian(valid_scores))
+    pb_priority = ((score_map >= score_threshold) & (valid_search_mask > 0)).astype(np.uint8) * 255
+    return (x, y, w, h), pb_priority
+
+
+def find_initial_task(
+    grid: HeatmapGrid,
+    cell_matrix: np.ndarray,
+    valid_search_mask: np.ndarray,
+    config: BM40Config,
+    target_cells: int
+) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
+    """
+    根据涂片类型选择初始框策略：
+    - BM: 阈值二分 + 最大高分连通域
+    - PB: 局部滑窗直接搜索目标细胞数窗口
+    """
+    if config.Smear_type.upper() == "PB":
+        return _find_initial_task_pb(grid, cell_matrix, valid_search_mask, config, target_cells)
+    return _find_initial_task_bm(grid, cell_matrix, valid_search_mask, config, target_cells)
 
 
 def generate_initial_and_extra_tasks(
