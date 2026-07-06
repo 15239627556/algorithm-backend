@@ -139,10 +139,10 @@ def _map_bbox_from_shrink_canvas(
     """居中缩小画布上的检测框 → 缩放前原图坐标。"""
     ox, oy = _shrink_canvas_offsets(orig_w, orig_h)
     return (
-        int(round((xmin - ox) * 2)),
-        int(round((ymin - oy) * 2)),
-        int(round((xmax - ox) * 2)),
-        int(round((ymax - oy) * 2)),
+        max(0, int(round((xmin - ox) * 2))),
+        max(0, int(round((ymin - oy) * 2))),
+        max(0, int(round((xmax - ox) * 2))),
+        max(0, int(round((ymax - oy) * 2))),
     )
 
 
