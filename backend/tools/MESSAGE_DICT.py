@@ -120,7 +120,7 @@ CELL_TYPE_CSF = {
 # 不参与计数：Excluded from the count
 # 有核细胞：Nucleated_Cell
 # 巨核细胞：Megakaryocyte
-def get_counting_cell_type(cell_id):
+def get_counting_cell_type(cell_id, smear_type="BM"):
     if cell_id in CELL_TYPES_X40:
         if cell_id == 100000:
             return "WBC"
@@ -128,10 +128,16 @@ def get_counting_cell_type(cell_id):
             return "MEG"
         return "EFC"
     elif cell_id in CELL_TYPES_X100:
-        if cell_id in list(range(200000, 200028)):
-            return "WBC"
-        else:
-            return "EFC"
+        if smear_type == "BM":
+            if cell_id in list(range(200000, 200028)):
+                return "WBC"
+            else:
+                return "EFC"
+        elif smear_type == "PB":
+            if cell_id in list(range(200000, 200011)) + list(range(200018, 200028)):
+                return "WBC"
+            else:
+                return "EFC"
     elif cell_id in CELL_TYPES_MEG:
         if cell_id in list(range(300000, 300004)):
             return "MEG"

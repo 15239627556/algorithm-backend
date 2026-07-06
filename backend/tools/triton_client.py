@@ -500,6 +500,7 @@ def _infer_147246_finalize(
     con_grades: np.ndarray,
     wbc_pixel_count: int,
     red_pixel_count: int,
+    smear_type: str,
 ) -> dict[str, Any]:
     regions = np.asarray(con_regions, dtype=np.float64)
     if regions.size:
@@ -527,7 +528,7 @@ def _infer_147246_finalize(
         if meg_num > 0 and meg is not None:
             mg = np.asarray(meg, dtype=np.float64)
             cells.extend(_boxes_to_cells(mg[:meg_num], 100001, CELL_TYPES_X40))
-    cell_list = _cells_to_cell_list_single(cells)
+    cell_list = _cells_to_cell_list_single(cells, smear_type)
     return {
         "cells": cells,
         "scores": constituency_scores_combined,
@@ -537,7 +538,7 @@ def _infer_147246_finalize(
     }
 
 
-def _infer_357378_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
+def _infer_357378_from_pipeline_json(res: dict[str, Any], smear_type: str) -> dict[str, Any]:
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
     boxes_raw = res.get("boxes") if res.get("boxes") is not None else res.get("BOXES")
@@ -579,7 +580,7 @@ def _infer_357378_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
         if class_probs is not None
         else np.ones((num_det, 5))
     )
-    cell_list = _cells_to_cell_list_top5(cells, cids, cprobs, 300000, CELL_TYPES_MEG, X50_CLASS_NAMES)
+    cell_list = _cells_to_cell_list_top5(cells, cids, cprobs, 300000, CELL_TYPES_MEG, X50_CLASS_NAMES, smear_type)
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
 
@@ -713,7 +714,7 @@ def _build_red_rbc_extra(
     return extra
 
 
-def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
+def _infer_714756_bm_from_pipeline_json(res: dict[str, Any], smear_type: str) -> dict[str, Any]:
     # logger.info("714756_bm pipeline 原始返回:\n%s", res)
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
@@ -807,7 +808,7 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
         )
         cells.extend(rbc_cells)
         scores_out.extend([c.bbox_confidence for c in rbc_cells])
-        cell_list.extend(_cells_to_cell_list_single(rbc_cells))
+        cell_list.extend(_cells_to_cell_list_single(rbc_cells, smear_type))
 
     pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
     plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
@@ -817,7 +818,7 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any]) -> dict[str, Any]:
         )
         cells.extend(plat_cells)
         scores_out.extend([c.bbox_confidence for c in plat_cells])
-        cell_list.extend(_cells_to_cell_list_single(plat_cells))
+        cell_list.extend(_cells_to_cell_list_single(plat_cells, smear_type))
 
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
@@ -915,7 +916,7 @@ def _boxes_xyxy_to_cells(
     return cells
 
 
-def _cells_to_cell_list_single(cells: List[Cell]) -> list:
+def _cells_to_cell_list_single(cells: List[Cell], smear_type: str) -> list:
     """无 TOP5 时：每个 cell 的 tops 只放一项；有 extra 异常信息时一并写出"""
     out: list[dict[str, Any]] = []
     for c in cells:
@@ -926,7 +927,7 @@ def _cells_to_cell_list_single(cells: List[Cell]) -> list:
             "cell_ymax": c.cell_ymax,
             "tops": [{
                 "cell_type": c.cell_type,
-                "count_type": get_counting_cell_type(c.cell_type),
+                "count_type": get_counting_cell_type(c.cell_type, smear_type),
                 "cell_type_name": c.cell_type_name,
                 "class_confidence": float(c.class_confidence),
                 "bbox_confidence": float(c.bbox_confidence),
@@ -945,6 +946,7 @@ def _cells_to_cell_list_top5(
     cell_type_base: int,
     type_map: dict,
     class_names: Optional[List[str]] = None,
+    smear_type: str = "BM",
 ) -> list:
     """有 TOP5 时：每个 cell 的 tops 放最多 5 项。支持 (N,5) 或 (N,) + (N,C) 从 probs 派生 TOP5"""
     cids = np.asarray(class_ids)
@@ -981,7 +983,7 @@ def _cells_to_cell_list_top5(
                 "cell_type_name": type_name,
                 "class_confidence": prob,
                 "bbox_confidence": float(c.bbox_confidence),
-                "count_type": get_counting_cell_type(c.cell_type),
+                "count_type": get_counting_cell_type(c.cell_type, smear_type),
             })
         out.append({
             "cell_xmin": c.cell_xmin,
@@ -1042,7 +1044,7 @@ def infer(
 
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
         result = _infer_147246_finalize(
-            algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc
+            algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc, smear_type
         )
         if warning:
             result["warning"] = warning
@@ -1053,7 +1055,7 @@ def infer(
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
         )
-        result = _infer_357378_from_pipeline_json(res_json)
+        result = _infer_357378_from_pipeline_json(res_json, smear_type)
         if warning:
             result["warning"] = warning
         return result
@@ -1070,7 +1072,7 @@ def infer(
             PIPELINE_HTTP_TIMEOUT_S,
             extra_form={"tasks": tasks},
         )
-        result = _infer_714756_bm_from_pipeline_json(res_json)
+        result = _infer_714756_bm_from_pipeline_json(res_json, smear_type)
         if warning:
             result["warning"] = warning
         return result
