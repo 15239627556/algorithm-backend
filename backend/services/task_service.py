@@ -5,7 +5,7 @@ from io import BytesIO
 import time
 import uuid
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -13,7 +13,7 @@ from cachetools import TTLCache
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
-from backend.tools.combo_validator import validate_combo
+from backend.tools.combo_validator import validate_combo, _get_dpi_bucket, _parse_cell_types
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
 from backend.tools.filter_edge_incomplete_cells import (
@@ -108,6 +108,79 @@ def _parse_edge_cell_filter_flag(value) -> bool:
     if s in ("0", "false", "no", "off", ""):
         return False
     return True
+
+
+def _shrink_image_half_pad_black(image_bytes: bytes) -> bytes:
+    """缩小 50% 后居中贴回，其余区域用黑色填充，保持原始画布尺寸；输出 JPEG bytes。"""
+    with Image.open(BytesIO(image_bytes)) as im:
+        im_rgb = im.convert("RGB")
+        orig_w, orig_h = im_rgb.size
+        small = im_rgb.resize((orig_w // 2, orig_h // 2), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (orig_w, orig_h), (0, 0, 0))
+        canvas.paste(small, ((orig_w - small.width) // 2, (orig_h - small.height) // 2))
+        buf = BytesIO()
+        canvas.save(buf, format="JPEG")
+        return buf.getvalue()
+
+
+def _shrink_canvas_offsets(orig_w: int, orig_h: int) -> tuple[int, int]:
+    small_w, small_h = orig_w // 2, orig_h // 2
+    return (orig_w - small_w) // 2, (orig_h - small_h) // 2
+
+
+def _map_bbox_from_shrink_canvas(
+    xmin: int | float,
+    ymin: int | float,
+    xmax: int | float,
+    ymax: int | float,
+    orig_w: int,
+    orig_h: int,
+) -> tuple[int, int, int, int]:
+    """居中缩小画布上的检测框 → 缩放前原图坐标。"""
+    ox, oy = _shrink_canvas_offsets(orig_w, orig_h)
+    return (
+        int(round((xmin - ox) * 2)),
+        int(round((ymin - oy) * 2)),
+        int(round((xmax - ox) * 2)),
+        int(round((ymax - oy) * 2)),
+    )
+
+
+def _map_cell_list_from_shrink_canvas(
+    cell_list: list[dict[str, Any]],
+    orig_w: int,
+    orig_h: int,
+) -> list[dict[str, Any]]:
+    mapped: list[dict[str, Any]] = []
+    for item in cell_list:
+        xmin, ymin, xmax, ymax = _map_bbox_from_shrink_canvas(
+            item["cell_xmin"], item["cell_ymin"], item["cell_xmax"], item["cell_ymax"],
+            orig_w, orig_h,
+        )
+        new_item = dict(item)
+        new_item["cell_xmin"] = xmin
+        new_item["cell_ymin"] = ymin
+        new_item["cell_xmax"] = xmax
+        new_item["cell_ymax"] = ymax
+        mapped.append(new_item)
+    return mapped
+
+
+def _map_cells_from_shrink_canvas(cells: list[Cell], orig_w: int, orig_h: int) -> list[Cell]:
+    mapped: list[Cell] = []
+    for c in cells:
+        xmin, ymin, xmax, ymax = _map_bbox_from_shrink_canvas(
+            c.cell_xmin, c.cell_ymin, c.cell_xmax, c.cell_ymax,
+            orig_w, orig_h,
+        )
+        mapped.append(replace(
+            c,
+            cell_xmin=xmin,
+            cell_ymin=ymin,
+            cell_xmax=xmax,
+            cell_ymax=ymax,
+        ))
+    return mapped
 
 
 @dataclass
@@ -947,6 +1020,15 @@ class TaskService:
                 "ret_desc": err,
                 "reason": err,
             }
+        # 714756 ±10% 且含 MEG：缩小 50%，黑色填充回原尺寸后再推理
+        dpi_bucket, _ = _get_dpi_bucket(int(dpi))
+        meg_shrink_applied = False
+        orig_w, orig_h = 0, 0
+        if dpi_bucket == 714756 and "MEG" in _parse_cell_types(target_cell_types or ""):
+            with Image.open(BytesIO(image_bytes)) as im:
+                orig_w, orig_h = im.size
+            image_bytes = _shrink_image_half_pad_black(image_bytes)
+            meg_shrink_applied = True
         warning = err
 
         try:
@@ -966,6 +1048,9 @@ class TaskService:
             }
         cells = result.get("cells", [])
         cell_list = result.get("cell_list", [])
+        if meg_shrink_applied:
+            cells = _map_cells_from_shrink_canvas(cells, orig_w, orig_h)
+            cell_list = _map_cell_list_from_shrink_canvas(cell_list, orig_w, orig_h)
         if not cell_list and cells:
             cell_list = [{
                 'cell_xmin': c.cell_xmin, 'cell_ymin': c.cell_ymin,
@@ -973,8 +1058,8 @@ class TaskService:
                 'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
-        # 当DPI为714756 +-10%的时候不过滤边缘细胞，因为模型自带过滤功能
-        if int(dpi) in (714756, 786432):
+        # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能
+        if dpi_bucket == 714756:
             edge_cell_filter = False
         if edge_cell_filter and cell_list:
             try:
