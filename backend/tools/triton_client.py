@@ -15,6 +15,7 @@ if __name__ == "__main__":
 import json
 import logging
 import threading
+import time
 from urllib.parse import quote, urlparse
 from typing import Any, Callable, List, Optional
 
@@ -63,6 +64,8 @@ PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600")
 PIPELINE_HTTP_CONNECT_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_CONNECT_TIMEOUT_S", "10"))
 # 仅对“连接建立失败”做有限重试；推理 POST 非幂等，故不重试已发出的请求（read/status 不重试）。
 _PIPELINE_HTTP_CONNECT_RETRIES = int(os.environ.get("PIPELINE_HTTP_CONNECT_RETRIES", "2"))
+# pipeline 裸流 POST 连接层失败时的应用层重试次数（含首次，默认最多 3 次）。
+_PIPELINE_HTTP_POST_MAX_ATTEMPTS = int(os.environ.get("PIPELINE_HTTP_POST_MAX_ATTEMPTS", "3"))
 
 _pipeline_session: requests.Session | None = None
 _pipeline_session_lock = threading.Lock()
@@ -90,6 +93,18 @@ def _get_pipeline_session() -> requests.Session:
             session.mount("https://", adapter)
             _pipeline_session = session
     return _pipeline_session
+
+
+def _reset_pipeline_session() -> None:
+    """丢弃当前 Session 与连接池，避免重试时复用已断开的脏连接。"""
+    global _pipeline_session
+    with _pipeline_session_lock:
+        if _pipeline_session is not None:
+            try:
+                _pipeline_session.close()
+            except Exception:
+                pass
+            _pipeline_session = None
 
 
 def _normalize_http_url(url_or_hostport: str) -> str:
@@ -293,24 +308,53 @@ def _post_raw_pipeline_infer(
         url = f"http://{url}"
 
     # 将原先的表单参数整理好，准备放到 URL 后面
-    params = {name: str(value) for name, value in extra_form.items()} if extra_form else None
+    params = {name: value for name, value in extra_form.items()} if extra_form else None
 
     # 把filename也放在params中
     params["filename"] = filename
-    
-    # 记录日志，task_id,file_name,发送请求的时间
-    logger.info("file_name=%s, 发送请求的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
-    
-    try:
-        resp = _get_pipeline_session().post(
-            url,
-            params=params,        # 👈 核心改动 1：参数走 URL Query
-            data=image_bytes,     # 👈 核心改动 2：直接塞入纯 bytes
-            headers={"Content-Type": "application/octet-stream"}, # 👈 核心改动 3：明确告诉服务端这是纯二进制
-            timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+
+    last_error: requests.exceptions.RequestException | None = None
+    resp: requests.Response | None = None
+
+    for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
+        logger.info(
+            "file_name=%s, 发送请求的时间：%s (attempt %d/%d)",
+            filename,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+            attempt,
+            _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
         )
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
+        try:
+            resp = _get_pipeline_session().post(
+                url,
+                params=params,        # 👈 核心改动 1：参数走 URL Query
+                data=image_bytes,     # 👈 核心改动 2：直接塞入纯 bytes
+                headers={"Content-Type": "application/octet-stream"}, # 👈 核心改动 3：明确告诉服务端这是纯二进制
+                timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+            )
+            last_error = None
+            break
+        except requests.exceptions.ConnectionError as e:
+            last_error = e
+            logger.warning(
+                "file_name=%s, pipeline 连接失败 (attempt %d/%d): %s",
+                filename,
+                attempt,
+                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
+                e,
+            )
+            _reset_pipeline_session()
+            if attempt < _PIPELINE_HTTP_POST_MAX_ATTEMPTS:
+                time.sleep(0.5 * attempt)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
+
+    if last_error is not None:
+        raise RuntimeError(
+            f"pipeline_server 请求失败（已重试 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次）: {last_error}"
+        ) from last_error
+
+    assert resp is not None
 
     if resp.status_code >= 400:
         err_body = resp.text

@@ -936,6 +936,7 @@ class TaskService:
         - 任务模式：task_id + position 必填，结果保存到项目
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
+        logger.info("get_task_result_x100 task_id=%s, image_file=%s, target_cell_types=%s, dpi=%s, edge_cell_filter=%s, smear_type=%s, position_xmin=%s, position_ymin=%s, position_xmax=%s, position_ymax=%s", task_id, image_file, target_cell_types, dpi, edge_cell_filter, smear_type, position_xmin, position_ymin, position_xmax, position_ymax)
         image_bytes = image_file.read()
         edge_cell_filter = _parse_edge_cell_filter_flag(edge_cell_filter)
 
