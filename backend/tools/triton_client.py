@@ -827,7 +827,7 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any], smear_type: str) ->
         cids_arr = np.asarray(c, dtype=np.int32).reshape(wbc_num, -1)
         cprobs_for_top5 = cprobs_arr if cprobs_arr is not None else np.ones((wbc_num, 5))
         cell_list.extend(
-            _cells_to_cell_list_top5(wbc_cells, cids_arr, cprobs_for_top5, 200000, CELL_TYPES_X100, wbc_names)
+            _cells_to_cell_list_top5(wbc_cells, cids_arr, cprobs_for_top5, 200000, CELL_TYPES_X100, wbc_names, smear_type)
         )
 
     rd, red_num = _prepare_xywh_detections(_res_get(res, "red_detections", "RED_DETECTIONS"), red_num)
