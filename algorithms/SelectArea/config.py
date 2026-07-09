@@ -12,6 +12,7 @@ class BM40Config:
     target_cell_num_MEG: int = 300  # 骨髓-用户设定的目标巨核细胞数量(meg)  
     x100_rect_width: int = 384      # 百倍视野尺寸-宽 
     x100_rect_height: int = 283     # 百倍视野尺寸-高    
+    x100_rect_size_scale: float = 0.9  # set-cover 覆盖判定缩放（中心点定位）；落盘仍用标称 x100 尺寸
     heatmap_orientation: int = 1    # 0: 头部在右，1: 头部在左
     dpi: int = 138430                   # 扫描层 DPI（默认40倍DPI）
     View_type: str = "WBC"              # 视野类型标识（写入 TaskOutput）

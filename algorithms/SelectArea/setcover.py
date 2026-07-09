@@ -9,6 +9,7 @@ class SetCoverSolverParameter(object):
         self,
         rect_width = 384,
         rect_height = 283,
+        rect_size_scale: float = 1.0,
         max_num_points_to_split = 400,
         img_split_overlap_w_factor = 1,
         stride_ratio = 0.25,
@@ -19,6 +20,7 @@ class SetCoverSolverParameter(object):
     ):
         self.rect_width = rect_width
         self.rect_height = rect_height
+        self.rect_size_scale = float(rect_size_scale)
         self.max_num_points_to_split = max_num_points_to_split
         self.img_split_overlap_w_factor = img_split_overlap_w_factor
         self.stride_ratio = stride_ratio
@@ -26,6 +28,33 @@ class SetCoverSolverParameter(object):
         self.min_image_width = min_image_width
         self.refine_rects = refine_rects
         self.solve_overlapping = solve_overlapping
+
+    def get_rect_width(self) -> int:
+        """set-cover 覆盖判定用的有效视野宽度（相对标称 rect_width 缩放）。"""
+        return max(1, int(round(self.rect_width * self.rect_size_scale)))
+
+    def get_rect_height(self) -> int:
+        """set-cover 覆盖判定用的有效视野高度（相对标称 rect_height 缩放）。"""
+        return max(1, int(round(self.rect_height * self.rect_size_scale)))
+
+
+def expand_rect_to_nominal_bounds(
+    rx: float,
+    ry: float,
+    rw: float,
+    rh: float,
+    nominal_width: int,
+    nominal_height: int,
+) -> tuple[int, int, int, int]:
+    """
+    将 set-cover 输出的缩放视野框按中心还原为标称 x100 尺寸。
+    细胞中心点参与覆盖求解时缩小视野，落盘 TaskOutput 时使用硬件标称尺寸。
+    """
+    cx = rx + rw * 0.5
+    cy = ry + rh * 0.5
+    view_xmin = int(round(cx - nominal_width * 0.5))
+    view_ymin = int(round(cy - nominal_height * 0.5))
+    return view_xmin, view_ymin, view_xmin + nominal_width, view_ymin + nominal_height
 
 def assert_validity(aff):
     for i in range(aff.shape[0]): assert aff[i].any(), "Selected rect {} does not cover any points".format(i)
@@ -71,8 +100,10 @@ def solve_set_cover(aff):
 def generate_candidate_rects(image_r, points, params: SetCoverSolverParameter):
     # generate sliding windows
     stride_ratio = _auto_stride_ratio(image_r, params, target=20000)  # ★ 新增
-    sx = int(max(1, params.rect_width  * stride_ratio))
-    sy = int(max(1, params.rect_height * stride_ratio))
+    rect_w = params.get_rect_width()
+    rect_h = params.get_rect_height()
+    sx = int(max(1, rect_w * stride_ratio))
+    sy = int(max(1, rect_h * stride_ratio))
     window_x = np.arange(image_r[0], image_r[0] + image_r[2], sx)
     window_y = np.arange(image_r[1], image_r[1] + image_r[3], sy)
 
@@ -82,7 +113,7 @@ def generate_candidate_rects(image_r, points, params: SetCoverSolverParameter):
     #                      int(params.rect_height * params.stride_ratio))
     window_xx, window_yy = np.meshgrid(window_x, window_y, indexing='ij')
     window = np.stack([window_xx, window_yy], axis=-1).reshape(-1, 2)
-    window_shape = np.array([params.rect_width, params.rect_height])
+    window_shape = np.array([rect_w, rect_h])
     windows = np.hstack((window, window_shape[None, :].repeat(window.shape[0], axis=0)))
     aff = affinity_matrix(windows, points)
     has_points = aff.any(axis=1)
@@ -134,8 +165,10 @@ def refine_rects(rects, points, params):
         points_in_rect = points[aff[i]]
         xmin, xmax = np.min(points_in_rect[:, 0]), np.max(points_in_rect[:, 0])
         ymin, ymax = np.min(points_in_rect[:, 1]), np.max(points_in_rect[:, 1])
-        rects[i][0] = int((xmax + xmin) / 2 - params.rect_width / 2)
-        rects[i][1] = int((ymax + ymin) / 2 - params.rect_height / 2)
+        rects[i][0] = int((xmax + xmin) / 2 - params.get_rect_width() / 2)
+        rects[i][1] = int((ymax + ymin) / 2 - params.get_rect_height() / 2)
+        rects[i][2] = params.get_rect_width()
+        rects[i][3] = params.get_rect_height()
     return rects
 
 def _auto_stride_ratio(image_r, params, target=20000):
@@ -159,15 +192,15 @@ def _tighten_to_points(image_r: np.ndarray, pts: np.ndarray, params: SetCoverSol
         return image_r.astype(np.int32, copy=False)
     xmin, ymin = pts.min(axis=0)
     xmax, ymax = pts.max(axis=0)
-    pad_w = int(params.rect_width  * pad_frac)
-    pad_h = int(params.rect_height * pad_frac)
+    pad_w = int(params.get_rect_width() * pad_frac)
+    pad_h = int(params.get_rect_height() * pad_frac)
     x = int(xmin) - pad_w
     y = int(ymin) - pad_h
     w = int(xmax - xmin) + 2 * pad_w
     h = int(ymax - ymin) + 2 * pad_h
     # 至少保持一个视野大小，避免被裁成 0
-    w = max(w, params.rect_width)
-    h = max(h, params.rect_height)
+    w = max(w, params.get_rect_width())
+    h = max(h, params.get_rect_height())
     return np.array([x, y, w, h], dtype=np.int32)
 
 
@@ -178,8 +211,8 @@ def _estimate_windows(image_r: np.ndarray, params: SetCoverSolverParameter,
     估算在 image_r 上以 stride_ratio 滑窗时的候选窗口数量（与 generate_candidate_rects 对齐的粗算）。
     """
     W, H = int(image_r[2]), int(image_r[3])
-    sx = max(1, int(params.rect_width  * stride_ratio))
-    sy = max(1, int(params.rect_height * stride_ratio))
+    sx = max(1, int(params.get_rect_width() * stride_ratio))
+    sy = max(1, int(params.get_rect_height() * stride_ratio))
     nx = max(1, (W + sx - 1) // sx)  # ceil(W/sx)
     ny = max(1, (H + sy - 1) // sy)  # ceil(H/sy)
     return nx * ny
@@ -224,12 +257,12 @@ def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParamet
         return rects.astype(np.int32, copy=False)
 
     # 仍然太大：分治
-    pad_value = int(max(params.rect_width, params.rect_height) * 0.1)
+    pad_value = int(max(params.get_rect_width(), params.get_rect_height()) * 0.1)
     factor = params.img_split_overlap_w_factor
 
     if image_r[2] >= image_r[3]:
         # 横向切分
-        overlap_w = int(params.rect_width * factor)
+        overlap_w = int(params.get_rect_width() * factor)
         mid = int(image_r[0] + image_r[2] / 2)
         box_width = int(image_r[2] / 2 + overlap_w / 2)
 
@@ -248,7 +281,7 @@ def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParamet
         ], dtype=np.int32)
     else:
         # 纵向切分
-        overlap_h = int(params.rect_height * factor)
+        overlap_h = int(params.get_rect_height() * factor)
         mid = int(image_r[1] + image_r[3] / 2)
         box_height = int(image_r[3] / 2 + overlap_h / 2)
 

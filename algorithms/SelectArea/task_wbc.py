@@ -5,7 +5,7 @@ from typing import List, Dict, Tuple, Any, Optional
 from .heatmaps import HeatmapGrid
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput, CellOutput
-from .setcover import solve, SetCoverSolverParameter
+from .setcover import solve, SetCoverSolverParameter, expand_rect_to_nominal_bounds
 
 
 
@@ -84,7 +84,8 @@ def generate_wbc_view_tasks(
     
     params = params or SetCoverSolverParameter(
         rect_width=config.x100_rect_width, 
-        rect_height=config.x100_rect_height
+        rect_height=config.x100_rect_height,
+        rect_size_scale=config.x100_rect_size_scale,
     )
     
     # 2. 求解百倍视野分布
@@ -96,9 +97,14 @@ def generate_wbc_view_tasks(
     temp_grouped: List[List[TaskOutput]] = [[] for _ in range(len(task_rects))]
 
     for rx, ry, rw, rh in rects_x100:
-        # a. 视野内细胞匹配
-        in_x = (centers[:, 0] >= rx) & (centers[:, 0] < rx + rw)
-        in_y = (centers[:, 1] >= ry) & (centers[:, 1] < ry + rh)
+        view_xmin, view_ymin, view_xmax, view_ymax = expand_rect_to_nominal_bounds(
+            rx, ry, rw, rh,
+            config.x100_rect_width,
+            config.x100_rect_height,
+        )
+        # a. 视野内细胞匹配（落盘标称尺寸，与实际拍摄视野一致）
+        in_x = (centers[:, 0] >= view_xmin) & (centers[:, 0] < view_xmax)
+        in_y = (centers[:, 1] >= view_ymin) & (centers[:, 1] < view_ymax)
         mask = in_x & in_y & (~used)
         
         current_cell_outputs = []
@@ -114,7 +120,8 @@ def generate_wbc_view_tasks(
             used[mask] = True
 
         # b. 区域归属判定与名称映射
-        view_cx, view_cy = rx + rw/2, ry + rh/2
+        view_cx = (view_xmin + view_xmax) * 0.5
+        view_cy = (view_ymin + view_ymax) * 0.5
         vgx, vgy = grid.global_to_grid(view_cx, view_cy)
         
         assigned_idx = 0 
@@ -123,15 +130,15 @@ def generate_wbc_view_tasks(
                 assigned_idx = i
                 break
         
-        # c. 实例化 TaskOutput
+        # c. 实例化 TaskOutput（标称 x100 尺寸）
         task_obj = TaskOutput(
             task_index=0,  # 占位
             view_type=config.View_type,
             smear_type=config.Smear_type,
-            view_xmin=int(round(rx)),
-            view_ymin=int(round(ry)),
-            view_xmax=int(round(rx + rw)),
-            view_ymax=int(round(ry + rh)),
+            view_xmin=view_xmin,
+            view_ymin=view_ymin,
+            view_xmax=view_xmax,
+            view_ymax=view_ymax,
             region_name="",
             cell_list=current_cell_outputs
         )

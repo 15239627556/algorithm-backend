@@ -27,7 +27,7 @@ from .pipeline_meg import MegSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/Downloads/d1bde0b324bd41dc9fe8a1a4821e50bc.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核视野不够/20260703014/cccdb88e113e454189185ba9b2e5794f.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -182,10 +182,10 @@ def main() -> None:
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=100, 
-                        dpi=138430, 
-                        x100_rect_width=1000,
-                        x100_rect_height=500,
+    bm_cfg = BM40Config(target_cell_num_MEG=30, 
+                        dpi=140750, 
+                        x100_rect_width=482,
+                        x100_rect_height=403,
                         View_type="MEG", 
                         Smear_type=project.smear_type)
 

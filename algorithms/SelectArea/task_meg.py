@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Optional
 from .config import BM40Config
 from .data_structure import TaskOutput, CellOutput
-from .setcover import solve, SetCoverSolverParameter
+from .setcover import solve, SetCoverSolverParameter, expand_rect_to_nominal_bounds
 
 
 def generate_meg_view_tasks(
@@ -58,6 +58,7 @@ def generate_meg_view_tasks(
     params = params or SetCoverSolverParameter(
         rect_width=config.x100_rect_width,
         rect_height=config.x100_rect_height,
+        rect_size_scale=config.x100_rect_size_scale,
     )
 
     # 4. 求解巨核视野分布（候选视野）
@@ -139,9 +140,17 @@ def generate_meg_view_tasks(
     global_counter = 1
 
     for rx, ry, rw, rh, matched_idx_new in selected_rects:
+        view_xmin, view_ymin, view_xmax, view_ymax = expand_rect_to_nominal_bounds(
+            rx, ry, rw, rh,
+            config.x100_rect_width,
+            config.x100_rect_height,
+        )
         current_cell_outputs: List[CellOutput] = []
-        if matched_idx_new.size > 0:
-            for idx in matched_idx_new:
+        in_x = (centers[:, 0] >= view_xmin) & (centers[:, 0] < view_xmax)
+        in_y = (centers[:, 1] >= view_ymin) & (centers[:, 1] < view_ymax)
+        matched_idx = np.where(in_x & in_y)[0]
+        if matched_idx.size > 0:
+            for idx in matched_idx:
                 current_cell_outputs.append(
                     CellOutput(
                         cell_xmin=int(round(meg_cell_bounds[idx, 0])),
@@ -155,10 +164,10 @@ def generate_meg_view_tasks(
             task_index=global_counter,
             view_type=config.View_type,             
             smear_type=config.Smear_type,
-            view_xmin=int(round(rx)),
-            view_ymin=int(round(ry)),
-            view_xmax=int(round(rx + rw)),
-            view_ymax=int(round(ry + rh)),
+            view_xmin=view_xmin,
+            view_ymin=view_ymin,
+            view_xmax=view_xmax,
+            view_ymax=view_ymax,
             region_name=config.View_type,          
             cell_list=current_cell_outputs,
         )
