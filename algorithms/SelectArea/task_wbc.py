@@ -2,11 +2,138 @@ from __future__ import annotations
 import numpy as np
 import cv2
 from typing import List, Dict, Tuple, Any, Optional
+from collections import defaultdict
 from .heatmaps import HeatmapGrid
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput, CellOutput
 from .setcover import solve, SetCoverSolverParameter, expand_rect_to_nominal_bounds
 
+
+def _task_view_center(task: TaskOutput) -> tuple[float, float]:
+    return (
+        (task.view_xmin + task.view_xmax) * 0.5,
+        (task.view_ymin + task.view_ymax) * 0.5,
+    )
+
+
+def _open_path_length(centers: np.ndarray, order: List[int]) -> float:
+    if len(order) <= 1:
+        return 0.0
+    idx = np.asarray(order, dtype=np.int32)
+    seg = centers[idx[1:]] - centers[idx[:-1]]
+    return float(np.sqrt((seg * seg).sum(axis=1)).sum())
+
+
+def _two_opt_open_path(order: List[int], centers: np.ndarray) -> List[int]:
+    """开放路径 2-opt：不闭合回路，仅反转中间段以缩短总路程。"""
+    n = len(order)
+    if n <= 3:
+        return order
+
+    best = order[:]
+    best_len = _open_path_length(centers, best)
+    improved = True
+    while improved:
+        improved = False
+        for i in range(n - 1):
+            for k in range(i + 2, n):
+                candidate = best[: i + 1] + best[i + 1 : k + 1][::-1] + best[k + 1 :]
+                cand_len = _open_path_length(centers, candidate)
+                if cand_len + 1e-6 < best_len:
+                    best = candidate
+                    best_len = cand_len
+                    improved = True
+                    break
+            if improved:
+                break
+    return best
+
+
+def _order_tasks_tsp(tasks: List[TaskOutput]) -> List[TaskOutput]:
+    """组内开放 TSP：从 xmin/ymin 最小的视野出发，最近邻构造路径，再 2-opt 优化。"""
+    if len(tasks) <= 2:
+        return sorted(tasks, key=lambda t: (t.view_xmin, t.view_ymin))
+
+    centers = np.asarray([_task_view_center(t) for t in tasks], dtype=np.float64)
+    n = len(tasks)
+    start = int(np.lexsort((centers[:, 1], centers[:, 0]))[0])
+
+    order: List[int] = [start]
+    unvisited = set(range(n))
+    unvisited.remove(start)
+    current = start
+
+    while unvisited:
+        cx, cy = centers[current]
+        nxt = min(
+            unvisited,
+            key=lambda j: (centers[j, 0] - cx) ** 2 + (centers[j, 1] - cy) ** 2,
+        )
+        order.append(nxt)
+        unvisited.remove(nxt)
+        current = nxt
+
+    order = _two_opt_open_path(order, centers)
+    return [tasks[i] for i in order]
+
+
+def _order_tasks_scanline(tasks: List[TaskOutput]) -> List[TaskOutput]:
+    return sorted(tasks, key=lambda t: (t.view_xmin, t.view_ymin))
+
+
+def _task_center_dist_sq(a: TaskOutput, b: TaskOutput) -> float:
+    ax, ay = _task_view_center(a)
+    bx, by = _task_view_center(b)
+    dx, dy = ax - bx, ay - by
+    return dx * dx + dy * dy
+
+
+def _order_tasks_band_snake(tasks: List[TaskOutput], band_height: int) -> List[TaskOutput]:
+    """
+    按 Y 分带、带内按 (xmin, ymin) 排序；每条带选正/反序，使与上一带末点衔接更短。
+    单 band 时退化为 scanline，BM 等紧凑样本无额外开销。
+    """
+    if len(tasks) <= 1:
+        return tasks[:]
+
+    band_height = max(int(band_height), 1)
+    buckets: Dict[int, List[TaskOutput]] = defaultdict(list)
+    for task in tasks:
+        band_key = int(task.view_ymin) // band_height
+        buckets[band_key].append(task)
+
+    if len(buckets) <= 1:
+        return _order_tasks_scanline(tasks)
+
+    ordered: List[TaskOutput] = []
+    prev_end: Optional[TaskOutput] = None
+    for band_key in sorted(buckets.keys()):
+        row = sorted(buckets[band_key], key=lambda t: (t.view_xmin, t.view_ymin))
+        if prev_end is None:
+            chosen = row
+        else:
+            # 比较从上一带末点进入本带左端 vs 右端的距离，选更短方向
+            chosen = (
+                row[::-1]
+                if _task_center_dist_sq(prev_end, row[-1]) < _task_center_dist_sq(prev_end, row[0])
+                else row
+            )
+        ordered.extend(chosen)
+        prev_end = chosen[-1]
+    return ordered
+
+
+def order_tasks_in_group(tasks: List[TaskOutput], config: BM40Config) -> List[TaskOutput]:
+    if not tasks:
+        return tasks
+    mode = config.view_path_order_mode.lower()
+    if mode == "scanline":
+        return _order_tasks_scanline(tasks)
+    if mode == "band_snake":
+        return _order_tasks_band_snake(tasks, config.view_path_band_height)
+    if mode == "tsp":
+        return _order_tasks_tsp(tasks)
+    return _order_tasks_band_snake(tasks, config.view_path_band_height)
 
 
 
@@ -156,9 +283,8 @@ def generate_wbc_view_tasks(
             next_extra_idx += 1
 
     for group_idx, group in enumerate(temp_grouped):
-        # 区域内按坐标排序以优化移动路径
-        group.sort(key=lambda t: (t.view_xmin, t.view_ymin))
-        for task in group:
+        ordered_group = order_tasks_in_group(group, config)
+        for task in ordered_group:
             if group_idx == 0:
                 task.region_name = config.Initial_name
             else:

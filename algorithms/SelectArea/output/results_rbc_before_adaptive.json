@@ -153,6 +153,150 @@
     "task_index": 9,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 63304,
+    "view_ymin": 36170,
+    "view_xmax": 63677,
+    "view_ymax": 36450,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        63455,
+        36278,
+        63525,
+        36343
+      ]
+    ]
+  },
+  {
+    "task_index": 10,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 63176,
+    "view_ymin": 31425,
+    "view_xmax": 63549,
+    "view_ymax": 31705,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        63329,
+        31527,
+        63398,
+        31604
+      ]
+    ]
+  },
+  {
+    "task_index": 11,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 61600,
+    "view_ymin": 36628,
+    "view_xmax": 61973,
+    "view_ymax": 36908,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        61744,
+        36728,
+        61828,
+        36809
+      ]
+    ]
+  },
+  {
+    "task_index": 12,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 61090,
+    "view_ymin": 35162,
+    "view_xmax": 61463,
+    "view_ymax": 35442,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        61236,
+        35264,
+        61316,
+        35340
+      ]
+    ]
+  },
+  {
+    "task_index": 13,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59690,
+    "view_ymin": 35176,
+    "view_xmax": 60063,
+    "view_ymax": 35456,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59840,
+        35278,
+        59915,
+        35354
+      ]
+    ]
+  },
+  {
+    "task_index": 14,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59680,
+    "view_ymin": 25064,
+    "view_xmax": 60053,
+    "view_ymax": 25344,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59829,
+        25165,
+        59903,
+        25244
+      ]
+    ]
+  },
+  {
+    "task_index": 15,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59590,
+    "view_ymin": 26677,
+    "view_xmax": 59963,
+    "view_ymax": 26957,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59741,
+        26779,
+        59814,
+        26856
+      ]
+    ]
+  },
+  {
+    "task_index": 16,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59218,
+    "view_ymin": 37279,
+    "view_xmax": 59591,
+    "view_ymax": 37559,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59372,
+        37385,
+        59439,
+        37454
+      ]
+    ]
+  },
+  {
+    "task_index": 17,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 58930,
     "view_ymin": 22317,
     "view_xmax": 59303,
@@ -168,7 +312,31 @@
     ]
   },
   {
-    "task_index": 10,
+    "task_index": 18,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 58648,
+    "view_ymin": 38198,
+    "view_xmax": 59021,
+    "view_ymax": 38478,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        58816,
+        38308,
+        58828,
+        38367
+      ],
+      [
+        58816,
+        38307,
+        58881,
+        38371
+      ]
+    ]
+  },
+  {
+    "task_index": 19,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 58482,
@@ -186,7 +354,115 @@
     ]
   },
   {
-    "task_index": 11,
+    "task_index": 20,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 57946,
+    "view_ymin": 31899,
+    "view_xmax": 58319,
+    "view_ymax": 32179,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        58094,
+        31999,
+        58173,
+        32079
+      ]
+    ]
+  },
+  {
+    "task_index": 21,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 57442,
+    "view_ymin": 30102,
+    "view_xmax": 57815,
+    "view_ymax": 30382,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        57598,
+        30210,
+        57661,
+        30275
+      ]
+    ]
+  },
+  {
+    "task_index": 22,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 57320,
+    "view_ymin": 25013,
+    "view_xmax": 57693,
+    "view_ymax": 25293,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        57467,
+        25117,
+        57547,
+        25190
+      ]
+    ]
+  },
+  {
+    "task_index": 23,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 56910,
+    "view_ymin": 26511,
+    "view_xmax": 57283,
+    "view_ymax": 26791,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        57069,
+        26626,
+        57123,
+        26677
+      ]
+    ]
+  },
+  {
+    "task_index": 24,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 56404,
+    "view_ymin": 30814,
+    "view_xmax": 56777,
+    "view_ymax": 31094,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        56555,
+        30920,
+        56625,
+        30988
+      ]
+    ]
+  },
+  {
+    "task_index": 25,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 56228,
+    "view_ymin": 29616,
+    "view_xmax": 56601,
+    "view_ymax": 29896,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        56380,
+        29723,
+        56448,
+        29790
+      ]
+    ]
+  },
+  {
+    "task_index": 26,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 55942,
@@ -204,7 +480,7 @@
     ]
   },
   {
-    "task_index": 12,
+    "task_index": 27,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 55892,
@@ -218,276 +494,6 @@
         22149,
         56112,
         22213
-      ]
-    ]
-  },
-  {
-    "task_index": 13,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54728,
-    "view_ymin": 22606,
-    "view_xmax": 55101,
-    "view_ymax": 22886,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        54880,
-        22707,
-        54950,
-        22785
-      ]
-    ]
-  },
-  {
-    "task_index": 14,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54138,
-    "view_ymin": 22996,
-    "view_xmax": 54511,
-    "view_ymax": 23276,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        54282,
-        23100,
-        54369,
-        23172
-      ]
-    ]
-  },
-  {
-    "task_index": 15,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54084,
-    "view_ymin": 21827,
-    "view_xmax": 54457,
-    "view_ymax": 22107,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        54236,
-        21933,
-        54307,
-        22001
-      ]
-    ]
-  },
-  {
-    "task_index": 16,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53764,
-    "view_ymin": 24129,
-    "view_xmax": 54137,
-    "view_ymax": 24409,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53921,
-        24239,
-        53980,
-        24300
-      ]
-    ]
-  },
-  {
-    "task_index": 17,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53694,
-    "view_ymin": 23005,
-    "view_xmax": 54067,
-    "view_ymax": 23285,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53842,
-        23105,
-        53919,
-        23185
-      ]
-    ]
-  },
-  {
-    "task_index": 18,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53034,
-    "view_ymin": 22473,
-    "view_xmax": 53407,
-    "view_ymax": 22753,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53195,
-        22586,
-        53248,
-        22641
-      ]
-    ]
-  },
-  {
-    "task_index": 19,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52018,
-    "view_ymin": 22927,
-    "view_xmax": 52391,
-    "view_ymax": 23207,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52172,
-        23034,
-        52237,
-        23100
-      ]
-    ]
-  },
-  {
-    "task_index": 20,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50936,
-    "view_ymin": 21596,
-    "view_xmax": 51309,
-    "view_ymax": 21876,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51081,
-        21705,
-        51166,
-        21768
-      ]
-    ]
-  },
-  {
-    "task_index": 21,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49622,
-    "view_ymin": 26429,
-    "view_xmax": 49995,
-    "view_ymax": 26709,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49775,
-        26533,
-        49844,
-        26605
-      ]
-    ]
-  },
-  {
-    "task_index": 22,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50164,
-    "view_ymin": 26509,
-    "view_xmax": 50537,
-    "view_ymax": 26789,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50316,
-        26615,
-        50384,
-        26684
-      ]
-    ]
-  },
-  {
-    "task_index": 23,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51430,
-    "view_ymin": 25125,
-    "view_xmax": 51803,
-    "view_ymax": 25405,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51568,
-        25215,
-        51667,
-        25316
-      ]
-    ]
-  },
-  {
-    "task_index": 24,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51854,
-    "view_ymin": 27301,
-    "view_xmax": 52227,
-    "view_ymax": 27581,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52008,
-        27406,
-        52075,
-        27477
-      ]
-    ]
-  },
-  {
-    "task_index": 25,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52582,
-    "view_ymin": 27307,
-    "view_xmax": 52955,
-    "view_ymax": 27587,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52723,
-        27403,
-        52813,
-        27492
-      ]
-    ]
-  },
-  {
-    "task_index": 26,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53758,
-    "view_ymin": 26533,
-    "view_xmax": 54131,
-    "view_ymax": 26813,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53909,
-        26638,
-        53980,
-        26709
-      ]
-    ]
-  },
-  {
-    "task_index": 27,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54778,
-    "view_ymin": 25242,
-    "view_xmax": 55151,
-    "view_ymax": 25522,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        54938,
-        25356,
-        54993,
-        25409
       ]
     ]
   },
@@ -513,17 +519,17 @@
     "task_index": 29,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 56228,
-    "view_ymin": 29616,
-    "view_xmax": 56601,
-    "view_ymax": 29896,
+    "view_xmin": 54778,
+    "view_ymin": 25242,
+    "view_xmax": 55151,
+    "view_ymax": 25522,
     "region_name": "Initial",
     "cell_list": [
       [
-        56380,
-        29723,
-        56448,
-        29790
+        54938,
+        25356,
+        54993,
+        25409
       ]
     ]
   },
@@ -531,17 +537,17 @@
     "task_index": 30,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 56910,
-    "view_ymin": 26511,
-    "view_xmax": 57283,
-    "view_ymax": 26791,
+    "view_xmin": 54728,
+    "view_ymin": 22606,
+    "view_xmax": 55101,
+    "view_ymax": 22886,
     "region_name": "Initial",
     "cell_list": [
       [
-        57069,
-        26626,
-        57123,
-        26677
+        54880,
+        22707,
+        54950,
+        22785
       ]
     ]
   },
@@ -549,17 +555,17 @@
     "task_index": 31,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 57320,
-    "view_ymin": 25013,
-    "view_xmax": 57693,
-    "view_ymax": 25293,
+    "view_xmin": 54138,
+    "view_ymin": 22996,
+    "view_xmax": 54511,
+    "view_ymax": 23276,
     "region_name": "Initial",
     "cell_list": [
       [
-        57467,
-        25117,
-        57547,
-        25190
+        54282,
+        23100,
+        54369,
+        23172
       ]
     ]
   },
@@ -567,17 +573,17 @@
     "task_index": 32,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 59590,
-    "view_ymin": 26677,
-    "view_xmax": 59963,
-    "view_ymax": 26957,
+    "view_xmin": 54084,
+    "view_ymin": 21827,
+    "view_xmax": 54457,
+    "view_ymax": 22107,
     "region_name": "Initial",
     "cell_list": [
       [
-        59741,
-        26779,
-        59814,
-        26856
+        54236,
+        21933,
+        54307,
+        22001
       ]
     ]
   },
@@ -585,17 +591,17 @@
     "task_index": 33,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 59680,
-    "view_ymin": 25064,
-    "view_xmax": 60053,
-    "view_ymax": 25344,
+    "view_xmin": 53764,
+    "view_ymin": 24129,
+    "view_xmax": 54137,
+    "view_ymax": 24409,
     "region_name": "Initial",
     "cell_list": [
       [
-        59829,
-        25165,
-        59903,
-        25244
+        53921,
+        24239,
+        53980,
+        24300
       ]
     ]
   },
@@ -603,17 +609,17 @@
     "task_index": 34,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 63176,
-    "view_ymin": 31425,
-    "view_xmax": 63549,
-    "view_ymax": 31705,
+    "view_xmin": 53758,
+    "view_ymin": 26533,
+    "view_xmax": 54131,
+    "view_ymax": 26813,
     "region_name": "Initial",
     "cell_list": [
       [
-        63329,
-        31527,
-        63398,
-        31604
+        53909,
+        26638,
+        53980,
+        26709
       ]
     ]
   },
@@ -621,17 +627,17 @@
     "task_index": 35,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 57946,
-    "view_ymin": 31899,
-    "view_xmax": 58319,
-    "view_ymax": 32179,
+    "view_xmin": 53750,
+    "view_ymin": 38844,
+    "view_xmax": 54123,
+    "view_ymax": 39124,
     "region_name": "Initial",
     "cell_list": [
       [
-        58094,
-        31999,
-        58173,
-        32079
+        53903,
+        38950,
+        53972,
+        39018
       ]
     ]
   },
@@ -639,40 +645,22 @@
     "task_index": 36,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 57442,
-    "view_ymin": 30102,
-    "view_xmax": 57815,
-    "view_ymax": 30382,
+    "view_xmin": 53694,
+    "view_ymin": 23005,
+    "view_xmax": 54067,
+    "view_ymax": 23285,
     "region_name": "Initial",
     "cell_list": [
       [
-        57598,
-        30210,
-        57661,
-        30275
+        53842,
+        23105,
+        53919,
+        23185
       ]
     ]
   },
   {
     "task_index": 37,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 56404,
-    "view_ymin": 30814,
-    "view_xmax": 56777,
-    "view_ymax": 31094,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        56555,
-        30920,
-        56625,
-        30988
-      ]
-    ]
-  },
-  {
-    "task_index": 38,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 53462,
@@ -690,7 +678,43 @@
     ]
   },
   {
+    "task_index": 38,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 53034,
+    "view_ymin": 22473,
+    "view_xmax": 53407,
+    "view_ymax": 22753,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        53195,
+        22586,
+        53248,
+        22641
+      ]
+    ]
+  },
+  {
     "task_index": 39,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52964,
+    "view_ymin": 36271,
+    "view_xmax": 53337,
+    "view_ymax": 36551,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        53115,
+        36373,
+        53187,
+        36450
+      ]
+    ]
+  },
+  {
+    "task_index": 40,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 52608,
@@ -708,7 +732,43 @@
     ]
   },
   {
-    "task_index": 40,
+    "task_index": 41,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52582,
+    "view_ymin": 27307,
+    "view_xmax": 52955,
+    "view_ymax": 27587,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52723,
+        27403,
+        52813,
+        27492
+      ]
+    ]
+  },
+  {
+    "task_index": 42,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52018,
+    "view_ymin": 22927,
+    "view_xmax": 52391,
+    "view_ymax": 23207,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52172,
+        23034,
+        52237,
+        23100
+      ]
+    ]
+  },
+  {
+    "task_index": 43,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 52012,
@@ -726,74 +786,20 @@
     ]
   },
   {
-    "task_index": 41,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50606,
-    "view_ymin": 34722,
-    "view_xmax": 50979,
-    "view_ymax": 35002,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50762,
-        34829,
-        50825,
-        34895
-      ]
-    ]
-  },
-  {
-    "task_index": 42,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50924,
-    "view_ymin": 35855,
-    "view_xmax": 51297,
-    "view_ymax": 36135,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51082,
-        35968,
-        51140,
-        36022
-      ]
-    ]
-  },
-  {
-    "task_index": 43,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51296,
-    "view_ymin": 35923,
-    "view_xmax": 51669,
-    "view_ymax": 36203,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51457,
-        36037,
-        51510,
-        36090
-      ]
-    ]
-  },
-  {
     "task_index": 44,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 51432,
-    "view_ymin": 35333,
-    "view_xmax": 51805,
-    "view_ymax": 35613,
+    "view_xmin": 51854,
+    "view_ymin": 27301,
+    "view_xmax": 52227,
+    "view_ymax": 27581,
     "region_name": "Initial",
     "cell_list": [
       [
-        51603,
-        35458,
-        51633,
-        35489
+        52008,
+        27406,
+        52075,
+        27477
       ]
     ]
   },
@@ -819,17 +825,17 @@
     "task_index": 46,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 52964,
-    "view_ymin": 36271,
-    "view_xmax": 53337,
-    "view_ymax": 36551,
+    "view_xmin": 51432,
+    "view_ymin": 35333,
+    "view_xmax": 51805,
+    "view_ymax": 35613,
     "region_name": "Initial",
     "cell_list": [
       [
-        53115,
-        36373,
-        53187,
-        36450
+        51603,
+        35458,
+        51633,
+        35489
       ]
     ]
   },
@@ -837,17 +843,17 @@
     "task_index": 47,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 53750,
-    "view_ymin": 38844,
-    "view_xmax": 54123,
-    "view_ymax": 39124,
+    "view_xmin": 51430,
+    "view_ymin": 25125,
+    "view_xmax": 51803,
+    "view_ymax": 25405,
     "region_name": "Initial",
     "cell_list": [
       [
-        53903,
-        38950,
-        53972,
-        39018
+        51568,
+        25215,
+        51667,
+        25316
       ]
     ]
   },
@@ -855,23 +861,17 @@
     "task_index": 48,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 58648,
-    "view_ymin": 38198,
-    "view_xmax": 59021,
-    "view_ymax": 38478,
+    "view_xmin": 51296,
+    "view_ymin": 35923,
+    "view_xmax": 51669,
+    "view_ymax": 36203,
     "region_name": "Initial",
     "cell_list": [
       [
-        58816,
-        38308,
-        58828,
-        38367
-      ],
-      [
-        58816,
-        38307,
-        58881,
-        38371
+        51457,
+        36037,
+        51510,
+        36090
       ]
     ]
   },
@@ -879,17 +879,17 @@
     "task_index": 49,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 59218,
-    "view_ymin": 37279,
-    "view_xmax": 59591,
-    "view_ymax": 37559,
+    "view_xmin": 50936,
+    "view_ymin": 21596,
+    "view_xmax": 51309,
+    "view_ymax": 21876,
     "region_name": "Initial",
     "cell_list": [
       [
-        59372,
-        37385,
-        59439,
-        37454
+        51081,
+        21705,
+        51166,
+        21768
       ]
     ]
   },
@@ -897,17 +897,17 @@
     "task_index": 50,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 59690,
-    "view_ymin": 35176,
-    "view_xmax": 60063,
-    "view_ymax": 35456,
+    "view_xmin": 50924,
+    "view_ymin": 35855,
+    "view_xmax": 51297,
+    "view_ymax": 36135,
     "region_name": "Initial",
     "cell_list": [
       [
-        59840,
-        35278,
-        59915,
-        35354
+        51082,
+        35968,
+        51140,
+        36022
       ]
     ]
   },
@@ -915,17 +915,17 @@
     "task_index": 51,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 61090,
-    "view_ymin": 35162,
-    "view_xmax": 61463,
-    "view_ymax": 35442,
+    "view_xmin": 50606,
+    "view_ymin": 34722,
+    "view_xmax": 50979,
+    "view_ymax": 35002,
     "region_name": "Initial",
     "cell_list": [
       [
-        61236,
-        35264,
-        61316,
-        35340
+        50762,
+        34829,
+        50825,
+        34895
       ]
     ]
   },
@@ -933,17 +933,17 @@
     "task_index": 52,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 61600,
-    "view_ymin": 36628,
-    "view_xmax": 61973,
-    "view_ymax": 36908,
+    "view_xmin": 50164,
+    "view_ymin": 26509,
+    "view_xmax": 50537,
+    "view_ymax": 26789,
     "region_name": "Initial",
     "cell_list": [
       [
-        61744,
-        36728,
-        61828,
-        36809
+        50316,
+        26615,
+        50384,
+        26684
       ]
     ]
   },
@@ -951,310 +951,22 @@
     "task_index": 53,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 63304,
-    "view_ymin": 36170,
-    "view_xmax": 63677,
-    "view_ymax": 36450,
+    "view_xmin": 49622,
+    "view_ymin": 26429,
+    "view_xmax": 49995,
+    "view_ymax": 26709,
     "region_name": "Initial",
     "cell_list": [
       [
-        63455,
-        36278,
-        63525,
-        36343
+        49775,
+        26533,
+        49844,
+        26605
       ]
     ]
   },
   {
     "task_index": 54,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62854,
-    "view_ymin": 44601,
-    "view_xmax": 63227,
-    "view_ymax": 44881,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        63005,
-        44709,
-        63075,
-        44774
-      ]
-    ]
-  },
-  {
-    "task_index": 55,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62688,
-    "view_ymin": 40375,
-    "view_xmax": 63061,
-    "view_ymax": 40655,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        62844,
-        40482,
-        62907,
-        40549
-      ]
-    ]
-  },
-  {
-    "task_index": 56,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62094,
-    "view_ymin": 41308,
-    "view_xmax": 62467,
-    "view_ymax": 41588,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        62248,
-        41414,
-        62315,
-        41483
-      ]
-    ]
-  },
-  {
-    "task_index": 57,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 60724,
-    "view_ymin": 40416,
-    "view_xmax": 61097,
-    "view_ymax": 40696,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60872,
-        40516,
-        60951,
-        40596
-      ]
-    ]
-  },
-  {
-    "task_index": 58,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 60484,
-    "view_ymin": 42295,
-    "view_xmax": 60857,
-    "view_ymax": 42575,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60634,
-        42397,
-        60707,
-        42474
-      ]
-    ]
-  },
-  {
-    "task_index": 59,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59858,
-    "view_ymin": 44417,
-    "view_xmax": 60231,
-    "view_ymax": 44697,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60006,
-        44520,
-        60085,
-        44595
-      ]
-    ]
-  },
-  {
-    "task_index": 60,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59622,
-    "view_ymin": 41855,
-    "view_xmax": 59995,
-    "view_ymax": 42135,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59771,
-        41953,
-        59848,
-        42038
-      ]
-    ]
-  },
-  {
-    "task_index": 61,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59528,
-    "view_ymin": 44314,
-    "view_xmax": 59901,
-    "view_ymax": 44594,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59685,
-        44422,
-        59745,
-        44486
-      ]
-    ]
-  },
-  {
-    "task_index": 62,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 58064,
-    "view_ymin": 43556,
-    "view_xmax": 58437,
-    "view_ymax": 43836,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        58222,
-        43670,
-        58278,
-        43722
-      ]
-    ]
-  },
-  {
-    "task_index": 63,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54982,
-    "view_ymin": 44318,
-    "view_xmax": 55355,
-    "view_ymax": 44598,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        55133,
-        44425,
-        55203,
-        44491
-      ]
-    ]
-  },
-  {
-    "task_index": 64,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54174,
-    "view_ymin": 40537,
-    "view_xmax": 54547,
-    "view_ymax": 40817,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        54329,
-        40640,
-        54394,
-        40714
-      ]
-    ]
-  },
-  {
-    "task_index": 65,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53160,
-    "view_ymin": 42828,
-    "view_xmax": 53533,
-    "view_ymax": 43108,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53318,
-        42939,
-        53376,
-        42998
-      ]
-    ]
-  },
-  {
-    "task_index": 66,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52926,
-    "view_ymin": 41652,
-    "view_xmax": 53299,
-    "view_ymax": 41932,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53076,
-        41754,
-        53151,
-        41830
-      ]
-    ]
-  },
-  {
-    "task_index": 67,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52238,
-    "view_ymin": 41750,
-    "view_xmax": 52611,
-    "view_ymax": 42030,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52390,
-        41856,
-        52461,
-        41924
-      ]
-    ]
-  },
-  {
-    "task_index": 68,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52128,
-    "view_ymin": 44679,
-    "view_xmax": 52501,
-    "view_ymax": 44959,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52279,
-        44788,
-        52349,
-        44851
-      ]
-    ]
-  },
-  {
-    "task_index": 69,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50266,
-    "view_ymin": 44670,
-    "view_xmax": 50639,
-    "view_ymax": 44950,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50387,
-        44721,
-        50518,
-        44900
-      ]
-    ]
-  },
-  {
-    "task_index": 70,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 49458,
@@ -1272,7 +984,115 @@
     ]
   },
   {
-    "task_index": 71,
+    "task_index": 55,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 49618,
+    "view_ymin": 59363,
+    "view_xmax": 49991,
+    "view_ymax": 59643,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        49768,
+        59472,
+        49840,
+        59535
+      ]
+    ]
+  },
+  {
+    "task_index": 56,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 49802,
+    "view_ymin": 50774,
+    "view_xmax": 50175,
+    "view_ymax": 51054,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        49956,
+        50881,
+        50020,
+        50948
+      ]
+    ]
+  },
+  {
+    "task_index": 57,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 50062,
+    "view_ymin": 55634,
+    "view_xmax": 50435,
+    "view_ymax": 55914,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        50213,
+        55738,
+        50284,
+        55810
+      ]
+    ]
+  },
+  {
+    "task_index": 58,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 50266,
+    "view_ymin": 44670,
+    "view_xmax": 50639,
+    "view_ymax": 44950,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        50387,
+        44721,
+        50518,
+        44900
+      ]
+    ]
+  },
+  {
+    "task_index": 59,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 50570,
+    "view_ymin": 52409,
+    "view_xmax": 50943,
+    "view_ymax": 52689,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        50721,
+        52511,
+        50793,
+        52587
+      ]
+    ]
+  },
+  {
+    "task_index": 60,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 51734,
+    "view_ymin": 51330,
+    "view_xmax": 52107,
+    "view_ymax": 51610,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        51884,
+        51434,
+        51957,
+        51507
+      ]
+    ]
+  },
+  {
+    "task_index": 61,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 51832,
@@ -1290,7 +1110,43 @@
     ]
   },
   {
-    "task_index": 72,
+    "task_index": 62,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52128,
+    "view_ymin": 44679,
+    "view_xmax": 52501,
+    "view_ymax": 44959,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52279,
+        44788,
+        52349,
+        44851
+      ]
+    ]
+  },
+  {
+    "task_index": 63,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52238,
+    "view_ymin": 41750,
+    "view_xmax": 52611,
+    "view_ymax": 42030,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52390,
+        41856,
+        52461,
+        41924
+      ]
+    ]
+  },
+  {
+    "task_index": 64,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 52240,
@@ -1308,7 +1164,79 @@
     ]
   },
   {
-    "task_index": 73,
+    "task_index": 65,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52336,
+    "view_ymin": 54605,
+    "view_xmax": 52709,
+    "view_ymax": 54885,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52489,
+        54712,
+        52555,
+        54779
+      ]
+    ]
+  },
+  {
+    "task_index": 66,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52568,
+    "view_ymin": 57247,
+    "view_xmax": 52941,
+    "view_ymax": 57527,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52726,
+        57359,
+        52785,
+        57415
+      ]
+    ]
+  },
+  {
+    "task_index": 67,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52696,
+    "view_ymin": 53539,
+    "view_xmax": 53069,
+    "view_ymax": 53819,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52849,
+        53648,
+        52917,
+        53711
+      ]
+    ]
+  },
+  {
+    "task_index": 68,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52926,
+    "view_ymin": 41652,
+    "view_xmax": 53299,
+    "view_ymax": 41932,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        53076,
+        41754,
+        53151,
+        41830
+      ]
+    ]
+  },
+  {
+    "task_index": 69,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 53120,
@@ -1326,7 +1254,25 @@
     ]
   },
   {
-    "task_index": 74,
+    "task_index": 70,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 53160,
+    "view_ymin": 42828,
+    "view_xmax": 53533,
+    "view_ymax": 43108,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        53318,
+        42939,
+        53376,
+        42998
+      ]
+    ]
+  },
+  {
+    "task_index": 71,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 53188,
@@ -1344,7 +1290,7 @@
     ]
   },
   {
-    "task_index": 75,
+    "task_index": 72,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 53590,
@@ -1362,7 +1308,43 @@
     ]
   },
   {
-    "task_index": 76,
+    "task_index": 73,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 53738,
+    "view_ymin": 52349,
+    "view_xmax": 54111,
+    "view_ymax": 52629,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        53891,
+        52454,
+        53958,
+        52525
+      ]
+    ]
+  },
+  {
+    "task_index": 74,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 53980,
+    "view_ymin": 52869,
+    "view_xmax": 54353,
+    "view_ymax": 53149,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        54132,
+        52978,
+        54203,
+        53041
+      ]
+    ]
+  },
+  {
+    "task_index": 75,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 54118,
@@ -1380,7 +1362,85 @@
     ]
   },
   {
+    "task_index": 76,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 54174,
+    "view_ymin": 40537,
+    "view_xmax": 54547,
+    "view_ymax": 40817,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        54329,
+        40640,
+        54394,
+        40714
+      ]
+    ]
+  },
+  {
     "task_index": 77,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 54868,
+    "view_ymin": 58770,
+    "view_xmax": 55241,
+    "view_ymax": 59050,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        55028,
+        58883,
+        55080,
+        58937
+      ]
+    ]
+  },
+  {
+    "task_index": 78,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 54982,
+    "view_ymin": 44318,
+    "view_xmax": 55355,
+    "view_ymax": 44598,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        55133,
+        44425,
+        55203,
+        44491
+      ]
+    ]
+  },
+  {
+    "task_index": 79,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 56126,
+    "view_ymin": 54108,
+    "view_xmax": 56499,
+    "view_ymax": 54388,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        56292,
+        54226,
+        56343,
+        54237
+      ],
+      [
+        56276,
+        54227,
+        56343,
+        54305
+      ]
+    ]
+  },
+  {
+    "task_index": 80,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 57056,
@@ -1398,7 +1458,79 @@
     ]
   },
   {
-    "task_index": 78,
+    "task_index": 81,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 57106,
+    "view_ymin": 55025,
+    "view_xmax": 57479,
+    "view_ymax": 55305,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        57257,
+        55130,
+        57330,
+        55200
+      ]
+    ]
+  },
+  {
+    "task_index": 82,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 57638,
+    "view_ymin": 53091,
+    "view_xmax": 58011,
+    "view_ymax": 53371,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        57797,
+        53205,
+        57854,
+        53258
+      ]
+    ]
+  },
+  {
+    "task_index": 83,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 58064,
+    "view_ymin": 43556,
+    "view_xmax": 58437,
+    "view_ymax": 43836,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        58222,
+        43670,
+        58278,
+        43722
+      ]
+    ]
+  },
+  {
+    "task_index": 84,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 58368,
+    "view_ymin": 52986,
+    "view_xmax": 58741,
+    "view_ymax": 53266,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        58515,
+        53091,
+        58593,
+        53162
+      ]
+    ]
+  },
+  {
+    "task_index": 85,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 58602,
@@ -1416,7 +1548,7 @@
     ]
   },
   {
-    "task_index": 79,
+    "task_index": 86,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 58724,
@@ -1434,146 +1566,20 @@
     ]
   },
   {
-    "task_index": 80,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59628,
-    "view_ymin": 47151,
-    "view_xmax": 60001,
-    "view_ymax": 47431,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59786,
-        47262,
-        59845,
-        47321
-      ]
-    ]
-  },
-  {
-    "task_index": 81,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59860,
-    "view_ymin": 46115,
-    "view_xmax": 60233,
-    "view_ymax": 46395,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60011,
-        46220,
-        60083,
-        46291
-      ]
-    ]
-  },
-  {
-    "task_index": 82,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59912,
-    "view_ymin": 49455,
-    "view_xmax": 60285,
-    "view_ymax": 49735,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60066,
-        49562,
-        60133,
-        49629
-      ]
-    ]
-  },
-  {
-    "task_index": 83,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62574,
-    "view_ymin": 47756,
-    "view_xmax": 62947,
-    "view_ymax": 48036,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        62733,
-        47869,
-        62790,
-        47923
-      ]
-    ]
-  },
-  {
-    "task_index": 84,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 63070,
-    "view_ymin": 47179,
-    "view_xmax": 63443,
-    "view_ymax": 47459,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        63220,
-        47280,
-        63292,
-        47358
-      ]
-    ]
-  },
-  {
-    "task_index": 85,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62696,
-    "view_ymin": 51031,
-    "view_xmax": 63069,
-    "view_ymax": 51311,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        62850,
-        51139,
-        62917,
-        51204
-      ]
-    ]
-  },
-  {
-    "task_index": 86,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 62574,
-    "view_ymin": 53171,
-    "view_xmax": 62947,
-    "view_ymax": 53451,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        62720,
-        53269,
-        62800,
-        53353
-      ]
-    ]
-  },
-  {
     "task_index": 87,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 61300,
-    "view_ymin": 54649,
-    "view_xmax": 61673,
-    "view_ymax": 54929,
+    "view_xmin": 58866,
+    "view_ymin": 55065,
+    "view_xmax": 59239,
+    "view_ymax": 55345,
     "region_name": "Initial",
     "cell_list": [
       [
-        61453,
-        54755,
-        61522,
-        54824
+        59022,
+        55174,
+        59085,
+        55237
       ]
     ]
   },
@@ -1599,17 +1605,17 @@
     "task_index": 89,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 58368,
-    "view_ymin": 52986,
-    "view_xmax": 58741,
-    "view_ymax": 53266,
+    "view_xmin": 59528,
+    "view_ymin": 44314,
+    "view_xmax": 59901,
+    "view_ymax": 44594,
     "region_name": "Initial",
     "cell_list": [
       [
-        58515,
-        53091,
-        58593,
-        53162
+        59685,
+        44422,
+        59745,
+        44486
       ]
     ]
   },
@@ -1617,17 +1623,17 @@
     "task_index": 90,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 57638,
-    "view_ymin": 53091,
-    "view_xmax": 58011,
-    "view_ymax": 53371,
+    "view_xmin": 59622,
+    "view_ymin": 41855,
+    "view_xmax": 59995,
+    "view_ymax": 42135,
     "region_name": "Initial",
     "cell_list": [
       [
-        57797,
-        53205,
-        57854,
-        53258
+        59771,
+        41953,
+        59848,
+        42038
       ]
     ]
   },
@@ -1635,23 +1641,17 @@
     "task_index": 91,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 56126,
-    "view_ymin": 54108,
-    "view_xmax": 56499,
-    "view_ymax": 54388,
+    "view_xmin": 59628,
+    "view_ymin": 47151,
+    "view_xmax": 60001,
+    "view_ymax": 47431,
     "region_name": "Initial",
     "cell_list": [
       [
-        56292,
-        54226,
-        56343,
-        54237
-      ],
-      [
-        56276,
-        54227,
-        56343,
-        54305
+        59786,
+        47262,
+        59845,
+        47321
       ]
     ]
   },
@@ -1659,17 +1659,17 @@
     "task_index": 92,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 53980,
-    "view_ymin": 52869,
-    "view_xmax": 54353,
-    "view_ymax": 53149,
+    "view_xmin": 59858,
+    "view_ymin": 44417,
+    "view_xmax": 60231,
+    "view_ymax": 44697,
     "region_name": "Initial",
     "cell_list": [
       [
-        54132,
-        52978,
-        54203,
-        53041
+        60006,
+        44520,
+        60085,
+        44595
       ]
     ]
   },
@@ -1677,17 +1677,17 @@
     "task_index": 93,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 53738,
-    "view_ymin": 52349,
-    "view_xmax": 54111,
-    "view_ymax": 52629,
+    "view_xmin": 59860,
+    "view_ymin": 46115,
+    "view_xmax": 60233,
+    "view_ymax": 46395,
     "region_name": "Initial",
     "cell_list": [
       [
-        53891,
-        52454,
-        53958,
-        52525
+        60011,
+        46220,
+        60083,
+        46291
       ]
     ]
   },
@@ -1695,202 +1695,22 @@
     "task_index": 94,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 52696,
-    "view_ymin": 53539,
-    "view_xmax": 53069,
-    "view_ymax": 53819,
+    "view_xmin": 59912,
+    "view_ymin": 49455,
+    "view_xmax": 60285,
+    "view_ymax": 49735,
     "region_name": "Initial",
     "cell_list": [
       [
-        52849,
-        53648,
-        52917,
-        53711
+        60066,
+        49562,
+        60133,
+        49629
       ]
     ]
   },
   {
     "task_index": 95,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52336,
-    "view_ymin": 54605,
-    "view_xmax": 52709,
-    "view_ymax": 54885,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52489,
-        54712,
-        52555,
-        54779
-      ]
-    ]
-  },
-  {
-    "task_index": 96,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51734,
-    "view_ymin": 51330,
-    "view_xmax": 52107,
-    "view_ymax": 51610,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51884,
-        51434,
-        51957,
-        51507
-      ]
-    ]
-  },
-  {
-    "task_index": 97,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50570,
-    "view_ymin": 52409,
-    "view_xmax": 50943,
-    "view_ymax": 52689,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50721,
-        52511,
-        50793,
-        52587
-      ]
-    ]
-  },
-  {
-    "task_index": 98,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49802,
-    "view_ymin": 50774,
-    "view_xmax": 50175,
-    "view_ymax": 51054,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49956,
-        50881,
-        50020,
-        50948
-      ]
-    ]
-  },
-  {
-    "task_index": 99,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49618,
-    "view_ymin": 59363,
-    "view_xmax": 49991,
-    "view_ymax": 59643,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49768,
-        59472,
-        49840,
-        59535
-      ]
-    ]
-  },
-  {
-    "task_index": 100,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50062,
-    "view_ymin": 55634,
-    "view_xmax": 50435,
-    "view_ymax": 55914,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50213,
-        55738,
-        50284,
-        55810
-      ]
-    ]
-  },
-  {
-    "task_index": 101,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52568,
-    "view_ymin": 57247,
-    "view_xmax": 52941,
-    "view_ymax": 57527,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52726,
-        57359,
-        52785,
-        57415
-      ]
-    ]
-  },
-  {
-    "task_index": 102,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 54868,
-    "view_ymin": 58770,
-    "view_xmax": 55241,
-    "view_ymax": 59050,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        55028,
-        58883,
-        55080,
-        58937
-      ]
-    ]
-  },
-  {
-    "task_index": 103,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 57106,
-    "view_ymin": 55025,
-    "view_xmax": 57479,
-    "view_ymax": 55305,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        57257,
-        55130,
-        57330,
-        55200
-      ]
-    ]
-  },
-  {
-    "task_index": 104,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 58866,
-    "view_ymin": 55065,
-    "view_xmax": 59239,
-    "view_ymax": 55345,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59022,
-        55174,
-        59085,
-        55237
-      ]
-    ]
-  },
-  {
-    "task_index": 105,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 60386,
@@ -1908,7 +1728,115 @@
     ]
   },
   {
-    "task_index": 106,
+    "task_index": 96,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 60484,
+    "view_ymin": 42295,
+    "view_xmax": 60857,
+    "view_ymax": 42575,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        60634,
+        42397,
+        60707,
+        42474
+      ]
+    ]
+  },
+  {
+    "task_index": 97,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 60724,
+    "view_ymin": 40416,
+    "view_xmax": 61097,
+    "view_ymax": 40696,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        60872,
+        40516,
+        60951,
+        40596
+      ]
+    ]
+  },
+  {
+    "task_index": 98,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 61300,
+    "view_ymin": 54649,
+    "view_xmax": 61673,
+    "view_ymax": 54929,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        61453,
+        54755,
+        61522,
+        54824
+      ]
+    ]
+  },
+  {
+    "task_index": 99,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62094,
+    "view_ymin": 41308,
+    "view_xmax": 62467,
+    "view_ymax": 41588,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        62248,
+        41414,
+        62315,
+        41483
+      ]
+    ]
+  },
+  {
+    "task_index": 100,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62574,
+    "view_ymin": 47756,
+    "view_xmax": 62947,
+    "view_ymax": 48036,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        62733,
+        47869,
+        62790,
+        47923
+      ]
+    ]
+  },
+  {
+    "task_index": 101,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62574,
+    "view_ymin": 53171,
+    "view_xmax": 62947,
+    "view_ymax": 53451,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        62720,
+        53269,
+        62800,
+        53353
+      ]
+    ]
+  },
+  {
+    "task_index": 102,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 62680,
@@ -1926,7 +1854,205 @@
     ]
   },
   {
+    "task_index": 103,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62688,
+    "view_ymin": 40375,
+    "view_xmax": 63061,
+    "view_ymax": 40655,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        62844,
+        40482,
+        62907,
+        40549
+      ]
+    ]
+  },
+  {
+    "task_index": 104,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62696,
+    "view_ymin": 51031,
+    "view_xmax": 63069,
+    "view_ymax": 51311,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        62850,
+        51139,
+        62917,
+        51204
+      ]
+    ]
+  },
+  {
+    "task_index": 105,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 62854,
+    "view_ymin": 44601,
+    "view_xmax": 63227,
+    "view_ymax": 44881,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        63005,
+        44709,
+        63075,
+        44774
+      ]
+    ]
+  },
+  {
+    "task_index": 106,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 63070,
+    "view_ymin": 47179,
+    "view_xmax": 63443,
+    "view_ymax": 47459,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        63220,
+        47280,
+        63292,
+        47358
+      ]
+    ]
+  },
+  {
     "task_index": 107,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 63044,
+    "view_ymin": 69971,
+    "view_xmax": 63417,
+    "view_ymax": 70251,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        63194,
+        70075,
+        63269,
+        70147
+      ]
+    ]
+  },
+  {
+    "task_index": 108,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 60240,
+    "view_ymin": 72068,
+    "view_xmax": 60613,
+    "view_ymax": 72348,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        60400,
+        72182,
+        60453,
+        72235
+      ]
+    ]
+  },
+  {
+    "task_index": 109,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59990,
+    "view_ymin": 69381,
+    "view_xmax": 60363,
+    "view_ymax": 69661,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        60136,
+        69481,
+        60216,
+        69562
+      ]
+    ]
+  },
+  {
+    "task_index": 110,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59742,
+    "view_ymin": 67434,
+    "view_xmax": 60115,
+    "view_ymax": 67714,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59897,
+        67542,
+        59961,
+        67607
+      ]
+    ]
+  },
+  {
+    "task_index": 111,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59172,
+    "view_ymin": 70567,
+    "view_xmax": 59545,
+    "view_ymax": 70847,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59324,
+        70672,
+        59394,
+        70743
+      ]
+    ]
+  },
+  {
+    "task_index": 112,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 59112,
+    "view_ymin": 71942,
+    "view_xmax": 59485,
+    "view_ymax": 72222,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        59268,
+        72049,
+        59331,
+        72115
+      ]
+    ]
+  },
+  {
+    "task_index": 113,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 58414,
+    "view_ymin": 67470,
+    "view_xmax": 58787,
+    "view_ymax": 67750,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        58571,
+        67580,
+        58629,
+        67640
+      ]
+    ]
+  },
+  {
+    "task_index": 114,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 58150,
@@ -1944,146 +2070,20 @@
     ]
   },
   {
-    "task_index": 108,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49742,
-    "view_ymin": 60087,
-    "view_xmax": 50115,
-    "view_ymax": 60367,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49900,
-        60199,
-        49956,
-        60256
-      ]
-    ]
-  },
-  {
-    "task_index": 109,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49644,
-    "view_ymin": 67487,
-    "view_xmax": 50017,
-    "view_ymax": 67767,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49797,
-        67592,
-        49866,
-        67662
-      ]
-    ]
-  },
-  {
-    "task_index": 110,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 49702,
-    "view_ymin": 67300,
-    "view_xmax": 50075,
-    "view_ymax": 67580,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        49860,
-        67408,
-        49916,
-        67472
-      ]
-    ]
-  },
-  {
-    "task_index": 111,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50168,
-    "view_ymin": 68996,
-    "view_xmax": 50541,
-    "view_ymax": 69276,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50318,
-        69102,
-        50390,
-        69171
-      ]
-    ]
-  },
-  {
-    "task_index": 112,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 50250,
-    "view_ymin": 67424,
-    "view_xmax": 50623,
-    "view_ymax": 67704,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        50399,
-        67526,
-        50476,
-        67603
-      ]
-    ]
-  },
-  {
-    "task_index": 113,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51662,
-    "view_ymin": 65340,
-    "view_xmax": 52035,
-    "view_ymax": 65620,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51807,
-        65436,
-        51892,
-        65524
-      ]
-    ]
-  },
-  {
-    "task_index": 114,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 51852,
-    "view_ymin": 69731,
-    "view_xmax": 52225,
-    "view_ymax": 70011,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        51996,
-        69829,
-        52081,
-        69913
-      ]
-    ]
-  },
-  {
     "task_index": 115,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 52150,
-    "view_ymin": 67161,
-    "view_xmax": 52523,
-    "view_ymax": 67441,
+    "view_xmin": 57950,
+    "view_ymin": 78830,
+    "view_xmax": 58323,
+    "view_ymax": 79110,
     "region_name": "Initial",
     "cell_list": [
       [
-        52304,
-        67267,
-        52371,
-        67336
+        58101,
+        78935,
+        58174,
+        79006
       ]
     ]
   },
@@ -2091,23 +2091,17 @@
     "task_index": 116,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 52670,
-    "view_ymin": 67198,
-    "view_xmax": 53043,
-    "view_ymax": 67478,
+    "view_xmin": 55116,
+    "view_ymin": 69881,
+    "view_xmax": 55489,
+    "view_ymax": 70161,
     "region_name": "Initial",
     "cell_list": [
       [
-        52857,
-        67225,
-        52923,
-        67295
-      ],
-      [
-        52793,
-        67384,
-        52858,
-        67448
+        55286,
+        70004,
+        55321,
+        70039
       ]
     ]
   },
@@ -2115,17 +2109,17 @@
     "task_index": 117,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 52726,
-    "view_ymin": 65706,
-    "view_xmax": 53099,
-    "view_ymax": 65986,
+    "view_xmin": 53458,
+    "view_ymin": 75480,
+    "view_xmax": 53831,
+    "view_ymax": 75760,
     "region_name": "Initial",
     "cell_list": [
       [
-        52879,
-        65816,
-        52945,
-        65877
+        53611,
+        75582,
+        53680,
+        75659
       ]
     ]
   },
@@ -2151,150 +2145,6 @@
     "task_index": 119,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 55116,
-    "view_ymin": 69881,
-    "view_xmax": 55489,
-    "view_ymax": 70161,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        55286,
-        70004,
-        55321,
-        70039
-      ]
-    ]
-  },
-  {
-    "task_index": 120,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 58414,
-    "view_ymin": 67470,
-    "view_xmax": 58787,
-    "view_ymax": 67750,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        58571,
-        67580,
-        58629,
-        67640
-      ]
-    ]
-  },
-  {
-    "task_index": 121,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59742,
-    "view_ymin": 67434,
-    "view_xmax": 60115,
-    "view_ymax": 67714,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59897,
-        67542,
-        59961,
-        67607
-      ]
-    ]
-  },
-  {
-    "task_index": 122,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59990,
-    "view_ymin": 69381,
-    "view_xmax": 60363,
-    "view_ymax": 69661,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60136,
-        69481,
-        60216,
-        69562
-      ]
-    ]
-  },
-  {
-    "task_index": 123,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 63044,
-    "view_ymin": 69971,
-    "view_xmax": 63417,
-    "view_ymax": 70251,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        63194,
-        70075,
-        63269,
-        70147
-      ]
-    ]
-  },
-  {
-    "task_index": 124,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 60240,
-    "view_ymin": 72068,
-    "view_xmax": 60613,
-    "view_ymax": 72348,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        60400,
-        72182,
-        60453,
-        72235
-      ]
-    ]
-  },
-  {
-    "task_index": 125,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59172,
-    "view_ymin": 70567,
-    "view_xmax": 59545,
-    "view_ymax": 70847,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59324,
-        70672,
-        59394,
-        70743
-      ]
-    ]
-  },
-  {
-    "task_index": 126,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 59112,
-    "view_ymin": 71942,
-    "view_xmax": 59485,
-    "view_ymax": 72222,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        59268,
-        72049,
-        59331,
-        72115
-      ]
-    ]
-  },
-  {
-    "task_index": 127,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 52982,
     "view_ymin": 72209,
     "view_xmax": 53355,
@@ -2310,7 +2160,49 @@
     ]
   },
   {
-    "task_index": 128,
+    "task_index": 120,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52726,
+    "view_ymin": 65706,
+    "view_xmax": 53099,
+    "view_ymax": 65986,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52879,
+        65816,
+        52945,
+        65877
+      ]
+    ]
+  },
+  {
+    "task_index": 121,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52670,
+    "view_ymin": 67198,
+    "view_xmax": 53043,
+    "view_ymax": 67478,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52857,
+        67225,
+        52923,
+        67295
+      ],
+      [
+        52793,
+        67384,
+        52858,
+        67448
+      ]
+    ]
+  },
+  {
+    "task_index": 122,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 52588,
@@ -2324,6 +2216,114 @@
         71498,
         52809,
         71564
+      ]
+    ]
+  },
+  {
+    "task_index": 123,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52214,
+    "view_ymin": 77148,
+    "view_xmax": 52587,
+    "view_ymax": 77428,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52365,
+        77251,
+        52438,
+        77326
+      ]
+    ]
+  },
+  {
+    "task_index": 124,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 52150,
+    "view_ymin": 67161,
+    "view_xmax": 52523,
+    "view_ymax": 67441,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        52304,
+        67267,
+        52371,
+        67336
+      ]
+    ]
+  },
+  {
+    "task_index": 125,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 51852,
+    "view_ymin": 69731,
+    "view_xmax": 52225,
+    "view_ymax": 70011,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        51996,
+        69829,
+        52081,
+        69913
+      ]
+    ]
+  },
+  {
+    "task_index": 126,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 51662,
+    "view_ymin": 65340,
+    "view_xmax": 52035,
+    "view_ymax": 65620,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        51807,
+        65436,
+        51892,
+        65524
+      ]
+    ]
+  },
+  {
+    "task_index": 127,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 50250,
+    "view_ymin": 67424,
+    "view_xmax": 50623,
+    "view_ymax": 67704,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        50399,
+        67526,
+        50476,
+        67603
+      ]
+    ]
+  },
+  {
+    "task_index": 128,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 50168,
+    "view_ymin": 68996,
+    "view_xmax": 50541,
+    "view_ymax": 69276,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        50318,
+        69102,
+        50390,
+        69171
       ]
     ]
   },
@@ -2349,6 +2349,60 @@
     "task_index": 130,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 49742,
+    "view_ymin": 60087,
+    "view_xmax": 50115,
+    "view_ymax": 60367,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        49900,
+        60199,
+        49956,
+        60256
+      ]
+    ]
+  },
+  {
+    "task_index": 131,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 49702,
+    "view_ymin": 67300,
+    "view_xmax": 50075,
+    "view_ymax": 67580,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        49860,
+        67408,
+        49916,
+        67472
+      ]
+    ]
+  },
+  {
+    "task_index": 132,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 49644,
+    "view_ymin": 67487,
+    "view_xmax": 50017,
+    "view_ymax": 67767,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        49797,
+        67592,
+        49866,
+        67662
+      ]
+    ]
+  },
+  {
+    "task_index": 133,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 49568,
     "view_ymin": 75736,
     "view_xmax": 49941,
@@ -2364,74 +2418,20 @@
     ]
   },
   {
-    "task_index": 131,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 52214,
-    "view_ymin": 77148,
-    "view_xmax": 52587,
-    "view_ymax": 77428,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        52365,
-        77251,
-        52438,
-        77326
-      ]
-    ]
-  },
-  {
-    "task_index": 132,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 53458,
-    "view_ymin": 75480,
-    "view_xmax": 53831,
-    "view_ymax": 75760,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        53611,
-        75582,
-        53680,
-        75659
-      ]
-    ]
-  },
-  {
-    "task_index": 133,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 57950,
-    "view_ymin": 78830,
-    "view_xmax": 58323,
-    "view_ymax": 79110,
-    "region_name": "Initial",
-    "cell_list": [
-      [
-        58101,
-        78935,
-        58174,
-        79006
-      ]
-    ]
-  },
-  {
     "task_index": 134,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 58470,
-    "view_ymin": 82649,
-    "view_xmax": 58843,
-    "view_ymax": 82929,
+    "view_xmin": 49538,
+    "view_ymin": 80915,
+    "view_xmax": 49911,
+    "view_ymax": 81195,
     "region_name": "Initial",
     "cell_list": [
       [
-        58597,
-        82698,
-        58718,
-        82880
+        49692,
+        81025,
+        49759,
+        81086
       ]
     ]
   },
@@ -2439,17 +2439,17 @@
     "task_index": 135,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 58250,
-    "view_ymin": 84397,
-    "view_xmax": 58623,
-    "view_ymax": 84677,
+    "view_xmin": 51542,
+    "view_ymin": 83996,
+    "view_xmax": 51915,
+    "view_ymax": 84276,
     "region_name": "Initial",
     "cell_list": [
       [
-        58400,
-        84498,
-        58473,
-        84577
+        51692,
+        84101,
+        51765,
+        84171
       ]
     ]
   },
@@ -2457,17 +2457,17 @@
     "task_index": 136,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 57416,
-    "view_ymin": 83532,
-    "view_xmax": 57789,
-    "view_ymax": 83812,
+    "view_xmin": 51942,
+    "view_ymin": 83318,
+    "view_xmax": 52315,
+    "view_ymax": 83598,
     "region_name": "Initial",
     "cell_list": [
       [
-        57571,
-        83638,
-        57636,
-        83706
+        52105,
+        83432,
+        52153,
+        83484
       ]
     ]
   },
@@ -2493,17 +2493,17 @@
     "task_index": 138,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 51942,
-    "view_ymin": 83318,
-    "view_xmax": 52315,
-    "view_ymax": 83598,
+    "view_xmin": 57416,
+    "view_ymin": 83532,
+    "view_xmax": 57789,
+    "view_ymax": 83812,
     "region_name": "Initial",
     "cell_list": [
       [
-        52105,
-        83432,
-        52153,
-        83484
+        57571,
+        83638,
+        57636,
+        83706
       ]
     ]
   },
@@ -2511,17 +2511,17 @@
     "task_index": 139,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 51542,
-    "view_ymin": 83996,
-    "view_xmax": 51915,
-    "view_ymax": 84276,
+    "view_xmin": 58250,
+    "view_ymin": 84397,
+    "view_xmax": 58623,
+    "view_ymax": 84677,
     "region_name": "Initial",
     "cell_list": [
       [
-        51692,
-        84101,
-        51765,
-        84171
+        58400,
+        84498,
+        58473,
+        84577
       ]
     ]
   },
@@ -2529,40 +2529,22 @@
     "task_index": 140,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 49538,
-    "view_ymin": 80915,
-    "view_xmax": 49911,
-    "view_ymax": 81195,
+    "view_xmin": 58470,
+    "view_ymin": 82649,
+    "view_xmax": 58843,
+    "view_ymax": 82929,
     "region_name": "Initial",
     "cell_list": [
       [
-        49692,
-        81025,
-        49759,
-        81086
+        58597,
+        82698,
+        58718,
+        82880
       ]
     ]
   },
   {
     "task_index": 141,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 63416,
-    "view_ymin": 49428,
-    "view_xmax": 63789,
-    "view_ymax": 49708,
-    "region_name": "Extra_1",
-    "cell_list": [
-      [
-        63570,
-        49539,
-        63634,
-        49598
-      ]
-    ]
-  },
-  {
-    "task_index": 142,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 63380,
@@ -2576,6 +2558,24 @@
         58238,
         63600,
         58304
+      ]
+    ]
+  },
+  {
+    "task_index": 142,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 63416,
+    "view_ymin": 49428,
+    "view_xmax": 63789,
+    "view_ymax": 49708,
+    "region_name": "Extra_1",
+    "cell_list": [
+      [
+        63570,
+        49539,
+        63634,
+        49598
       ]
     ]
   },
@@ -2733,24 +2733,6 @@
     "task_index": 151,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 64382,
-    "view_ymin": 76662,
-    "view_xmax": 64755,
-    "view_ymax": 76942,
-    "region_name": "Extra_5",
-    "cell_list": [
-      [
-        64539,
-        76769,
-        64600,
-        76835
-      ]
-    ]
-  },
-  {
-    "task_index": 152,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 64390,
     "view_ymin": 77606,
     "view_xmax": 64763,
@@ -2762,6 +2744,24 @@
         77712,
         64611,
         77780
+      ]
+    ]
+  },
+  {
+    "task_index": 152,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 64382,
+    "view_ymin": 76662,
+    "view_xmax": 64755,
+    "view_ymax": 76942,
+    "region_name": "Extra_5",
+    "cell_list": [
+      [
+        64539,
+        76769,
+        64600,
+        76835
       ]
     ]
   },
@@ -2841,24 +2841,6 @@
     "task_index": 157,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 65110,
-    "view_ymin": 26752,
-    "view_xmax": 65483,
-    "view_ymax": 27032,
-    "region_name": "Extra_8",
-    "cell_list": [
-      [
-        65256,
-        26856,
-        65336,
-        26928
-      ]
-    ]
-  },
-  {
-    "task_index": 158,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 65104,
     "view_ymin": 38124,
     "view_xmax": 65477,
@@ -2870,6 +2852,24 @@
         38229,
         65329,
         38300
+      ]
+    ]
+  },
+  {
+    "task_index": 158,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 65110,
+    "view_ymin": 26752,
+    "view_xmax": 65483,
+    "view_ymax": 27032,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        65256,
+        26856,
+        65336,
+        26928
       ]
     ]
   },
@@ -2949,24 +2949,6 @@
     "task_index": 163,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 65496,
-    "view_ymin": 64033,
-    "view_xmax": 65869,
-    "view_ymax": 64313,
-    "region_name": "Extra_10",
-    "cell_list": [
-      [
-        65650,
-        64135,
-        65714,
-        64212
-      ]
-    ]
-  },
-  {
-    "task_index": 164,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 65488,
     "view_ymin": 69059,
     "view_xmax": 65861,
@@ -2978,6 +2960,24 @@
         69156,
         65730,
         69243
+      ]
+    ]
+  },
+  {
+    "task_index": 164,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 65496,
+    "view_ymin": 64033,
+    "view_xmax": 65869,
+    "view_ymax": 64313,
+    "region_name": "Extra_10",
+    "cell_list": [
+      [
+        65650,
+        64135,
+        65714,
+        64212
       ]
     ]
   },
@@ -3387,6 +3387,24 @@
     "task_index": 187,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 48946,
+    "view_ymin": 56935,
+    "view_xmax": 49319,
+    "view_ymax": 57215,
+    "region_name": "Extra_21",
+    "cell_list": [
+      [
+        49098,
+        57041,
+        49166,
+        57110
+      ]
+    ]
+  },
+  {
+    "task_index": 188,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 48816,
     "view_ymin": 52981,
     "view_xmax": 49189,
@@ -3402,7 +3420,7 @@
     ]
   },
   {
-    "task_index": 188,
+    "task_index": 189,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 48806,
@@ -3416,24 +3434,6 @@
         51185,
         49032,
         51264
-      ]
-    ]
-  },
-  {
-    "task_index": 189,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 48946,
-    "view_ymin": 56935,
-    "view_xmax": 49319,
-    "view_ymax": 57215,
-    "region_name": "Extra_21",
-    "cell_list": [
-      [
-        49098,
-        57041,
-        49166,
-        57110
       ]
     ]
   },
@@ -3801,24 +3801,6 @@
     "task_index": 210,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 47574,
-    "view_ymin": 48173,
-    "view_xmax": 47947,
-    "view_ymax": 48453,
-    "region_name": "Extra_30",
-    "cell_list": [
-      [
-        47727,
-        48278,
-        47795,
-        48349
-      ]
-    ]
-  },
-  {
-    "task_index": 211,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 47598,
     "view_ymin": 59310,
     "view_xmax": 47971,
@@ -3834,25 +3816,25 @@
     ]
   },
   {
-    "task_index": 212,
+    "task_index": 211,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 47536,
-    "view_ymin": 75342,
-    "view_xmax": 47909,
-    "view_ymax": 75622,
+    "view_xmin": 47574,
+    "view_ymin": 48173,
+    "view_xmax": 47947,
+    "view_ymax": 48453,
     "region_name": "Extra_30",
     "cell_list": [
       [
-        47689,
-        75449,
-        47757,
-        75515
+        47727,
+        48278,
+        47795,
+        48349
       ]
     ]
   },
   {
-    "task_index": 213,
+    "task_index": 212,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 47526,
@@ -3870,25 +3852,25 @@
     ]
   },
   {
-    "task_index": 214,
+    "task_index": 213,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 47324,
-    "view_ymin": 29185,
-    "view_xmax": 47697,
-    "view_ymax": 29465,
-    "region_name": "Extra_31",
+    "view_xmin": 47536,
+    "view_ymin": 75342,
+    "view_xmax": 47909,
+    "view_ymax": 75622,
+    "region_name": "Extra_30",
     "cell_list": [
       [
-        47469,
-        29280,
-        47553,
-        29370
+        47689,
+        75449,
+        47757,
+        75515
       ]
     ]
   },
   {
-    "task_index": 215,
+    "task_index": 214,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 47292,
@@ -3906,25 +3888,25 @@
     ]
   },
   {
-    "task_index": 216,
+    "task_index": 215,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 47316,
-    "view_ymin": 47315,
-    "view_xmax": 47689,
-    "view_ymax": 47595,
+    "view_xmin": 47324,
+    "view_ymin": 29185,
+    "view_xmax": 47697,
+    "view_ymax": 29465,
     "region_name": "Extra_31",
     "cell_list": [
       [
-        47468,
-        47420,
-        47539,
-        47490
+        47469,
+        29280,
+        47553,
+        29370
       ]
     ]
   },
   {
-    "task_index": 217,
+    "task_index": 216,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 47436,
@@ -3938,6 +3920,24 @@
         52486,
         47662,
         52559
+      ]
+    ]
+  },
+  {
+    "task_index": 217,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 47316,
+    "view_ymin": 47315,
+    "view_xmax": 47689,
+    "view_ymax": 47595,
+    "region_name": "Extra_31",
+    "cell_list": [
+      [
+        47468,
+        47420,
+        47539,
+        47490
       ]
     ]
   },
@@ -4071,24 +4071,6 @@
     "task_index": 225,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 46194,
-    "view_ymin": 24980,
-    "view_xmax": 46567,
-    "view_ymax": 25260,
-    "region_name": "Extra_36",
-    "cell_list": [
-      [
-        46352,
-        25090,
-        46411,
-        25151
-      ]
-    ]
-  },
-  {
-    "task_index": 226,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 46134,
     "view_ymin": 35338,
     "view_xmax": 46507,
@@ -4100,6 +4082,24 @@
         35447,
         46354,
         35509
+      ]
+    ]
+  },
+  {
+    "task_index": 226,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 46194,
+    "view_ymin": 24980,
+    "view_xmax": 46567,
+    "view_ymax": 25260,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        46352,
+        25090,
+        46411,
+        25151
       ]
     ]
   },
@@ -4179,24 +4179,6 @@
     "task_index": 231,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 45936,
-    "view_ymin": 64446,
-    "view_xmax": 46309,
-    "view_ymax": 64726,
-    "region_name": "Extra_37",
-    "cell_list": [
-      [
-        46079,
-        64541,
-        46168,
-        64632
-      ]
-    ]
-  },
-  {
-    "task_index": 232,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 45932,
     "view_ymin": 65351,
     "view_xmax": 46305,
@@ -4208,6 +4190,24 @@
         65462,
         46145,
         65520
+      ]
+    ]
+  },
+  {
+    "task_index": 232,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 45936,
+    "view_ymin": 64446,
+    "view_xmax": 46309,
+    "view_ymax": 64726,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        46079,
+        64541,
+        46168,
+        64632
       ]
     ]
   },
@@ -4485,17 +4485,17 @@
     "task_index": 248,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 44582,
-    "view_ymin": 29557,
-    "view_xmax": 44955,
-    "view_ymax": 29837,
+    "view_xmin": 44742,
+    "view_ymin": 32285,
+    "view_xmax": 45115,
+    "view_ymax": 32565,
     "region_name": "Extra_46",
     "cell_list": [
       [
-        44741,
-        29677,
-        44798,
-        29718
+        44889,
+        32394,
+        44967,
+        32456
       ]
     ]
   },
@@ -4521,17 +4521,17 @@
     "task_index": 250,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 44742,
-    "view_ymin": 32285,
-    "view_xmax": 45115,
-    "view_ymax": 32565,
+    "view_xmin": 44582,
+    "view_ymin": 29557,
+    "view_xmax": 44955,
+    "view_ymax": 29837,
     "region_name": "Extra_46",
     "cell_list": [
       [
-        44889,
-        32394,
-        44967,
-        32456
+        44741,
+        29677,
+        44798,
+        29718
       ]
     ]
   },
@@ -4593,17 +4593,17 @@
     "task_index": 254,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 44276,
-    "view_ymin": 21570,
-    "view_xmax": 44649,
-    "view_ymax": 21850,
+    "view_xmin": 44202,
+    "view_ymin": 31855,
+    "view_xmax": 44575,
+    "view_ymax": 32135,
     "region_name": "Extra_48",
     "cell_list": [
       [
-        44420,
-        21657,
-        44507,
-        21764
+        44354,
+        31963,
+        44422,
+        32028
       ]
     ]
   },
@@ -4629,17 +4629,17 @@
     "task_index": 256,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 44202,
-    "view_ymin": 31855,
-    "view_xmax": 44575,
-    "view_ymax": 32135,
+    "view_xmin": 44276,
+    "view_ymin": 21570,
+    "view_xmax": 44649,
+    "view_ymax": 21850,
     "region_name": "Extra_48",
     "cell_list": [
       [
-        44354,
-        31963,
-        44422,
-        32028
+        44420,
+        21657,
+        44507,
+        21764
       ]
     ]
   },
@@ -5145,6 +5145,24 @@
     "task_index": 284,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 43772,
+    "view_ymin": 55209,
+    "view_xmax": 44145,
+    "view_ymax": 55489,
+    "region_name": "Extra_66",
+    "cell_list": [
+      [
+        43926,
+        55318,
+        43992,
+        55380
+      ]
+    ]
+  },
+  {
+    "task_index": 285,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 43716,
     "view_ymin": 53151,
     "view_xmax": 44089,
@@ -5160,7 +5178,7 @@
     ]
   },
   {
-    "task_index": 285,
+    "task_index": 286,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 43666,
@@ -5174,24 +5192,6 @@
         54679,
         43882,
         54740
-      ]
-    ]
-  },
-  {
-    "task_index": 286,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 43772,
-    "view_ymin": 55209,
-    "view_xmax": 44145,
-    "view_ymax": 55489,
-    "region_name": "Extra_66",
-    "cell_list": [
-      [
-        43926,
-        55318,
-        43992,
-        55380
       ]
     ]
   },
@@ -5565,24 +5565,6 @@
     "task_index": 307,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 42070,
-    "view_ymin": 46801,
-    "view_xmax": 42443,
-    "view_ymax": 47081,
-    "region_name": "Extra_72",
-    "cell_list": [
-      [
-        42230,
-        46915,
-        42285,
-        46967
-      ]
-    ]
-  },
-  {
-    "task_index": 308,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 42108,
     "view_ymin": 55850,
     "view_xmax": 42481,
@@ -5594,6 +5576,24 @@
         55954,
         42331,
         56026
+      ]
+    ]
+  },
+  {
+    "task_index": 308,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 42070,
+    "view_ymin": 46801,
+    "view_xmax": 42443,
+    "view_ymax": 47081,
+    "region_name": "Extra_72",
+    "cell_list": [
+      [
+        42230,
+        46915,
+        42285,
+        46967
       ]
     ]
   },
@@ -5655,17 +5655,23 @@
     "task_index": 312,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 41936,
-    "view_ymin": 66778,
-    "view_xmax": 42309,
-    "view_ymax": 67058,
+    "view_xmin": 41840,
+    "view_ymin": 74367,
+    "view_xmax": 42213,
+    "view_ymax": 74647,
     "region_name": "Extra_73",
     "cell_list": [
       [
-        42094,
-        66888,
-        42153,
-        66948
+        42086,
+        74462,
+        42142,
+        74511
+      ],
+      [
+        41910,
+        74504,
+        41969,
+        74554
       ]
     ]
   },
@@ -5691,46 +5697,22 @@
     "task_index": 314,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 41840,
-    "view_ymin": 74367,
-    "view_xmax": 42213,
-    "view_ymax": 74647,
+    "view_xmin": 41936,
+    "view_ymin": 66778,
+    "view_xmax": 42309,
+    "view_ymax": 67058,
     "region_name": "Extra_73",
     "cell_list": [
       [
-        42086,
-        74462,
-        42142,
-        74511
-      ],
-      [
-        41910,
-        74504,
-        41969,
-        74554
+        42094,
+        66888,
+        42153,
+        66948
       ]
     ]
   },
   {
     "task_index": 315,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 41848,
-    "view_ymin": 81815,
-    "view_xmax": 42221,
-    "view_ymax": 82095,
-    "region_name": "Extra_73",
-    "cell_list": [
-      [
-        42000,
-        81920,
-        42068,
-        81991
-      ]
-    ]
-  },
-  {
-    "task_index": 316,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 41990,
@@ -5744,6 +5726,24 @@
         91919,
         42208,
         91977
+      ]
+    ]
+  },
+  {
+    "task_index": 316,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 41848,
+    "view_ymin": 81815,
+    "view_xmax": 42221,
+    "view_ymax": 82095,
+    "region_name": "Extra_73",
+    "cell_list": [
+      [
+        42000,
+        81920,
+        42068,
+        81991
       ]
     ]
   },
@@ -5907,6 +5907,24 @@
     "task_index": 325,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 41022,
+    "view_ymin": 36445,
+    "view_xmax": 41395,
+    "view_ymax": 36725,
+    "region_name": "Extra_77",
+    "cell_list": [
+      [
+        41163,
+        36551,
+        41256,
+        36619
+      ]
+    ]
+  },
+  {
+    "task_index": 326,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 40954,
     "view_ymin": 25769,
     "view_xmax": 41327,
@@ -5930,24 +5948,6 @@
         25960,
         41186,
         25969
-      ]
-    ]
-  },
-  {
-    "task_index": 326,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 41022,
-    "view_ymin": 36445,
-    "view_xmax": 41395,
-    "view_ymax": 36725,
-    "region_name": "Extra_77",
-    "cell_list": [
-      [
-        41163,
-        36551,
-        41256,
-        36619
       ]
     ]
   },
@@ -6123,24 +6123,6 @@
     "task_index": 336,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 40510,
-    "view_ymin": 48323,
-    "view_xmax": 40883,
-    "view_ymax": 48603,
-    "region_name": "Extra_79",
-    "cell_list": [
-      [
-        40661,
-        48429,
-        40734,
-        48498
-      ]
-    ]
-  },
-  {
-    "task_index": 337,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 40702,
     "view_ymin": 52071,
     "view_xmax": 41075,
@@ -6152,6 +6134,24 @@
         52179,
         40926,
         52244
+      ]
+    ]
+  },
+  {
+    "task_index": 337,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 40510,
+    "view_ymin": 48323,
+    "view_xmax": 40883,
+    "view_ymax": 48603,
+    "region_name": "Extra_79",
+    "cell_list": [
+      [
+        40661,
+        48429,
+        40734,
+        48498
       ]
     ]
   },
@@ -6177,24 +6177,6 @@
     "task_index": 339,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 40508,
-    "view_ymin": 90211,
-    "view_xmax": 40881,
-    "view_ymax": 90491,
-    "region_name": "Extra_79",
-    "cell_list": [
-      [
-        40667,
-        90325,
-        40723,
-        90378
-      ]
-    ]
-  },
-  {
-    "task_index": 340,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 40540,
     "view_ymin": 90520,
     "view_xmax": 40913,
@@ -6206,6 +6188,24 @@
         90625,
         40762,
         90696
+      ]
+    ]
+  },
+  {
+    "task_index": 340,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 40508,
+    "view_ymin": 90211,
+    "view_xmax": 40881,
+    "view_ymax": 90491,
+    "region_name": "Extra_79",
+    "cell_list": [
+      [
+        40667,
+        90325,
+        40723,
+        90378
       ]
     ]
   },
@@ -6249,40 +6249,22 @@
     "task_index": 343,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 40470,
-    "view_ymin": 66610,
-    "view_xmax": 40843,
-    "view_ymax": 66890,
+    "view_xmin": 40366,
+    "view_ymin": 68564,
+    "view_xmax": 40739,
+    "view_ymax": 68844,
     "region_name": "Extra_80",
     "cell_list": [
       [
-        40624,
-        66714,
-        40691,
-        66786
+        40519,
+        68672,
+        40585,
+        68736
       ]
     ]
   },
   {
     "task_index": 344,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 40450,
-    "view_ymin": 68949,
-    "view_xmax": 40823,
-    "view_ymax": 69229,
-    "region_name": "Extra_80",
-    "cell_list": [
-      [
-        40600,
-        69052,
-        40675,
-        69127
-      ]
-    ]
-  },
-  {
-    "task_index": 345,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 40412,
@@ -6300,20 +6282,38 @@
     ]
   },
   {
-    "task_index": 346,
+    "task_index": 345,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 40366,
-    "view_ymin": 68564,
-    "view_xmax": 40739,
-    "view_ymax": 68844,
+    "view_xmin": 40450,
+    "view_ymin": 68949,
+    "view_xmax": 40823,
+    "view_ymax": 69229,
     "region_name": "Extra_80",
     "cell_list": [
       [
-        40519,
-        68672,
-        40585,
-        68736
+        40600,
+        69052,
+        40675,
+        69127
+      ]
+    ]
+  },
+  {
+    "task_index": 346,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 40470,
+    "view_ymin": 66610,
+    "view_xmax": 40843,
+    "view_ymax": 66890,
+    "region_name": "Extra_80",
+    "cell_list": [
+      [
+        40624,
+        66714,
+        40691,
+        66786
       ]
     ]
   },
@@ -6339,24 +6339,6 @@
     "task_index": 348,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 40166,
-    "view_ymin": 27701,
-    "view_xmax": 40539,
-    "view_ymax": 27981,
-    "region_name": "Extra_81",
-    "cell_list": [
-      [
-        40313,
-        27803,
-        40393,
-        27880
-      ]
-    ]
-  },
-  {
-    "task_index": 349,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 40194,
     "view_ymin": 29872,
     "view_xmax": 40567,
@@ -6368,6 +6350,24 @@
         29976,
         40416,
         30049
+      ]
+    ]
+  },
+  {
+    "task_index": 349,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 40166,
+    "view_ymin": 27701,
+    "view_xmax": 40539,
+    "view_ymax": 27981,
+    "region_name": "Extra_81",
+    "cell_list": [
+      [
+        40313,
+        27803,
+        40393,
+        27880
       ]
     ]
   },
@@ -6393,24 +6393,6 @@
     "task_index": 351,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 39924,
-    "view_ymin": 23008,
-    "view_xmax": 40297,
-    "view_ymax": 23288,
-    "region_name": "Extra_82",
-    "cell_list": [
-      [
-        40077,
-        23119,
-        40146,
-        23178
-      ]
-    ]
-  },
-  {
-    "task_index": 352,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 40022,
     "view_ymin": 25536,
     "view_xmax": 40395,
@@ -6422,6 +6404,24 @@
         25643,
         40245,
         25709
+      ]
+    ]
+  },
+  {
+    "task_index": 352,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 39924,
+    "view_ymin": 23008,
+    "view_xmax": 40297,
+    "view_ymax": 23288,
+    "region_name": "Extra_82",
+    "cell_list": [
+      [
+        40077,
+        23119,
+        40146,
+        23178
       ]
     ]
   },
@@ -6471,24 +6471,6 @@
     "task_index": 355,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 39896,
-    "view_ymin": 65424,
-    "view_xmax": 40269,
-    "view_ymax": 65704,
-    "region_name": "Extra_82",
-    "cell_list": [
-      [
-        40050,
-        65532,
-        40115,
-        65597
-      ]
-    ]
-  },
-  {
-    "task_index": 356,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 40014,
     "view_ymin": 69443,
     "view_xmax": 40387,
@@ -6504,7 +6486,7 @@
     ]
   },
   {
-    "task_index": 357,
+    "task_index": 356,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 39996,
@@ -6518,6 +6500,24 @@
         72042,
         40229,
         72109
+      ]
+    ]
+  },
+  {
+    "task_index": 357,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 39896,
+    "view_ymin": 65424,
+    "view_xmax": 40269,
+    "view_ymax": 65704,
+    "region_name": "Extra_82",
+    "cell_list": [
+      [
+        40050,
+        65532,
+        40115,
+        65597
       ]
     ]
   },
@@ -6627,6 +6627,24 @@
     "task_index": 363,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 39186,
+    "view_ymin": 59320,
+    "view_xmax": 39559,
+    "view_ymax": 59600,
+    "region_name": "Extra_85",
+    "cell_list": [
+      [
+        39338,
+        59426,
+        39408,
+        59495
+      ]
+    ]
+  },
+  {
+    "task_index": 364,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 39190,
     "view_ymin": 43697,
     "view_xmax": 39563,
@@ -6642,7 +6660,7 @@
     ]
   },
   {
-    "task_index": 364,
+    "task_index": 365,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 39196,
@@ -6660,43 +6678,7 @@
     ]
   },
   {
-    "task_index": 365,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 39186,
-    "view_ymin": 59320,
-    "view_xmax": 39559,
-    "view_ymax": 59600,
-    "region_name": "Extra_85",
-    "cell_list": [
-      [
-        39338,
-        59426,
-        39408,
-        59495
-      ]
-    ]
-  },
-  {
     "task_index": 366,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 39166,
-    "view_ymin": 61842,
-    "view_xmax": 39539,
-    "view_ymax": 62122,
-    "region_name": "Extra_85",
-    "cell_list": [
-      [
-        39316,
-        61943,
-        39391,
-        62021
-      ]
-    ]
-  },
-  {
-    "task_index": 367,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 39218,
@@ -6710,6 +6692,24 @@
         63569,
         39435,
         63633
+      ]
+    ]
+  },
+  {
+    "task_index": 367,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 39166,
+    "view_ymin": 61842,
+    "view_xmax": 39539,
+    "view_ymax": 62122,
+    "region_name": "Extra_85",
+    "cell_list": [
+      [
+        39316,
+        61943,
+        39391,
+        62021
       ]
     ]
   },
@@ -6753,6 +6753,24 @@
     "task_index": 370,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 39136,
+    "view_ymin": 36935,
+    "view_xmax": 39509,
+    "view_ymax": 37215,
+    "region_name": "Extra_86",
+    "cell_list": [
+      [
+        39292,
+        37047,
+        39352,
+        37104
+      ]
+    ]
+  },
+  {
+    "task_index": 371,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 39088,
     "view_ymin": 20646,
     "view_xmax": 39461,
@@ -6774,7 +6792,7 @@
     ]
   },
   {
-    "task_index": 371,
+    "task_index": 372,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 39022,
@@ -6792,25 +6810,25 @@
     ]
   },
   {
-    "task_index": 372,
+    "task_index": 373,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 39136,
-    "view_ymin": 36935,
-    "view_xmax": 39509,
-    "view_ymax": 37215,
+    "view_xmin": 38960,
+    "view_ymin": 54339,
+    "view_xmax": 39333,
+    "view_ymax": 54619,
     "region_name": "Extra_86",
     "cell_list": [
       [
-        39292,
-        37047,
-        39352,
-        37104
+        39114,
+        54447,
+        39181,
+        54511
       ]
     ]
   },
   {
-    "task_index": 373,
+    "task_index": 374,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 38962,
@@ -6828,7 +6846,7 @@
     ]
   },
   {
-    "task_index": 374,
+    "task_index": 375,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 38986,
@@ -6846,7 +6864,7 @@
     ]
   },
   {
-    "task_index": 375,
+    "task_index": 376,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 39058,
@@ -6860,24 +6878,6 @@
         48441,
         39277,
         48502
-      ]
-    ]
-  },
-  {
-    "task_index": 376,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 38960,
-    "view_ymin": 54339,
-    "view_xmax": 39333,
-    "view_ymax": 54619,
-    "region_name": "Extra_86",
-    "cell_list": [
-      [
-        39114,
-        54447,
-        39181,
-        54511
       ]
     ]
   },
@@ -7029,17 +7029,17 @@
     "task_index": 385,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 38764,
-    "view_ymin": 60401,
-    "view_xmax": 39137,
-    "view_ymax": 60681,
+    "view_xmin": 38896,
+    "view_ymin": 67975,
+    "view_xmax": 39269,
+    "view_ymax": 68255,
     "region_name": "Extra_87",
     "cell_list": [
       [
-        38922,
-        60519,
-        38978,
-        60564
+        39051,
+        68080,
+        39116,
+        68151
       ]
     ]
   },
@@ -7065,17 +7065,17 @@
     "task_index": 387,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 38896,
-    "view_ymin": 67975,
-    "view_xmax": 39269,
-    "view_ymax": 68255,
+    "view_xmin": 38764,
+    "view_ymin": 60401,
+    "view_xmax": 39137,
+    "view_ymax": 60681,
     "region_name": "Extra_87",
     "cell_list": [
       [
-        39051,
-        68080,
-        39116,
-        68151
+        38922,
+        60519,
+        38978,
+        60564
       ]
     ]
   },
@@ -7119,24 +7119,6 @@
     "task_index": 390,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 38592,
-    "view_ymin": 47757,
-    "view_xmax": 38965,
-    "view_ymax": 48037,
-    "region_name": "Extra_88",
-    "cell_list": [
-      [
-        38763,
-        47883,
-        38796,
-        47912
-      ]
-    ]
-  },
-  {
-    "task_index": 391,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 38698,
     "view_ymin": 50121,
     "view_xmax": 39071,
@@ -7148,6 +7130,24 @@
         50226,
         38920,
         50296
+      ]
+    ]
+  },
+  {
+    "task_index": 391,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 38592,
+    "view_ymin": 47757,
+    "view_xmax": 38965,
+    "view_ymax": 48037,
+    "region_name": "Extra_88",
+    "cell_list": [
+      [
+        38763,
+        47883,
+        38796,
+        47912
       ]
     ]
   },
@@ -7245,24 +7245,6 @@
     "task_index": 397,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 38224,
-    "view_ymin": 28265,
-    "view_xmax": 38597,
-    "view_ymax": 28545,
-    "region_name": "Extra_90",
-    "cell_list": [
-      [
-        38376,
-        28375,
-        38445,
-        28436
-      ]
-    ]
-  },
-  {
-    "task_index": 398,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 38030,
     "view_ymin": 32066,
     "view_xmax": 38403,
@@ -7280,6 +7262,24 @@
         32265,
         38131,
         32327
+      ]
+    ]
+  },
+  {
+    "task_index": 398,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 38224,
+    "view_ymin": 28265,
+    "view_xmax": 38597,
+    "view_ymax": 28545,
+    "region_name": "Extra_90",
+    "cell_list": [
+      [
+        38376,
+        28375,
+        38445,
+        28436
       ]
     ]
   },
@@ -7401,6 +7401,24 @@
     "task_index": 405,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 37626,
+    "view_ymin": 39206,
+    "view_xmax": 37999,
+    "view_ymax": 39486,
+    "region_name": "Extra_92",
+    "cell_list": [
+      [
+        37777,
+        39308,
+        37849,
+        39384
+      ]
+    ]
+  },
+  {
+    "task_index": 406,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 37702,
     "view_ymin": 23946,
     "view_xmax": 38075,
@@ -7416,43 +7434,7 @@
     ]
   },
   {
-    "task_index": 406,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 37760,
-    "view_ymin": 28637,
-    "view_xmax": 38133,
-    "view_ymax": 28917,
-    "region_name": "Extra_92",
-    "cell_list": [
-      [
-        37910,
-        28744,
-        37982,
-        28810
-      ]
-    ]
-  },
-  {
     "task_index": 407,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 37796,
-    "view_ymin": 29664,
-    "view_xmax": 38169,
-    "view_ymax": 29944,
-    "region_name": "Extra_92",
-    "cell_list": [
-      [
-        37956,
-        29780,
-        38008,
-        29829
-      ]
-    ]
-  },
-  {
-    "task_index": 408,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 37728,
@@ -7470,20 +7452,38 @@
     ]
   },
   {
-    "task_index": 409,
+    "task_index": 408,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 37626,
-    "view_ymin": 39206,
-    "view_xmax": 37999,
-    "view_ymax": 39486,
+    "view_xmin": 37760,
+    "view_ymin": 28637,
+    "view_xmax": 38133,
+    "view_ymax": 28917,
     "region_name": "Extra_92",
     "cell_list": [
       [
-        37777,
-        39308,
-        37849,
-        39384
+        37910,
+        28744,
+        37982,
+        28810
+      ]
+    ]
+  },
+  {
+    "task_index": 409,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 37796,
+    "view_ymin": 29664,
+    "view_xmax": 38169,
+    "view_ymax": 29944,
+    "region_name": "Extra_92",
+    "cell_list": [
+      [
+        37956,
+        29780,
+        38008,
+        29829
       ]
     ]
   },
@@ -7599,24 +7599,6 @@
     "task_index": 416,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 36980,
-    "view_ymin": 21198,
-    "view_xmax": 37353,
-    "view_ymax": 21478,
-    "region_name": "Extra_95",
-    "cell_list": [
-      [
-        37141,
-        21308,
-        37194,
-        21368
-      ]
-    ]
-  },
-  {
-    "task_index": 417,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 36930,
     "view_ymin": 32344,
     "view_xmax": 37303,
@@ -7628,6 +7610,24 @@
         32451,
         37154,
         32517
+      ]
+    ]
+  },
+  {
+    "task_index": 417,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36980,
+    "view_ymin": 21198,
+    "view_xmax": 37353,
+    "view_ymax": 21478,
+    "region_name": "Extra_95",
+    "cell_list": [
+      [
+        37141,
+        21308,
+        37194,
+        21368
       ]
     ]
   },
@@ -7725,24 +7725,6 @@
     "task_index": 423,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 36718,
-    "view_ymin": 45617,
-    "view_xmax": 37091,
-    "view_ymax": 45897,
-    "region_name": "Extra_96",
-    "cell_list": [
-      [
-        36871,
-        45730,
-        36940,
-        45785
-      ]
-    ]
-  },
-  {
-    "task_index": 424,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 36712,
     "view_ymin": 57667,
     "view_xmax": 37085,
@@ -7754,6 +7736,24 @@
         57772,
         36936,
         57843
+      ]
+    ]
+  },
+  {
+    "task_index": 424,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36718,
+    "view_ymin": 45617,
+    "view_xmax": 37091,
+    "view_ymax": 45897,
+    "region_name": "Extra_96",
+    "cell_list": [
+      [
+        36871,
+        45730,
+        36940,
+        45785
       ]
     ]
   },
@@ -7779,24 +7779,6 @@
     "task_index": 426,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 36648,
-    "view_ymin": 24652,
-    "view_xmax": 37021,
-    "view_ymax": 24932,
-    "region_name": "Extra_97",
-    "cell_list": [
-      [
-        36800,
-        24759,
-        36869,
-        24826
-      ]
-    ]
-  },
-  {
-    "task_index": 427,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 36640,
     "view_ymin": 32436,
     "view_xmax": 37013,
@@ -7814,6 +7796,24 @@
         32486,
         36859,
         32540
+      ]
+    ]
+  },
+  {
+    "task_index": 427,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36648,
+    "view_ymin": 24652,
+    "view_xmax": 37021,
+    "view_ymax": 24932,
+    "region_name": "Extra_97",
+    "cell_list": [
+      [
+        36800,
+        24759,
+        36869,
+        24826
       ]
     ]
   },
@@ -7893,24 +7893,6 @@
     "task_index": 432,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 36336,
-    "view_ymin": 33609,
-    "view_xmax": 36709,
-    "view_ymax": 33889,
-    "region_name": "Extra_98",
-    "cell_list": [
-      [
-        36486,
-        33718,
-        36558,
-        33781
-      ]
-    ]
-  },
-  {
-    "task_index": 433,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 36362,
     "view_ymin": 36478,
     "view_xmax": 36735,
@@ -7922,6 +7904,24 @@
         36583,
         36584,
         36654
+      ]
+    ]
+  },
+  {
+    "task_index": 433,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36336,
+    "view_ymin": 33609,
+    "view_xmax": 36709,
+    "view_ymax": 33889,
+    "region_name": "Extra_98",
+    "cell_list": [
+      [
+        36486,
+        33718,
+        36558,
+        33781
       ]
     ]
   },
@@ -7947,6 +7947,24 @@
     "task_index": 435,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 36314,
+    "view_ymin": 49564,
+    "view_xmax": 36687,
+    "view_ymax": 49844,
+    "region_name": "Extra_98",
+    "cell_list": [
+      [
+        36476,
+        49681,
+        36524,
+        49728
+      ]
+    ]
+  },
+  {
+    "task_index": 436,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 36426,
     "view_ymin": 45456,
     "view_xmax": 36799,
@@ -7968,61 +7986,7 @@
     ]
   },
   {
-    "task_index": 436,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 36314,
-    "view_ymin": 49564,
-    "view_xmax": 36687,
-    "view_ymax": 49844,
-    "region_name": "Extra_98",
-    "cell_list": [
-      [
-        36476,
-        49681,
-        36524,
-        49728
-      ]
-    ]
-  },
-  {
     "task_index": 437,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 36378,
-    "view_ymin": 62671,
-    "view_xmax": 36751,
-    "view_ymax": 62951,
-    "region_name": "Extra_98",
-    "cell_list": [
-      [
-        36532,
-        62781,
-        36598,
-        62841
-      ]
-    ]
-  },
-  {
-    "task_index": 438,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 36288,
-    "view_ymin": 63261,
-    "view_xmax": 36661,
-    "view_ymax": 63541,
-    "region_name": "Extra_98",
-    "cell_list": [
-      [
-        36444,
-        63374,
-        36507,
-        63429
-      ]
-    ]
-  },
-  {
-    "task_index": 439,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 36414,
@@ -8042,6 +8006,42 @@
         69403,
         36528,
         69482
+      ]
+    ]
+  },
+  {
+    "task_index": 438,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36378,
+    "view_ymin": 62671,
+    "view_xmax": 36751,
+    "view_ymax": 62951,
+    "region_name": "Extra_98",
+    "cell_list": [
+      [
+        36532,
+        62781,
+        36598,
+        62841
+      ]
+    ]
+  },
+  {
+    "task_index": 439,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36288,
+    "view_ymin": 63261,
+    "view_xmax": 36661,
+    "view_ymax": 63541,
+    "region_name": "Extra_98",
+    "cell_list": [
+      [
+        36444,
+        63374,
+        36507,
+        63429
       ]
     ]
   },
@@ -8085,24 +8085,6 @@
     "task_index": 442,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 36182,
-    "view_ymin": 82966,
-    "view_xmax": 36555,
-    "view_ymax": 83246,
-    "region_name": "Extra_99",
-    "cell_list": [
-      [
-        36325,
-        83063,
-        36411,
-        83149
-      ]
-    ]
-  },
-  {
-    "task_index": 443,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 36132,
     "view_ymin": 91519,
     "view_xmax": 36505,
@@ -8114,6 +8096,24 @@
         91629,
         36350,
         91690
+      ]
+    ]
+  },
+  {
+    "task_index": 443,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 36182,
+    "view_ymin": 82966,
+    "view_xmax": 36555,
+    "view_ymax": 83246,
+    "region_name": "Extra_99",
+    "cell_list": [
+      [
+        36325,
+        83063,
+        36411,
+        83149
       ]
     ]
   },
@@ -8247,24 +8247,6 @@
     "task_index": 451,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 35772,
-    "view_ymin": 62605,
-    "view_xmax": 36145,
-    "view_ymax": 62885,
-    "region_name": "Extra_101",
-    "cell_list": [
-      [
-        35926,
-        62714,
-        35992,
-        62777
-      ]
-    ]
-  },
-  {
-    "task_index": 452,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 35600,
     "view_ymin": 68944,
     "view_xmax": 35973,
@@ -8280,7 +8262,7 @@
     ]
   },
   {
-    "task_index": 453,
+    "task_index": 452,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 35758,
@@ -8294,6 +8276,24 @@
         75313,
         35978,
         75371
+      ]
+    ]
+  },
+  {
+    "task_index": 453,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 35772,
+    "view_ymin": 62605,
+    "view_xmax": 36145,
+    "view_ymax": 62885,
+    "region_name": "Extra_101",
+    "cell_list": [
+      [
+        35926,
+        62714,
+        35992,
+        62777
       ]
     ]
   },
@@ -8337,24 +8337,6 @@
     "task_index": 456,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 35376,
-    "view_ymin": 61723,
-    "view_xmax": 35749,
-    "view_ymax": 62003,
-    "region_name": "Extra_102",
-    "cell_list": [
-      [
-        35529,
-        61831,
-        35598,
-        61896
-      ]
-    ]
-  },
-  {
-    "task_index": 457,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 35462,
     "view_ymin": 72992,
     "view_xmax": 35835,
@@ -8366,6 +8348,24 @@
         73098,
         35687,
         73166
+      ]
+    ]
+  },
+  {
+    "task_index": 457,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 35376,
+    "view_ymin": 61723,
+    "view_xmax": 35749,
+    "view_ymax": 62003,
+    "region_name": "Extra_102",
+    "cell_list": [
+      [
+        35529,
+        61831,
+        35598,
+        61896
       ]
     ]
   },
@@ -8427,17 +8427,17 @@
     "task_index": 461,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 35242,
-    "view_ymin": 85132,
-    "view_xmax": 35615,
-    "view_ymax": 85412,
+    "view_xmin": 35164,
+    "view_ymin": 85483,
+    "view_xmax": 35537,
+    "view_ymax": 85763,
     "region_name": "Extra_103",
     "cell_list": [
       [
-        35396,
-        85240,
-        35462,
-        85305
+        35318,
+        85591,
+        35385,
+        85655
       ]
     ]
   },
@@ -8463,17 +8463,17 @@
     "task_index": 463,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 35164,
-    "view_ymin": 85483,
-    "view_xmax": 35537,
-    "view_ymax": 85763,
+    "view_xmin": 35242,
+    "view_ymin": 85132,
+    "view_xmax": 35615,
+    "view_ymax": 85412,
     "region_name": "Extra_103",
     "cell_list": [
       [
-        35318,
-        85591,
-        35385,
-        85655
+        35396,
+        85240,
+        35462,
+        85305
       ]
     ]
   },
@@ -8571,24 +8571,6 @@
     "task_index": 469,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 34802,
-    "view_ymin": 21609,
-    "view_xmax": 35175,
-    "view_ymax": 21889,
-    "region_name": "Extra_105",
-    "cell_list": [
-      [
-        34956,
-        21717,
-        35023,
-        21782
-      ]
-    ]
-  },
-  {
-    "task_index": 470,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 34774,
     "view_ymin": 38723,
     "view_xmax": 35147,
@@ -8600,6 +8582,24 @@
         38826,
         34998,
         38901
+      ]
+    ]
+  },
+  {
+    "task_index": 470,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 34802,
+    "view_ymin": 21609,
+    "view_xmax": 35175,
+    "view_ymax": 21889,
+    "region_name": "Extra_105",
+    "cell_list": [
+      [
+        34956,
+        21717,
+        35023,
+        21782
       ]
     ]
   },
@@ -8625,24 +8625,6 @@
     "task_index": 472,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 34738,
-    "view_ymin": 70916,
-    "view_xmax": 35111,
-    "view_ymax": 71196,
-    "region_name": "Extra_105",
-    "cell_list": [
-      [
-        34884,
-        71029,
-        34965,
-        71084
-      ]
-    ]
-  },
-  {
-    "task_index": 473,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 34678,
     "view_ymin": 78923,
     "view_xmax": 35051,
@@ -8654,6 +8636,24 @@
         79030,
         34899,
         79097
+      ]
+    ]
+  },
+  {
+    "task_index": 473,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 34738,
+    "view_ymin": 70916,
+    "view_xmax": 35111,
+    "view_ymax": 71196,
+    "region_name": "Extra_105",
+    "cell_list": [
+      [
+        34884,
+        71029,
+        34965,
+        71084
       ]
     ]
   },
@@ -8859,24 +8859,6 @@
     "task_index": 485,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 34342,
-    "view_ymin": 84457,
-    "view_xmax": 34715,
-    "view_ymax": 84737,
-    "region_name": "Extra_107",
-    "cell_list": [
-      [
-        34497,
-        84568,
-        34562,
-        84626
-      ]
-    ]
-  },
-  {
-    "task_index": 486,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 34330,
     "view_ymin": 91219,
     "view_xmax": 34703,
@@ -8888,6 +8870,24 @@
         91330,
         34545,
         91389
+      ]
+    ]
+  },
+  {
+    "task_index": 486,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 34342,
+    "view_ymin": 84457,
+    "view_xmax": 34715,
+    "view_ymax": 84737,
+    "region_name": "Extra_107",
+    "cell_list": [
+      [
+        34497,
+        84568,
+        34562,
+        84626
       ]
     ]
   },
@@ -9021,24 +9021,6 @@
     "task_index": 494,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33810,
-    "view_ymin": 49706,
-    "view_xmax": 34183,
-    "view_ymax": 49986,
-    "region_name": "Extra_109",
-    "cell_list": [
-      [
-        33963,
-        49812,
-        34031,
-        49880
-      ]
-    ]
-  },
-  {
-    "task_index": 495,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 33972,
     "view_ymin": 55313,
     "view_xmax": 34345,
@@ -9054,7 +9036,7 @@
     ]
   },
   {
-    "task_index": 496,
+    "task_index": 495,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 33872,
@@ -9068,6 +9050,24 @@
         58974,
         34095,
         59042
+      ]
+    ]
+  },
+  {
+    "task_index": 496,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 33810,
+    "view_ymin": 49706,
+    "view_xmax": 34183,
+    "view_ymax": 49986,
+    "region_name": "Extra_109",
+    "cell_list": [
+      [
+        33963,
+        49812,
+        34031,
+        49880
       ]
     ]
   },
@@ -9147,24 +9147,6 @@
     "task_index": 501,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33670,
-    "view_ymin": 25311,
-    "view_xmax": 34043,
-    "view_ymax": 25591,
-    "region_name": "Extra_110",
-    "cell_list": [
-      [
-        33823,
-        25420,
-        33891,
-        25483
-      ]
-    ]
-  },
-  {
-    "task_index": 502,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 33658,
     "view_ymin": 28110,
     "view_xmax": 34031,
@@ -9176,6 +9158,24 @@
         28223,
         33871,
         28278
+      ]
+    ]
+  },
+  {
+    "task_index": 502,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 33670,
+    "view_ymin": 25311,
+    "view_xmax": 34043,
+    "view_ymax": 25591,
+    "region_name": "Extra_110",
+    "cell_list": [
+      [
+        33823,
+        25420,
+        33891,
+        25483
       ]
     ]
   },
@@ -9201,24 +9201,6 @@
     "task_index": 504,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33696,
-    "view_ymin": 44722,
-    "view_xmax": 34069,
-    "view_ymax": 45002,
-    "region_name": "Extra_110",
-    "cell_list": [
-      [
-        33848,
-        44831,
-        33916,
-        44894
-      ]
-    ]
-  },
-  {
-    "task_index": 505,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 33726,
     "view_ymin": 57196,
     "view_xmax": 34099,
@@ -9230,6 +9212,24 @@
         57314,
         33938,
         57358
+      ]
+    ]
+  },
+  {
+    "task_index": 505,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 33696,
+    "view_ymin": 44722,
+    "view_xmax": 34069,
+    "view_ymax": 45002,
+    "region_name": "Extra_110",
+    "cell_list": [
+      [
+        33848,
+        44831,
+        33916,
+        44894
       ]
     ]
   },
@@ -9291,24 +9291,6 @@
     "task_index": 509,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33386,
-    "view_ymin": 29541,
-    "view_xmax": 33759,
-    "view_ymax": 29821,
-    "region_name": "Extra_111",
-    "cell_list": [
-      [
-        33544,
-        29649,
-        33603,
-        29714
-      ]
-    ]
-  },
-  {
-    "task_index": 510,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 33416,
     "view_ymin": 36628,
     "view_xmax": 33789,
@@ -9320,6 +9302,24 @@
         36745,
         33628,
         36792
+      ]
+    ]
+  },
+  {
+    "task_index": 510,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 33386,
+    "view_ymin": 29541,
+    "view_xmax": 33759,
+    "view_ymax": 29821,
+    "region_name": "Extra_111",
+    "cell_list": [
+      [
+        33544,
+        29649,
+        33603,
+        29714
       ]
     ]
   },
@@ -9417,24 +9417,6 @@
     "task_index": 516,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33504,
-    "view_ymin": 86057,
-    "view_xmax": 33877,
-    "view_ymax": 86337,
-    "region_name": "Extra_111",
-    "cell_list": [
-      [
-        33651,
-        86161,
-        33729,
-        86234
-      ]
-    ]
-  },
-  {
-    "task_index": 517,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 33494,
     "view_ymin": 88146,
     "view_xmax": 33867,
@@ -9450,25 +9432,25 @@
     ]
   },
   {
-    "task_index": 518,
+    "task_index": 517,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 33248,
-    "view_ymin": 61511,
-    "view_xmax": 33621,
-    "view_ymax": 61791,
-    "region_name": "Extra_112",
+    "view_xmin": 33504,
+    "view_ymin": 86057,
+    "view_xmax": 33877,
+    "view_ymax": 86337,
+    "region_name": "Extra_111",
     "cell_list": [
       [
-        33394,
-        61614,
-        33476,
-        61688
+        33651,
+        86161,
+        33729,
+        86234
       ]
     ]
   },
   {
-    "task_index": 519,
+    "task_index": 518,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 33236,
@@ -9486,25 +9468,25 @@
     ]
   },
   {
-    "task_index": 520,
+    "task_index": 519,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32942,
-    "view_ymin": 21381,
-    "view_xmax": 33315,
-    "view_ymax": 21661,
-    "region_name": "Extra_113",
+    "view_xmin": 33248,
+    "view_ymin": 61511,
+    "view_xmax": 33621,
+    "view_ymax": 61791,
+    "region_name": "Extra_112",
     "cell_list": [
       [
-        33096,
-        21489,
-        33160,
-        21553
+        33394,
+        61614,
+        33476,
+        61688
       ]
     ]
   },
   {
-    "task_index": 521,
+    "task_index": 520,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 32912,
@@ -9518,6 +9500,24 @@
         35333,
         33129,
         35389
+      ]
+    ]
+  },
+  {
+    "task_index": 521,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32942,
+    "view_ymin": 21381,
+    "view_xmax": 33315,
+    "view_ymax": 21661,
+    "region_name": "Extra_113",
+    "cell_list": [
+      [
+        33096,
+        21489,
+        33160,
+        21553
       ]
     ]
   },
@@ -9561,24 +9561,6 @@
     "task_index": 524,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32920,
-    "view_ymin": 60919,
-    "view_xmax": 33293,
-    "view_ymax": 61199,
-    "region_name": "Extra_113",
-    "cell_list": [
-      [
-        33076,
-        61034,
-        33137,
-        61085
-      ]
-    ]
-  },
-  {
-    "task_index": 525,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 32894,
     "view_ymin": 70327,
     "view_xmax": 33267,
@@ -9590,6 +9572,24 @@
         70437,
         33113,
         70498
+      ]
+    ]
+  },
+  {
+    "task_index": 525,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32920,
+    "view_ymin": 60919,
+    "view_xmax": 33293,
+    "view_ymax": 61199,
+    "region_name": "Extra_113",
+    "cell_list": [
+      [
+        33076,
+        61034,
+        33137,
+        61085
       ]
     ]
   },
@@ -9633,24 +9633,6 @@
     "task_index": 528,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32710,
-    "view_ymin": 45479,
-    "view_xmax": 33083,
-    "view_ymax": 45759,
-    "region_name": "Extra_114",
-    "cell_list": [
-      [
-        32865,
-        45589,
-        32927,
-        45650
-      ]
-    ]
-  },
-  {
-    "task_index": 529,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 32836,
     "view_ymin": 51904,
     "view_xmax": 33209,
@@ -9666,43 +9648,25 @@
     ]
   },
   {
-    "task_index": 530,
+    "task_index": 529,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32530,
-    "view_ymin": 24262,
-    "view_xmax": 32903,
-    "view_ymax": 24542,
-    "region_name": "Extra_115",
+    "view_xmin": 32710,
+    "view_ymin": 45479,
+    "view_xmax": 33083,
+    "view_ymax": 45759,
+    "region_name": "Extra_114",
     "cell_list": [
       [
-        32687,
-        24372,
-        32748,
-        24433
-      ]
-    ]
-  },
-  {
-    "task_index": 531,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 32640,
-    "view_ymin": 26179,
-    "view_xmax": 33013,
-    "view_ymax": 26459,
-    "region_name": "Extra_115",
-    "cell_list": [
-      [
-        32787,
-        26294,
         32865,
-        26345
+        45589,
+        32927,
+        45650
       ]
     ]
   },
   {
-    "task_index": 532,
+    "task_index": 530,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 32476,
@@ -9720,20 +9684,56 @@
     ]
   },
   {
-    "task_index": 533,
+    "task_index": 531,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32466,
-    "view_ymin": 47177,
-    "view_xmax": 32839,
-    "view_ymax": 47457,
+    "view_xmin": 32530,
+    "view_ymin": 24262,
+    "view_xmax": 32903,
+    "view_ymax": 24542,
     "region_name": "Extra_115",
     "cell_list": [
       [
-        32619,
-        47285,
-        32688,
-        47349
+        32687,
+        24372,
+        32748,
+        24433
+      ]
+    ]
+  },
+  {
+    "task_index": 532,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32640,
+    "view_ymin": 26179,
+    "view_xmax": 33013,
+    "view_ymax": 26459,
+    "region_name": "Extra_115",
+    "cell_list": [
+      [
+        32787,
+        26294,
+        32865,
+        26345
+      ]
+    ]
+  },
+  {
+    "task_index": 533,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32602,
+    "view_ymin": 59480,
+    "view_xmax": 32975,
+    "view_ymax": 59760,
+    "region_name": "Extra_115",
+    "cell_list": [
+      [
+        32762,
+        59595,
+        32814,
+        59646
       ]
     ]
   },
@@ -9759,17 +9759,17 @@
     "task_index": 535,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32602,
-    "view_ymin": 59480,
-    "view_xmax": 32975,
-    "view_ymax": 59760,
+    "view_xmin": 32466,
+    "view_ymin": 47177,
+    "view_xmax": 32839,
+    "view_ymax": 47457,
     "region_name": "Extra_115",
     "cell_list": [
       [
-        32762,
-        59595,
-        32814,
-        59646
+        32619,
+        47285,
+        32688,
+        47349
       ]
     ]
   },
@@ -9813,24 +9813,6 @@
     "task_index": 538,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32406,
-    "view_ymin": 74771,
-    "view_xmax": 32779,
-    "view_ymax": 75051,
-    "region_name": "Extra_116",
-    "cell_list": [
-      [
-        32565,
-        74884,
-        32622,
-        74938
-      ]
-    ]
-  },
-  {
-    "task_index": 539,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 32362,
     "view_ymin": 79228,
     "view_xmax": 32735,
@@ -9842,6 +9824,24 @@
         79332,
         32586,
         79405
+      ]
+    ]
+  },
+  {
+    "task_index": 539,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32406,
+    "view_ymin": 74771,
+    "view_xmax": 32779,
+    "view_ymax": 75051,
+    "region_name": "Extra_116",
+    "cell_list": [
+      [
+        32565,
+        74884,
+        32622,
+        74938
       ]
     ]
   },
@@ -9903,24 +9903,6 @@
     "task_index": 543,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 32146,
-    "view_ymin": 40654,
-    "view_xmax": 32519,
-    "view_ymax": 40934,
-    "region_name": "Extra_117",
-    "cell_list": [
-      [
-        32298,
-        40756,
-        32369,
-        40832
-      ]
-    ]
-  },
-  {
-    "task_index": 544,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 32114,
     "view_ymin": 53757,
     "view_xmax": 32487,
@@ -9932,6 +9914,24 @@
         53865,
         32336,
         53930
+      ]
+    ]
+  },
+  {
+    "task_index": 544,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 32146,
+    "view_ymin": 40654,
+    "view_xmax": 32519,
+    "view_ymax": 40934,
+    "region_name": "Extra_117",
+    "cell_list": [
+      [
+        32298,
+        40756,
+        32369,
+        40832
       ]
     ]
   },
@@ -10101,24 +10101,6 @@
     "task_index": 554,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 31680,
-    "view_ymin": 51765,
-    "view_xmax": 32053,
-    "view_ymax": 52045,
-    "region_name": "Extra_119",
-    "cell_list": [
-      [
-        31835,
-        51875,
-        31900,
-        51936
-      ]
-    ]
-  },
-  {
-    "task_index": 555,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 31698,
     "view_ymin": 57865,
     "view_xmax": 32071,
@@ -10130,6 +10112,24 @@
         57973,
         31919,
         58037
+      ]
+    ]
+  },
+  {
+    "task_index": 555,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 31680,
+    "view_ymin": 51765,
+    "view_xmax": 32053,
+    "view_ymax": 52045,
+    "region_name": "Extra_119",
+    "cell_list": [
+      [
+        31835,
+        51875,
+        31900,
+        51936
       ]
     ]
   },
@@ -10287,6 +10287,24 @@
     "task_index": 564,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 30920,
+    "view_ymin": 57977,
+    "view_xmax": 31293,
+    "view_ymax": 58257,
+    "region_name": "Extra_122",
+    "cell_list": [
+      [
+        31073,
+        58080,
+        31142,
+        58154
+      ]
+    ]
+  },
+  {
+    "task_index": 565,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 30888,
     "view_ymin": 55684,
     "view_xmax": 31261,
@@ -10308,25 +10326,25 @@
     ]
   },
   {
-    "task_index": 565,
+    "task_index": 566,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 30920,
-    "view_ymin": 57977,
-    "view_xmax": 31293,
-    "view_ymax": 58257,
+    "view_xmin": 30862,
+    "view_ymin": 79450,
+    "view_xmax": 31235,
+    "view_ymax": 79730,
     "region_name": "Extra_122",
     "cell_list": [
       [
-        31073,
-        58080,
-        31142,
-        58154
+        31019,
+        79563,
+        31077,
+        79617
       ]
     ]
   },
   {
-    "task_index": 566,
+    "task_index": 567,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 30868,
@@ -10344,7 +10362,7 @@
     ]
   },
   {
-    "task_index": 567,
+    "task_index": 568,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 31024,
@@ -10358,24 +10376,6 @@
         73767,
         31243,
         73834
-      ]
-    ]
-  },
-  {
-    "task_index": 568,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 30862,
-    "view_ymin": 79450,
-    "view_xmax": 31235,
-    "view_ymax": 79730,
-    "region_name": "Extra_122",
-    "cell_list": [
-      [
-        31019,
-        79563,
-        31077,
-        79617
       ]
     ]
   },
@@ -10419,6 +10419,24 @@
     "task_index": 571,
     "view_type": "RBC",
     "smear_type": "PB",
+    "view_xmin": 30422,
+    "view_ymin": 36827,
+    "view_xmax": 30795,
+    "view_ymax": 37107,
+    "region_name": "Extra_124",
+    "cell_list": [
+      [
+        30586,
+        36944,
+        30633,
+        36991
+      ]
+    ]
+  },
+  {
+    "task_index": 572,
+    "view_type": "RBC",
+    "smear_type": "PB",
     "view_xmin": 30494,
     "view_ymin": 21819,
     "view_xmax": 30867,
@@ -10434,7 +10452,7 @@
     ]
   },
   {
-    "task_index": 572,
+    "task_index": 573,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 30558,
@@ -10448,24 +10466,6 @@
         27401,
         30778,
         27458
-      ]
-    ]
-  },
-  {
-    "task_index": 573,
-    "view_type": "RBC",
-    "smear_type": "PB",
-    "view_xmin": 30422,
-    "view_ymin": 36827,
-    "view_xmax": 30795,
-    "view_ymax": 37107,
-    "region_name": "Extra_124",
-    "cell_list": [
-      [
-        30586,
-        36944,
-        30633,
-        36991
       ]
     ]
   },
@@ -10623,24 +10623,6 @@
     "task_index": 582,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 30178,
-    "view_ymin": 42469,
-    "view_xmax": 30551,
-    "view_ymax": 42749,
-    "region_name": "Extra_126",
-    "cell_list": [
-      [
-        30329,
-        42581,
-        30402,
-        42637
-      ]
-    ]
-  },
-  {
-    "task_index": 583,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 29996,
     "view_ymin": 55891,
     "view_xmax": 30369,
@@ -10652,6 +10634,24 @@
         56004,
         30212,
         56059
+      ]
+    ]
+  },
+  {
+    "task_index": 583,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 30178,
+    "view_ymin": 42469,
+    "view_xmax": 30551,
+    "view_ymax": 42749,
+    "region_name": "Extra_126",
+    "cell_list": [
+      [
+        30329,
+        42581,
+        30402,
+        42637
       ]
     ]
   },
@@ -10779,24 +10779,6 @@
     "task_index": 590,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 29894,
-    "view_ymin": 83725,
-    "view_xmax": 30267,
-    "view_ymax": 84005,
-    "region_name": "Extra_127",
-    "cell_list": [
-      [
-        30052,
-        83841,
-        30108,
-        83890
-      ]
-    ]
-  },
-  {
-    "task_index": 591,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 29810,
     "view_ymin": 86798,
     "view_xmax": 30183,
@@ -10818,7 +10800,7 @@
     ]
   },
   {
-    "task_index": 592,
+    "task_index": 591,
     "view_type": "RBC",
     "smear_type": "PB",
     "view_xmin": 29882,
@@ -10832,6 +10814,24 @@
         91509,
         30103,
         91577
+      ]
+    ]
+  },
+  {
+    "task_index": 592,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 29894,
+    "view_ymin": 83725,
+    "view_xmax": 30267,
+    "view_ymax": 84005,
+    "region_name": "Extra_127",
+    "cell_list": [
+      [
+        30052,
+        83841,
+        30108,
+        83890
       ]
     ]
   },
@@ -10893,24 +10893,6 @@
     "task_index": 596,
     "view_type": "RBC",
     "smear_type": "PB",
-    "view_xmin": 29482,
-    "view_ymin": 31680,
-    "view_xmax": 29855,
-    "view_ymax": 31960,
-    "region_name": "Extra_129",
-    "cell_list": [
-      [
-        29631,
-        31786,
-        29708,
-        31855
-      ]
-    ]
-  },
-  {
-    "task_index": 597,
-    "view_type": "RBC",
-    "smear_type": "PB",
     "view_xmin": 29308,
     "view_ymin": 39175,
     "view_xmax": 29681,
@@ -10922,6 +10904,24 @@
         39287,
         29528,
         39344
+      ]
+    ]
+  },
+  {
+    "task_index": 597,
+    "view_type": "RBC",
+    "smear_type": "PB",
+    "view_xmin": 29482,
+    "view_ymin": 31680,
+    "view_xmax": 29855,
+    "view_ymax": 31960,
+    "region_name": "Extra_129",
+    "cell_list": [
+      [
+        29631,
+        31786,
+        29708,
+        31855
       ]
     ]
   },

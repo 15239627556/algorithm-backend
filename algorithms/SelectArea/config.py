@@ -17,7 +17,8 @@ class BM40Config:
     dpi: int = 138430                   # 扫描层 DPI（默认40倍DPI）
     View_type: str = "WBC"              # 视野类型标识（写入 TaskOutput）
     Smear_type: str = "BM"              # 涂片类型标识（写入 TaskOutput，建议与 project.smear_type 一致）
-    
+    view_path_order_mode: str = "band_snake"  # 组内拍摄顺序：band_snake | tsp | scanline
+    view_path_band_height: int = 5000  # band_snake 的 Y 方向分带高度（像素）
 
 
     # ========内部默认参数 =========
