@@ -264,13 +264,11 @@ def find_initial_task(
     target_cells: int
 ) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
     """
-    根据涂片类型选择初始框策略：
-    - BM: 阈值二分 + 最大高分连通域
-    - PB: 局部滑窗直接搜索目标细胞数窗口
+    BM/PB 统一使用局部滑窗搜索目标细胞数窗口，
+    避免 BM 阈值连通域外接矩形把 Initial 撑满整块选区。
+    （旧 BM 阈值逻辑保留在 _find_initial_task_bm，暂不调用。）
     """
-    if config.Smear_type.upper() == "PB":
-        return _find_initial_task_pb(grid, cell_matrix, valid_search_mask, config, target_cells)
-    return _find_initial_task_bm(grid, cell_matrix, valid_search_mask, config, target_cells)
+    return _find_initial_task_pb(grid, cell_matrix, valid_search_mask, config, target_cells)
 
 
 def generate_initial_and_extra_tasks(

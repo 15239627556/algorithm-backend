@@ -38,7 +38,8 @@ class BM40Config:
     head_crop_width_ratio: float = field(default=0.2, init=False)              # 头部裁剪宽度比例：有效区域跨度的占比 (原 available_w // 5 -> 0.2)
 
     # --- 选区算法参数 ---
-    angles: Tuple[int, ...] = field(default=(0, 15, 75), init=False)   # 旋转角度候选
+    angles_bm: Tuple[int, ...] = field(default=(0, 15, -15), init=False)  # BM 旋转角：轴对齐 + 小倾角
+    angles_pb: Tuple[int, ...] = field(default=(0,), init=False)          # PB 旋转角：仅轴对齐
     search_area_scales_bm: Tuple[float, ...] = field(
         default=(4, 5, 6, 8, 10, 15, 20, 30, 40, 60, 100), init=False
     )   # 骨髓选区面积跨度候选（相对于标准 Tile 面积的倍数）
@@ -76,3 +77,9 @@ class BM40Config:
         if self.Smear_type.upper() == "PB":
             return self.search_area_scales_pb
         return self.search_area_scales_bm
+
+    def get_angles(self) -> Tuple[int, ...]:
+        """按涂片类型返回选区旋转角候选。"""
+        if self.Smear_type.upper() == "PB":
+            return self.angles_pb
+        return self.angles_bm

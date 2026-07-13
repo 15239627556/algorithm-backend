@@ -195,7 +195,7 @@ def find_candidate_regions(
             cols,
         )
         for order_idx, (w, h, angle) in enumerate(
-            (w, h, angle) for (w, h) in search_rects for angle in config.angles
+            (w, h, angle) for (w, h) in search_rects for angle in config.get_angles()
         )
     ]
 
