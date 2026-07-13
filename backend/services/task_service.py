@@ -190,7 +190,7 @@ class TaskContext:
     info: dict
     lock: threading.Lock = field(default_factory=threading.Lock)
     coord_mutex: threading.Lock = field(default_factory=threading.Lock)
-    finish_thread: Optional[threading.Thread] = field(default=None, repr=False)
+    # finish_thread: Optional[threading.Thread] = field(default=None, repr=False)
 
 
 class TaskService:
@@ -323,16 +323,16 @@ class TaskService:
                 if not matcher:
                     matcher = {}
                     project_info['matcher'] = matcher
-                prev = ctx.finish_thread
-                if prev is not None and prev.is_alive():
-                    prev.join(timeout=3600)
+                # prev = ctx.finish_thread
+                # if prev is not None and prev.is_alive():
+                #     prev.join(timeout=3600)
 
-                tiles_list = layer.iter_tiles()
-                rowcol_to_tile = {}
-                for tile in tiles_list:
-                    r, c = tile.meta.get("row_index"), tile.meta.get("col_index")
-                    if r is not None and c is not None:
-                        rowcol_to_tile[(int(r), int(c))] = tile
+                # tiles_list = layer.iter_tiles()
+                # rowcol_to_tile = {}
+                # for tile in tiles_list:
+                #     r, c = tile.meta.get("row_index"), tile.meta.get("col_index")
+                #     if r is not None and c is not None:
+                #         rowcol_to_tile[(int(r), int(c))] = tile
 
                 failed_tiles = []
                 for tile_info in tiles_msg:
@@ -341,26 +341,26 @@ class TaskService:
                     position_x = int(tile_info['position_x'])
                     position_y = int(tile_info['position_y'])
                     image_uid = matcher.get((row_index, col_index))
-                    if image_uid is None:
-                        tile = rowcol_to_tile.get((row_index, col_index))
+                    # if image_uid is None:
+                    #     tile = rowcol_to_tile.get((row_index, col_index))
+                    #     if tile is None:
+                    #         tile_info['reason'] = 'tile not found'
+                    #         failed_tiles.append(tile_info)
+                    #     else:
+                    #         tile.x = position_x
+                    #         tile.y = position_y
+                    # else:
+                    try:
+                        tile = layer.get_tile(image_uid)
                         if tile is None:
                             tile_info['reason'] = 'tile not found'
                             failed_tiles.append(tile_info)
                         else:
                             tile.x = position_x
                             tile.y = position_y
-                    else:
-                        try:
-                            tile = layer.get_tile(image_uid)
-                            if tile is None:
-                                tile_info['reason'] = 'tile not found'
-                                failed_tiles.append(tile_info)
-                            else:
-                                tile.x = position_x
-                                tile.y = position_y
-                        except Exception as e:
-                            tile_info['reason'] = str(e)
-                            failed_tiles.append(tile_info)
+                    except Exception as e:
+                        tile_info['reason'] = str(e)
+                        failed_tiles.append(tile_info)
 
         t_done = time.time()
         logger.info(
@@ -384,7 +384,7 @@ class TaskService:
                 name=f"finish-{task_id[:8]}",
                 daemon=True,
             )
-            ctx.finish_thread = th
+            # ctx.finish_thread = th
             th.start()
         else:
             with ctx.lock:
