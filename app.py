@@ -1,6 +1,6 @@
 # --- 必须放在 app.py 的第一行和第二行！ ---
-from gevent import monkey
-monkey.patch_all()
+# from gevent import monkey
+# monkey.patch_all()
 
 import os
 import sys
