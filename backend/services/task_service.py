@@ -374,8 +374,7 @@ class TaskService:
         if async_finish:
             def _run():
                 try:
-                    with ctx.lock:
-                        self._finish_task_impl(task_id)
+                    self._finish_task_impl(task_id)
                 finally:
                     self._touch_task(task_id)
 
