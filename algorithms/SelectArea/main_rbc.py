@@ -24,7 +24,7 @@ from .pipeline_rbc import RBCSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigRBC:
     # 这里改成你自己的测试 json
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/视野框排序问题/20260710004/8e31f4fc161e4ac881f4bba9d2cfd421.json"
+    json_path: str = "/home/ubuntu/VScodeProjects//项目json数据/选区靠边问题/202607140001/8c9186e9d3504d688f88d29c9374d364.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     result_json_name: str = "results_rbc.json"
 
@@ -154,11 +154,11 @@ def main() -> None:
 
     # 血片选区仍按有核细胞数量进行选区
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
-                        dpi=135000, 
-                        x100_rect_width=373,
-                        x100_rect_height=280,
+                        dpi=140750, 
+                        x100_rect_width=482,
+                        x100_rect_height=403,
                         heatmap_orientation=1,
-                        View_type="RBC", 
+                        View_type="wbc", 
                         Smear_type=project.smear_type)
     
     import time
