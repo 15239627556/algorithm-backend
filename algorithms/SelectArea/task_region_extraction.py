@@ -296,9 +296,26 @@ def generate_initial_and_extra_tasks(
     initial_rect, final_th = find_initial_task(
         grid, cell_matrix, valid_search_mask, config, config.target_cell_num_WBC
     )
-    
+
+    # 选区内细胞不足 / 滑窗无法落入选区时：用有效选区外接矩形兜底，
+    # 后续仍对选区内全部有效细胞生成百倍视野，不中断流程。
     if initial_rect is None:
-        raise RuntimeError("未能找到合适的初始拍摄框，请调整参数或检查数据。")
+        fallback_mask = valid_search_mask if np.count_nonzero(valid_search_mask) else selection_mask
+        ys, xs = np.where(fallback_mask > 0)
+        if xs.size == 0:
+            print("[WARNING] 选区内无有效网格，跳过初始/补拍框生成，返回空 task_rects。")
+            return []
+        x0, y0 = int(xs.min()), int(ys.min())
+        w0, h0 = int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)
+        initial_rect = (x0, y0, w0, h0)
+        score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
+        valid_scores = score_map[fallback_mask > 0]
+        score_threshold = float(np.nanmedian(valid_scores)) if valid_scores.size else 0.0
+        final_th = ((score_map >= score_threshold) & (fallback_mask > 0)).astype(np.uint8) * 255
+        print(
+            f"[WARNING] 未能按目标细胞数找到初始拍摄框，"
+            f"改用有效选区外接矩形 Initial={initial_rect}，将覆盖选区内全部细胞。"
+        )
 
     task_rects = [initial_rect]
     

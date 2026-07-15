@@ -29,7 +29,7 @@ class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/竖矩形选区问题/20260710013/cb51e83e200f488982302f410d7372cd.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/初始框未选出/error_715/c96dca44ae464890b8ab637585dd9e65.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
 
     def get_color(self, region_name: str) -> str:
@@ -210,9 +210,9 @@ def main() -> None:
     # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
     # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num_WBC=300)
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
-                        dpi=135930, 
-                        x100_rect_width=381,
-                        x100_rect_height=286,
+                        dpi=138430, 
+                        x100_rect_width=388,
+                        x100_rect_height=291,
                         View_type="WBC", 
                         heatmap_orientation=0,
                         Smear_type=project.smear_type)
