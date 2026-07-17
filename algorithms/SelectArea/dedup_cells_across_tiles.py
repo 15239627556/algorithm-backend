@@ -1,8 +1,10 @@
-from typing import List
+from typing import Dict, List
 
 import numpy as np
 import torch
 from torchvision.ops import nms as torch_nms
+
+from project.cells import Cell
 from project.tiles import Tile
 
 
@@ -18,7 +20,7 @@ def compute_effective_scores(
     # 1. 计算框的宽高
     wh = (boxes_t[:, 2:4] - boxes_t[:, 0:2]).clamp_min(0.0)
     wh_w, wh_h = wh[:, 0], wh[:, 1]
-    
+
     # 2. 面积归一化
     area = wh_w * wh_h
     tile_w = max(tile_rect_xyxy[2] - tile_rect_xyxy[0], 1.0)
@@ -34,10 +36,10 @@ def compute_effective_scores(
     dist_top = (boxes_t[:, 1] - tile_rect_xyxy[1]).clamp_min(0.0)
     dist_right = (tile_rect_xyxy[2] - boxes_t[:, 2]).clamp_min(0.0)
     dist_bottom = (tile_rect_xyxy[3] - boxes_t[:, 3]).clamp_min(0.0)
-    
+
     dist_min = torch.minimum(
-        torch.minimum(dist_left, dist_right), 
-        torch.minimum(dist_top, dist_bottom)
+        torch.minimum(dist_left, dist_right),
+        torch.minimum(dist_top, dist_bottom),
     )
 
     # 5. 完整度因子 [0, 1]
@@ -56,46 +58,57 @@ def dedup_cells_across_tiles(
         tile_h: int = 2048,
         iou_thresh: float = 0.2,
 ) -> List[Tile]:
-    
+    """
+    在相邻 40x tile 的重叠带内做 NMS 去重（torchvision.ops.nms）。
+    - 输入：List[Tile]，每个 tile 的 cells 列表中的细胞坐标为局部坐标（相对于瓦片）
+    - 相邻关系：右、下、右下、左下
+    - NMS 分数：使用 Cell.class_confidence，并结合“离 tile 边界的完整度”与“面积归一化”联合打分；
+      若该候选缺分数，则仅用面积归一化兜底
+    - iou_thresh: 细胞的交并比阈值（用于 NMS）
+    - 输出：List[Tile]，去重后的 tiles（cells 坐标仍为局部坐标，与输入一致）
+    """
     # 检测 GPU 以加速 NMS
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tiles_data = []
-    
+
     # ---------- 1. 预处理：向量化提取与预计算 ----------
     for idx, tile in enumerate(tiles_40x):
-        fx = int(tile.meta.get('col_index', 0))
-        fy = int(tile.meta.get('row_index', 0))
+        fx = int(tile.meta.get("col_index", 0))
+        fy = int(tile.meta.get("row_index", 0))
         ax = int(tile.x) if tile.x is not None else 0
         ay = int(tile.y) if tile.y is not None else 0
-        
+
         tw = tile.w if tile.w is not None else tile_w
         th = tile.h if tile.h is not None else tile_h
         image_rect = [ax, ay, ax + int(tw), ay + int(th)]
 
         cells = tile.cells or []
         num_cells = len(cells)
-        
+
         if num_cells == 0:
             rects_xyxy = np.empty((0, 4), dtype=np.float32)
             scores = np.empty((0,), dtype=np.float32)
             rects_t = torch.empty((0, 4), dtype=torch.float32, device=device)
             eff_scores_t = torch.empty((0,), dtype=torch.float32, device=device)
         else:
-            # 向量化获取坐标与分数 (列表推导式提取属性最快)
+            # 向量化获取坐标与分数
             rects_list = [[c.cell_xmin, c.cell_ymin, c.cell_xmax, c.cell_ymax] for c in cells]
-            scores_list = [c.class_confidence for c in cells]
-            
+            scores_list = [
+                float(c.class_confidence) if c.class_confidence is not None else 0.0
+                for c in cells
+            ]
+
             rects_xyxy = np.array(rects_list, dtype=np.float32)
             # 矩阵加法一次性转换为全局坐标
             rects_xyxy[:, [0, 2]] += ax
             rects_xyxy[:, [1, 3]] += ay
             scores = np.array(scores_list, dtype=np.float32)
-            
+
             # 转为 tensor (放到指定设备上)
             rects_t = torch.as_tensor(rects_xyxy, dtype=torch.float32, device=device)
-            scores_t = torch.as_tensor(scores, dtype=torch.float32, device=device) if scores.size > 0 else None
-            
+            scores_t = torch.as_tensor(scores, dtype=torch.float32, device=device)
+
             # 【核心优化】：在此处一次性预计算 effective_scores，而不是在双循环里
             eff_scores_t = compute_effective_scores(rects_t, scores_t, image_rect)
 
@@ -105,7 +118,7 @@ def dedup_cells_across_tiles(
             "rowID": fy,
             "colID": fx,
             "imageRect_xyxy": np.array(image_rect, dtype=np.int32),
-            "rects_np": rects_xyxy, 
+            "rects_np": rects_xyxy,
             "rects_t": rects_t,             # 用于 NMS (GPU/CPU)
             "eff_scores_t": eff_scores_t,   # 已预计算好的融合打分
         })
@@ -122,29 +135,44 @@ def dedup_cells_across_tiles(
         r, c = ti["rowID"], ti["colID"]
         for dr, dc in neighbors:
             j = rowcol_to_index.get((r + dr, c + dc))
-            if j is None: continue
-            
+            if j is None:
+                continue
+
             tj = tiles_sorted[j]
             A, B = ti["imageRect_xyxy"], tj["imageRect_xyxy"]
-            
+
             # 计算重叠框
             ix1, iy1 = max(A[0], B[0]), max(A[1], B[1])
             ix2, iy2 = min(A[2], B[2]), min(A[3], B[3])
-            if ix2 <= ix1 or iy2 <= iy1: continue
-            
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+
             rects_i, rects_j = ti["rects_np"], tj["rects_np"]
-            if rects_i.size == 0 and rects_j.size == 0: continue
+            if rects_i.size == 0 and rects_j.size == 0:
+                continue
 
             # 利用 numpy 极速筛选交集
-            mask_i = (rects_i[:, 0] < ix2) & (rects_i[:, 2] > ix1) & (rects_i[:, 1] < iy2) & (rects_i[:, 3] > iy1)
-            mask_j = (rects_j[:, 0] < ix2) & (rects_j[:, 2] > ix1) & (rects_j[:, 1] < iy2) & (rects_j[:, 3] > iy1)
-            
-            if not (mask_i.any() or mask_j.any()): continue
+            mask_i = (
+                (rects_i[:, 0] < ix2)
+                & (rects_i[:, 2] > ix1)
+                & (rects_i[:, 1] < iy2)
+                & (rects_i[:, 3] > iy1)
+            )
+            mask_j = (
+                (rects_j[:, 0] < ix2)
+                & (rects_j[:, 2] > ix1)
+                & (rects_j[:, 1] < iy2)
+                & (rects_j[:, 3] > iy1)
+            )
+
+            if not (mask_i.any() or mask_j.any()):
+                continue
 
             idx_i_np = np.nonzero(mask_i)[0]
             idx_j_np = np.nonzero(mask_j)[0]
             num_left, num_right = len(idx_i_np), len(idx_j_np)
-            if num_left + num_right <= 1: continue
+            if num_left + num_right <= 1:
+                continue
 
             # 取出参与 NMS 的 Tensor (已在 Device 上)
             idx_i_t = torch.tensor(idx_i_np, dtype=torch.long, device=device)
@@ -160,8 +188,8 @@ def dedup_cells_across_tiles(
             scores_t = torch.cat([scores_i_t, scores_j_t], dim=0)
 
             # 执行 NMS
-            keep = torch_nms(boxes_t, scores_t, iou_thresh)
-            
+            keep = torch_nms(boxes_t, scores_t, float(iou_thresh))
+
             # 将 keep 掩码转回 CPU 计算丢弃项
             kept_mask = torch.zeros(num_left + num_right, dtype=torch.bool, device=device)
             kept_mask[keep] = True
@@ -169,15 +197,17 @@ def dedup_cells_across_tiles(
 
             if num_left > 0:
                 drop_i = ~kept_mask_np[:num_left]
-                if drop_i.any(): to_delete[i][idx_i_np[drop_i]] = True
+                if drop_i.any():
+                    to_delete[i][idx_i_np[drop_i]] = True
             if num_right > 0:
                 drop_j = ~kept_mask_np[num_left:]
-                if drop_j.any(): to_delete[j][idx_j_np[drop_j]] = True
+                if drop_j.any():
+                    to_delete[j][idx_j_np[drop_j]] = True
 
     # ---------- 3. 后处理：极速写回机制 ----------
     for sorted_i, t_data in enumerate(tiles_sorted):
         tile = t_data["tile"]
-        
+
         if not tile.cells:
             continue
 
@@ -186,9 +216,8 @@ def dedup_cells_across_tiles(
 
         # 【核心优化】：直接复用原始的 Cell 对象，避免转换坐标和重新实例化！
         kept_cells = [tile.cells[idx] for idx in kept_indices]
-        
-        # 兜底情况：如果原来就没有 score，但用户依然希望按“面积打分”进行结果写回
-        # (通常不需要，因为 NMS 用于剔除，不会修改原本就存在框的属性，这里仅针对你的 fallback 逻辑)
+
+        # 兜底情况：如果原来就没有 score，则按面积写回
         if len(kept_cells) > 0 and kept_cells[0].class_confidence is None:
             r_kept = t_data["rects_np"][keep_mask]
             w = np.clip(r_kept[:, 2] - r_kept[:, 0], 0.0, None)
@@ -198,5 +227,98 @@ def dedup_cells_across_tiles(
                 c_obj.class_confidence = float(f_score)
 
         tile.cells = kept_cells
+
+    return tiles_40x
+
+
+def dedup_cells_across_tiles_per_type(
+        tiles_40x: List[Tile],
+        tile_w: int = 2448,
+        tile_h: int = 2048,
+        iou_thresh: float = 0.2,
+        cell_types: List[int] | None = None,
+) -> List[Tile]:
+    """
+    按 cell_type 分组分别去重，再将结果写回原始 tile。
+
+    适用场景：
+    - 不同细胞类型之间不应互相抑制；
+    - 希望对若干类型分别做跨 tile 去重，并保留其他类型细胞。
+
+    参数：
+    - cell_types=None: 自动扫描 tiles 中出现过的全部 cell_type，并逐类去重。
+    - cell_types=[...]: 只对指定类型去重；未指定的类型原样保留。
+    """
+    if not tiles_40x:
+        return tiles_40x
+
+    original_cells_by_uid: Dict[str, List[Cell]] = {
+        tile.image_uid: list(tile.cells or []) for tile in tiles_40x
+    }
+
+    if cell_types is None:
+        seen_types = set()
+        ordered_types: List[int] = []
+        for tile in tiles_40x:
+            for cell in tile.cells or []:
+                cell_type = cell.cell_type
+                if cell_type in seen_types:
+                    continue
+                seen_types.add(cell_type)
+                ordered_types.append(cell_type)
+        target_cell_types = ordered_types
+    else:
+        # 去重并保留用户传入顺序
+        target_cell_types = list(dict.fromkeys(cell_types))
+
+    if not target_cell_types:
+        return tiles_40x
+
+    # 逐 tile 收集各类型去重后的结果，最后统一写回，避免中间态互相污染。
+    deduped_cells_by_uid: Dict[str, List[Cell]] = {
+        tile.image_uid: [] for tile in tiles_40x
+    }
+
+    for cell_type in target_cell_types:
+        # 仅保留当前 cell_type，复用已有去重逻辑。
+        for tile in tiles_40x:
+            original_cells = original_cells_by_uid.get(tile.image_uid, [])
+            tile.cells = [c for c in original_cells if c.cell_type == cell_type]
+
+        dedup_cells_across_tiles(
+            tiles_40x=tiles_40x,
+            tile_w=tile_w,
+            tile_h=tile_h,
+            iou_thresh=iou_thresh,
+        )
+
+        for tile in tiles_40x:
+            if tile.cells:
+                deduped_cells_by_uid[tile.image_uid].extend(tile.cells)
+
+    target_type_set = set(target_cell_types)
+    for tile in tiles_40x:
+        original_cells = original_cells_by_uid.get(tile.image_uid, [])
+
+        # 按原始 tile.cells 的出现顺序合并，尽量保持每类细胞的相对顺序稳定。
+        merged_cells: List[Cell] = []
+        pending_by_type: Dict[int, List[Cell]] = {}
+        for cell in deduped_cells_by_uid[tile.image_uid]:
+            pending_by_type.setdefault(cell.cell_type, []).append(cell)
+
+        for cell in original_cells:
+            if cell.cell_type in target_type_set:
+                bucket = pending_by_type.get(cell.cell_type)
+                if bucket:
+                    merged_cells.append(bucket.pop(0))
+            else:
+                merged_cells.append(cell)
+
+        # 兜底：如果某些类型的保留框数量比原始更多，补到末尾。
+        for cells_left in pending_by_type.values():
+            if cells_left:
+                merged_cells.extend(cells_left)
+
+        tile.cells = merged_cells
 
     return tiles_40x

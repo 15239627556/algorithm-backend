@@ -17,8 +17,9 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.patheffects as path_effects
 
-from .data_structure import TaskOutput
+from .data_structure import TaskOutput, CellOutput
 from .config import BM40Config
 from .pipeline_meg import MegSamplingPipeline
 
@@ -27,7 +28,7 @@ from .pipeline_meg import MegSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核视野不够/20260703014/cccdb88e113e454189185ba9b2e5794f.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/202607170001/4f1171e158ed4d5aa9470047d933a30e.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -65,110 +66,163 @@ def visualize_meg_results(
     wbc_rects: List[List[int]]
 ) -> None:
     """
-    可视化 MEG 结果：
-    - 图 3：灰度 Score Heatmap（沿用 WBC）
-    - 图 4：MEG 视野框 + 巨核细胞点（物理坐标，截取视口）
+    可视化 MEG 结果：fig4_meg_tasks.png（视野框 + 顺序编号/路径）
     """
     if not tasks:
         print("[WARNING][MEG] 无 MEG 采样任务，跳过可视化生成。")
         return
 
-    # 1. 确保输出目录存在
     save_path_base.mkdir(parents=True, exist_ok=True)
 
-    # ---------------------------------------------------------
-    # 图 4：MEG 视野框 + 巨核细胞点 - 物理坐标，强制截取
-    # ---------------------------------------------------------
-    fig4, ax4 = plt.subplots(figsize=(14, 12))
-    ax4.set_facecolor("black")
-    fig4.patch.set_facecolor("black")
+    meg_tasks = [t for t in tasks if getattr(t, "view_type", "") == "MEG"]
+    if not meg_tasks:
+        meg_tasks = list(tasks)
 
-    task_xs, task_ys = [], []
+    def _draw_order_figure(
+        ax,
+        *,
+        draw_wbc: bool,
+        label_fontsize: float,
+        box_lw: float,
+    ) -> None:
+        ax.set_facecolor("black")
+        task_xs: List[float] = []
+        task_ys: List[float] = []
+        centers_x: List[float] = []
+        centers_y: List[float] = []
 
-    for task in tasks:
-        # 只绘制 view_type == "MEG" 的任务（容错，避免混入 WBC）
-        if getattr(task, "view_type", "") != "MEG":
-            continue
+        for task in meg_tasks:
+            color = "yellow"
+            task_xs.extend([task.view_xmin, task.view_xmax])
+            task_ys.extend([task.view_ymin, task.view_ymax])
+            cx = 0.5 * (task.view_xmin + task.view_xmax)
+            cy = 0.5 * (task.view_ymin + task.view_ymax)
+            centers_x.append(cx)
+            centers_y.append(cy)
 
-        color = "yellow"  # MEG 统一用黄色，便于区分
-
-        task_xs.extend([task.view_xmin, task.view_xmax])
-        task_ys.extend([task.view_ymin, task.view_ymax])
-
-        # 1. 绘制视野框 (全局物理坐标)
-        width = task.view_xmax - task.view_xmin
-        height = task.view_ymax - task.view_ymin
-        rect = patches.Rectangle(
-            (task.view_xmin, task.view_ymin),
-            width,
-            height,
-            linewidth=1.5,
-            edgecolor=color,
-            facecolor="none",
-            alpha=0.9,
-            zorder=5,
-        )
-        ax4.add_patch(rect)
-
-        # 2. 绘制视野内的巨核细胞点
-        if task.cell_list:
-            c_xs = [(c.cell_xmin + c.cell_xmax) / 2 for c in task.cell_list]
-            c_ys = [(c.cell_ymin + c.cell_ymax) / 2 for c in task.cell_list]
-            ax4.scatter(
-                c_xs,
-                c_ys,
-                s=6,
-                c=color,
-                marker=".",
-                edgecolors="none",
-                zorder=6,
+            width = task.view_xmax - task.view_xmin
+            height = task.view_ymax - task.view_ymin
+            ax.add_patch(
+                patches.Rectangle(
+                    (task.view_xmin, task.view_ymin),
+                    width,
+                    height,
+                    linewidth=box_lw,
+                    edgecolor=color,
+                    facecolor="none",
+                    alpha=0.95,
+                    zorder=5,
+                )
             )
 
-    # 3. 截取有视野的范围，并留出 margin
-    if task_xs and task_ys:
-        margin = 1500  # 边距像素
-        ax4.set_xlim(min(task_xs) - margin, max(task_xs) + margin)
-        ax4.set_ylim(min(task_ys) - margin, max(task_ys) + margin)
+            if task.cell_list:
+                c_xs = [(c.cell_xmin + c.cell_xmax) / 2 for c in task.cell_list]
+                c_ys = [(c.cell_ymin + c.cell_ymax) / 2 for c in task.cell_list]
+                ax.scatter(c_xs, c_ys, s=10, c=color, marker=".", edgecolors="none", zorder=6)
 
-    # === 新增：绘制 WBC 视野中心点（更明显） ===
-    if len(wbc_rects) > 0:
-        wbc_arr = np.asarray(wbc_rects, dtype=np.float32)
-        wbc_cx = wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5
-        wbc_cy = wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5
-        # 用红色大十字标出有核视野中心
-        ax4.scatter(
-            wbc_cx,
-            wbc_cy,
-            s=60,
-            c="red",
-            marker="+",
-            linewidths=1.5,
-            zorder=8,
-            label="WBC centers",
+            # 顺序编号：白字黑边，提高在深色底上的可读性
+            ax.text(
+                cx,
+                cy,
+                str(task.task_index),
+                color="white",
+                fontsize=label_fontsize,
+                fontweight="bold",
+                ha="center",
+                va="center",
+                zorder=10,
+                path_effects=[path_effects.withStroke(linewidth=2.5, foreground="black")],
+            )
+
+        # 拍摄路径折线
+        if len(centers_x) >= 2:
+            ax.plot(
+                centers_x,
+                centers_y,
+                color="cyan",
+                linewidth=1.2,
+                alpha=0.75,
+                zorder=4,
+                label="shoot order",
+            )
+            ax.scatter(
+                [centers_x[0]],
+                [centers_y[0]],
+                s=120,
+                c="lime",
+                marker="o",
+                zorder=11,
+                label="start #1",
+            )
+            ax.scatter(
+                [centers_x[-1]],
+                [centers_y[-1]],
+                s=120,
+                c="magenta",
+                marker="s",
+                zorder=11,
+                label=f"end #{meg_tasks[-1].task_index}",
+            )
+
+        if task_xs and task_ys:
+            # 相对视口尺寸自适应边距，避免全图过大
+            x_span = max(task_xs) - min(task_xs)
+            y_span = max(task_ys) - min(task_ys)
+            margin = max(800.0, 0.03 * max(x_span, y_span))
+            ax.set_xlim(min(task_xs) - margin, max(task_xs) + margin)
+            ax.set_ylim(min(task_ys) - margin, max(task_ys) + margin)
+
+        if draw_wbc and len(wbc_rects) > 0:
+            wbc_arr = np.asarray(wbc_rects, dtype=np.float32)
+            wbc_cx = wbc_arr[:, 0] + wbc_arr[:, 2] * 0.5
+            wbc_cy = wbc_arr[:, 1] + wbc_arr[:, 3] * 0.5
+            ax.scatter(
+                wbc_cx,
+                wbc_cy,
+                s=40,
+                c="red",
+                marker="+",
+                linewidths=1.2,
+                zorder=3,
+                alpha=0.5,
+                label="WBC centers",
+            )
+
+        ax.set_aspect("equal")
+        ax.invert_yaxis()
+        ax.tick_params(colors="white")
+        ax.set_xlabel("Global X (pixel)", color="white")
+        ax.set_ylabel("Global Y (pixel)", color="white")
+        ax.legend(
+            loc="upper right",
+            facecolor="black",
+            framealpha=0.55,
+            labelcolor="white",
+            fontsize=9,
         )
-        # 可选：显示图例
-        ax4.legend(loc="upper right", facecolor="black", framealpha=0.5, labelcolor="white")
 
-    ax4.set_aspect("equal")
-    ax4.invert_yaxis()
+    # 字号随任务数量调整：任务少就更大
+    n = max(len(meg_tasks), 1)
+    label_fs = float(np.clip(14 - 0.04 * n, 7, 14))
+
+    # 图 4：含 WBC 参考
+    fig4, ax4 = plt.subplots(figsize=(16, 12))
+    fig4.patch.set_facecolor("black")
+    _draw_order_figure(ax4, draw_wbc=True, label_fontsize=label_fs, box_lw=1.4)
     ax4.set_title(
-        "Figure 4 (MEG): MEG Views & Cells (Clipped View)",
+        f"Figure 4 (MEG): Views + Shoot Order (n={len(meg_tasks)})",
         color="white",
         fontsize=15,
     )
-    ax4.set_xlabel("Global X (pixel)", color="white")
-    ax4.set_ylabel("Global Y (pixel)", color="white")
-    ax4.tick_params(colors="white")
-
     fig4.savefig(
         save_path_base / "fig4_meg_tasks.png",
-        dpi=200,
+        dpi=220,
         bbox_inches="tight",
         facecolor="black",
     )
     plt.close(fig4)
 
-    print(f"[SUCCESS][MEG] MEG 可视化图片已保存至: {save_path_base}")
+    print(f"[SUCCESS][MEG] MEG 可视化图片已保存至: {save_path_base / 'fig4_meg_tasks.png'}")
 
 
 # ===================== 主逻辑 =====================
@@ -182,10 +236,10 @@ def main() -> None:
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=30, 
-                        dpi=140750, 
-                        x100_rect_width=482,
-                        x100_rect_height=403,
+    bm_cfg = BM40Config(target_cell_num_MEG=50*3, 
+                        dpi=134912, 
+                        x100_rect_width=605,
+                        x100_rect_height=445,
                         View_type="MEG", 
                         Smear_type=project.smear_type)
 

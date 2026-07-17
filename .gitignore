@@ -73,4 +73,6 @@ TensorRT-10.13.3/
 测试脚本/
 test_scripts/
 morphogo_analysis/
+algorithms/SelectArea/output/*_dedup_meg.json
+algorithms/SelectArea/output/*_old_dedup_meg.json
 

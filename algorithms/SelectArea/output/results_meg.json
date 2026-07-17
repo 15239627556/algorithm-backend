@@ -3,17 +3,17 @@
     "task_index": 1,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 112528,
-    "view_ymin": 48264,
-    "view_xmax": 113010,
-    "view_ymax": 48667,
+    "view_xmin": 131928,
+    "view_ymin": 7024,
+    "view_xmax": 132533,
+    "view_ymax": 7469,
     "region_name": "MEG",
     "cell_list": [
       [
-        112658,
-        48358,
-        112880,
-        48574
+        132120,
+        7142,
+        132342,
+        7353
       ]
     ]
   },
@@ -21,17 +21,17 @@
     "task_index": 2,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 109186,
-    "view_ymin": 43883,
-    "view_xmax": 109668,
-    "view_ymax": 44286,
+    "view_xmin": 132416,
+    "view_ymin": 5356,
+    "view_xmax": 133021,
+    "view_ymax": 5801,
     "region_name": "MEG",
     "cell_list": [
       [
-        109288,
-        43957,
-        109567,
-        44213
+        132566,
+        5438,
+        132872,
+        5721
       ]
     ]
   },
@@ -39,17 +39,17 @@
     "task_index": 3,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 119156,
-    "view_ymin": 50761,
-    "view_xmax": 119638,
-    "view_ymax": 51164,
+    "view_xmin": 151026,
+    "view_ymin": 17136,
+    "view_xmax": 151631,
+    "view_ymax": 17581,
     "region_name": "MEG",
     "cell_list": [
       [
-        119255,
-        50824,
-        119540,
-        51101
+        151205,
+        17264,
+        151454,
+        17455
       ]
     ]
   },
@@ -57,17 +57,17 @@
     "task_index": 4,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 110860,
-    "view_ymin": 42748,
-    "view_xmax": 111342,
-    "view_ymax": 43151,
+    "view_xmin": 118532,
+    "view_ymin": 22154,
+    "view_xmax": 119137,
+    "view_ymax": 22599,
     "region_name": "MEG",
     "cell_list": [
       [
-        110991,
-        42837,
-        111212,
-        43062
+        118704,
+        22245,
+        118967,
+        22510
       ]
     ]
   },
@@ -75,17 +75,17 @@
     "task_index": 5,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 121360,
-    "view_ymin": 52982,
-    "view_xmax": 121842,
-    "view_ymax": 53385,
+    "view_xmin": 151126,
+    "view_ymin": 20314,
+    "view_xmax": 151731,
+    "view_ymax": 20759,
     "region_name": "MEG",
     "cell_list": [
       [
-        121460,
-        53053,
-        121742,
-        53315
+        151302,
+        20412,
+        151557,
+        20661
       ]
     ]
   },
@@ -93,17 +93,17 @@
     "task_index": 6,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 121828,
-    "view_ymin": 54623,
-    "view_xmax": 122310,
-    "view_ymax": 55026,
+    "view_xmin": 148386,
+    "view_ymin": 2454,
+    "view_xmax": 148991,
+    "view_ymax": 2899,
     "region_name": "MEG",
     "cell_list": [
       [
-        121907,
-        54683,
-        122232,
-        54966
+        148596,
+        2586,
+        148780,
+        2767
       ]
     ]
   },
@@ -111,17 +111,17 @@
     "task_index": 7,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 113157,
-    "view_ymin": 66020,
-    "view_xmax": 113639,
-    "view_ymax": 66423,
+    "view_xmin": 152164,
+    "view_ymin": 5896,
+    "view_xmax": 152769,
+    "view_ymax": 6341,
     "region_name": "MEG",
     "cell_list": [
       [
-        113300,
-        66129,
-        113496,
-        66314
+        152335,
+        6000,
+        152599,
+        6238
       ]
     ]
   },
@@ -129,17 +129,17 @@
     "task_index": 8,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 120282,
-    "view_ymin": 44237,
-    "view_xmax": 120764,
-    "view_ymax": 44640,
+    "view_xmin": 154928,
+    "view_ymin": 20832,
+    "view_xmax": 155533,
+    "view_ymax": 21277,
     "region_name": "MEG",
     "cell_list": [
       [
-        120380,
-        44320,
-        120666,
-        44558
+        155134,
+        20959,
+        155328,
+        21151
       ]
     ]
   },
@@ -147,17 +147,17 @@
     "task_index": 9,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 116589,
-    "view_ymin": 39569,
-    "view_xmax": 117071,
-    "view_ymax": 39972,
+    "view_xmin": 137970,
+    "view_ymin": 40718,
+    "view_xmax": 138575,
+    "view_ymax": 41163,
     "region_name": "MEG",
     "cell_list": [
       [
-        116702,
-        39653,
-        116958,
-        39888
+        138174,
+        40845,
+        138373,
+        41037
       ]
     ]
   },
@@ -165,17 +165,17 @@
     "task_index": 10,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 102030,
-    "view_ymin": 38188,
-    "view_xmax": 102512,
-    "view_ymax": 38591,
+    "view_xmin": 157022,
+    "view_ymin": 3842,
+    "view_xmax": 157627,
+    "view_ymax": 4287,
     "region_name": "MEG",
     "cell_list": [
       [
-        102195,
-        38315,
-        102348,
-        38464
+        157170,
+        3914,
+        157480,
+        4216
       ]
     ]
   },
@@ -183,17 +183,17 @@
     "task_index": 11,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 122708,
-    "view_ymin": 65281,
-    "view_xmax": 123190,
-    "view_ymax": 65684,
+    "view_xmin": 108806,
+    "view_ymin": 22952,
+    "view_xmax": 109411,
+    "view_ymax": 23397,
     "region_name": "MEG",
     "cell_list": [
       [
-        122841,
-        65378,
-        123058,
-        65587
+        109008,
+        23080,
+        109211,
+        23271
       ]
     ]
   },
@@ -201,17 +201,17 @@
     "task_index": 12,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 95738,
-    "view_ymin": 67557,
-    "view_xmax": 96220,
-    "view_ymax": 67960,
+    "view_xmin": 156370,
+    "view_ymin": 31606,
+    "view_xmax": 156975,
+    "view_ymax": 32051,
     "region_name": "MEG",
     "cell_list": [
       [
-        95874,
-        67660,
-        96084,
-        67857
+        156561,
+        31716,
+        156785,
+        31943
       ]
     ]
   },
@@ -219,17 +219,17 @@
     "task_index": 13,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 132047,
-    "view_ymin": 61123,
-    "view_xmax": 132529,
-    "view_ymax": 61526,
+    "view_xmin": 157478,
+    "view_ymin": 32280,
+    "view_xmax": 158083,
+    "view_ymax": 32725,
     "region_name": "MEG",
     "cell_list": [
       [
-        132158,
-        61207,
-        132418,
-        61442
+        157636,
+        32356,
+        157925,
+        32648
       ]
     ]
   },
@@ -237,17 +237,17 @@
     "task_index": 14,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 98708,
-    "view_ymin": 78867,
-    "view_xmax": 99190,
-    "view_ymax": 79270,
+    "view_xmin": 159126,
+    "view_ymin": 1192,
+    "view_xmax": 159731,
+    "view_ymax": 1637,
     "region_name": "MEG",
     "cell_list": [
       [
-        98830,
-        78947,
-        99068,
-        79190
+        159303,
+        1305,
+        159556,
+        1526
       ]
     ]
   },
@@ -255,17 +255,17 @@
     "task_index": 15,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 130105,
-    "view_ymin": 72012,
-    "view_xmax": 130587,
-    "view_ymax": 72415,
+    "view_xmin": 104566,
+    "view_ymin": 4034,
+    "view_xmax": 105171,
+    "view_ymax": 4479,
     "region_name": "MEG",
     "cell_list": [
       [
-        130270,
-        72126,
-        130422,
-        72301
+        104772,
+        4159,
+        104967,
+        4356
       ]
     ]
   },
@@ -273,17 +273,17 @@
     "task_index": 16,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 81819,
-    "view_ymin": 59550,
-    "view_xmax": 82301,
-    "view_ymax": 59953,
+    "view_xmin": 137758,
+    "view_ymin": 49410,
+    "view_xmax": 138363,
+    "view_ymax": 49855,
     "region_name": "MEG",
     "cell_list": [
       [
-        81934,
-        59634,
-        82186,
-        59869
+        137956,
+        49533,
+        138164,
+        49734
       ]
     ]
   },
@@ -291,17 +291,17 @@
     "task_index": 17,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 132429,
-    "view_ymin": 37044,
-    "view_xmax": 132911,
-    "view_ymax": 37447,
+    "view_xmin": 166572,
+    "view_ymin": 6612,
+    "view_xmax": 167177,
+    "view_ymax": 7057,
     "region_name": "MEG",
     "cell_list": [
       [
-        132466,
-        37042,
-        132874,
-        37449
+        166728,
+        6721,
+        167023,
+        6949
       ]
     ]
   },
@@ -309,17 +309,17 @@
     "task_index": 18,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 123606,
-    "view_ymin": 79123,
-    "view_xmax": 124088,
-    "view_ymax": 79526,
+    "view_xmin": 137918,
+    "view_ymin": 52852,
+    "view_xmax": 138523,
+    "view_ymax": 53297,
     "region_name": "MEG",
     "cell_list": [
       [
-        123749,
-        79222,
-        123945,
-        79427
+        138127,
+        52996,
+        138313,
+        53154
       ]
     ]
   },
@@ -327,17 +327,17 @@
     "task_index": 19,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 109437,
-    "view_ymin": 23432,
-    "view_xmax": 109919,
-    "view_ymax": 23835,
+    "view_xmin": 164774,
+    "view_ymin": 38852,
+    "view_xmax": 165379,
+    "view_ymax": 39297,
     "region_name": "MEG",
     "cell_list": [
       [
-        109580,
-        23536,
-        109776,
-        23731
+        164974,
+        38973,
+        165178,
+        39175
       ]
     ]
   },
@@ -345,17 +345,17 @@
     "task_index": 20,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 123349,
-    "view_ymin": 80749,
-    "view_xmax": 123831,
-    "view_ymax": 81152,
+    "view_xmin": 146010,
+    "view_ymin": 52632,
+    "view_xmax": 146615,
+    "view_ymax": 53077,
     "region_name": "MEG",
     "cell_list": [
       [
-        123478,
-        80850,
-        123703,
-        81052
+        146214,
+        52760,
+        146410,
+        52950
       ]
     ]
   },
@@ -363,17 +363,17 @@
     "task_index": 21,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 82439,
-    "view_ymin": 68818,
-    "view_xmax": 82921,
-    "view_ymax": 69221,
+    "view_xmin": 130470,
+    "view_ymin": 55476,
+    "view_xmax": 131075,
+    "view_ymax": 55921,
     "region_name": "MEG",
     "cell_list": [
       [
-        82585,
-        68923,
-        82776,
-        69116
+        130682,
+        55606,
+        130862,
+        55793
       ]
     ]
   },
@@ -381,17 +381,23 @@
     "task_index": 22,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 139202,
-    "view_ymin": 64698,
-    "view_xmax": 139684,
-    "view_ymax": 65101,
+    "view_xmin": 95644,
+    "view_ymin": 10872,
+    "view_xmax": 96249,
+    "view_ymax": 11317,
     "region_name": "MEG",
     "cell_list": [
       [
-        139337,
-        64791,
-        139550,
-        65008
+        95990,
+        10878,
+        96186,
+        11068
+      ],
+      [
+        95713,
+        11126,
+        95901,
+        11309
       ]
     ]
   },
@@ -399,17 +405,17 @@
     "task_index": 23,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 77996,
-    "view_ymin": 44318,
-    "view_xmax": 78478,
-    "view_ymax": 44721,
+    "view_xmin": 169846,
+    "view_ymin": 38566,
+    "view_xmax": 170451,
+    "view_ymax": 39011,
     "region_name": "MEG",
     "cell_list": [
       [
-        78093,
-        44378,
-        78381,
-        44661
+        169994,
+        38628,
+        170305,
+        38950
       ]
     ]
   },
@@ -417,17 +423,17 @@
     "task_index": 24,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 83297,
-    "view_ymin": 74373,
-    "view_xmax": 83779,
-    "view_ymax": 74776,
+    "view_xmin": 101618,
+    "view_ymin": 42658,
+    "view_xmax": 102223,
+    "view_ymax": 43103,
     "region_name": "MEG",
     "cell_list": [
       [
-        83421,
-        74457,
-        83655,
-        74693
+        101829,
+        42789,
+        102013,
+        42974
       ]
     ]
   },
@@ -435,17 +441,17 @@
     "task_index": 25,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 93116,
-    "view_ymin": 84270,
-    "view_xmax": 93598,
-    "view_ymax": 84673,
+    "view_xmin": 102372,
+    "view_ymin": 46886,
+    "view_xmax": 102977,
+    "view_ymax": 47331,
     "region_name": "MEG",
     "cell_list": [
       [
-        93156,
-        84278,
-        93559,
-        84665
+        102566,
+        47012,
+        102782,
+        47207
       ]
     ]
   },
@@ -453,17 +459,17 @@
     "task_index": 26,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 133345,
-    "view_ymin": 78544,
-    "view_xmax": 133827,
-    "view_ymax": 78947,
+    "view_xmin": 126320,
+    "view_ymin": 62468,
+    "view_xmax": 126925,
+    "view_ymax": 62913,
     "region_name": "MEG",
     "cell_list": [
       [
-        133432,
-        78608,
-        133740,
-        78883
+        126538,
+        62588,
+        126709,
+        62795
       ]
     ]
   },
@@ -471,17 +477,17 @@
     "task_index": 27,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 138691,
-    "view_ymin": 72023,
-    "view_xmax": 139173,
-    "view_ymax": 72426,
+    "view_xmin": 180426,
+    "view_ymin": 26450,
+    "view_xmax": 181031,
+    "view_ymax": 26895,
     "region_name": "MEG",
     "cell_list": [
       [
-        138750,
-        72063,
-        139114,
-        72387
+        180571,
+        26581,
+        180888,
+        26766
       ]
     ]
   },
@@ -489,17 +495,17 @@
     "task_index": 28,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 86085,
-    "view_ymin": 79534,
-    "view_xmax": 86567,
-    "view_ymax": 79937,
+    "view_xmin": 90114,
+    "view_ymin": 37184,
+    "view_xmax": 90719,
+    "view_ymax": 37629,
     "region_name": "MEG",
     "cell_list": [
       [
-        86271,
-        79680,
-        86382,
-        79791
+        90319,
+        37313,
+        90514,
+        37501
       ]
     ]
   },
@@ -507,17 +513,17 @@
     "task_index": 29,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 105380,
-    "view_ymin": 88358,
-    "view_xmax": 105862,
-    "view_ymax": 88761,
+    "view_xmin": 109378,
+    "view_ymin": 58918,
+    "view_xmax": 109983,
+    "view_ymax": 59363,
     "region_name": "MEG",
     "cell_list": [
       [
-        105519,
-        88458,
-        105724,
-        88662
+        109587,
+        59044,
+        109774,
+        59238
       ]
     ]
   },
@@ -525,17 +531,1997 @@
     "task_index": 30,
     "view_type": "MEG",
     "smear_type": "BM",
-    "view_xmin": 130890,
-    "view_ymin": 83696,
-    "view_xmax": 131372,
-    "view_ymax": 84099,
+    "view_xmin": 102276,
+    "view_ymin": 56144,
+    "view_xmax": 102881,
+    "view_ymax": 56589,
     "region_name": "MEG",
     "cell_list": [
       [
-        131018,
-        83788,
-        131245,
-        84007
+        102491,
+        56282,
+        102666,
+        56453
+      ]
+    ]
+  },
+  {
+    "task_index": 31,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 185140,
+    "view_ymin": 11330,
+    "view_xmax": 185745,
+    "view_ymax": 11775,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        185306,
+        11430,
+        185580,
+        11676
+      ]
+    ]
+  },
+  {
+    "task_index": 32,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 178430,
+    "view_ymin": 42702,
+    "view_xmax": 179035,
+    "view_ymax": 43147,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        178588,
+        42773,
+        178878,
+        43075
+      ]
+    ]
+  },
+  {
+    "task_index": 33,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 104550,
+    "view_ymin": 59328,
+    "view_xmax": 105155,
+    "view_ymax": 59773,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        104756,
+        59454,
+        104951,
+        59649
+      ]
+    ]
+  },
+  {
+    "task_index": 34,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 97546,
+    "view_ymin": 55506,
+    "view_xmax": 98151,
+    "view_ymax": 55951,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        97749,
+        55633,
+        97949,
+        55826
+      ]
+    ]
+  },
+  {
+    "task_index": 35,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 168752,
+    "view_ymin": 58782,
+    "view_xmax": 169357,
+    "view_ymax": 59227,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        168963,
+        58913,
+        169148,
+        59098
+      ]
+    ]
+  },
+  {
+    "task_index": 36,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 157760,
+    "view_ymin": 68590,
+    "view_xmax": 158365,
+    "view_ymax": 69035,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        157965,
+        68714,
+        158160,
+        68913
+      ]
+    ]
+  },
+  {
+    "task_index": 37,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 110714,
+    "view_ymin": 69126,
+    "view_xmax": 111319,
+    "view_ymax": 69571,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        110894,
+        69230,
+        111138,
+        69469
+      ]
+    ]
+  },
+  {
+    "task_index": 38,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 167132,
+    "view_ymin": 65702,
+    "view_xmax": 167737,
+    "view_ymax": 66147,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        167306,
+        65812,
+        167564,
+        66036
+      ]
+    ]
+  },
+  {
+    "task_index": 39,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 93938,
+    "view_ymin": 60008,
+    "view_xmax": 94543,
+    "view_ymax": 60453,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        94141,
+        60131,
+        94342,
+        60332
+      ]
+    ]
+  },
+  {
+    "task_index": 40,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 103754,
+    "view_ymin": 68034,
+    "view_xmax": 104359,
+    "view_ymax": 68479,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        103917,
+        68123,
+        104196,
+        68391
+      ]
+    ]
+  },
+  {
+    "task_index": 41,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 173520,
+    "view_ymin": 64818,
+    "view_xmax": 174125,
+    "view_ymax": 65263,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        173715,
+        64935,
+        173932,
+        65145
+      ]
+    ]
+  },
+  {
+    "task_index": 42,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 84184,
+    "view_ymin": 55460,
+    "view_xmax": 84789,
+    "view_ymax": 55905,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        84386,
+        55581,
+        84589,
+        55786
+      ]
+    ]
+  },
+  {
+    "task_index": 43,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 169374,
+    "view_ymin": 69820,
+    "view_xmax": 169979,
+    "view_ymax": 70265,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        169553,
+        69933,
+        169802,
+        70154
+      ]
+    ]
+  },
+  {
+    "task_index": 44,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 107844,
+    "view_ymin": 75240,
+    "view_xmax": 108449,
+    "view_ymax": 75685,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        108037,
+        75353,
+        108258,
+        75574
+      ]
+    ]
+  },
+  {
+    "task_index": 45,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 80426,
+    "view_ymin": 53892,
+    "view_xmax": 81031,
+    "view_ymax": 54337,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        80612,
+        53994,
+        80847,
+        54237
+      ]
+    ]
+  },
+  {
+    "task_index": 46,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 71568,
+    "view_ymin": 37244,
+    "view_xmax": 72173,
+    "view_ymax": 37689,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        71772,
+        37373,
+        71971,
+        37562
+      ]
+    ]
+  },
+  {
+    "task_index": 47,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 120676,
+    "view_ymin": 81398,
+    "view_xmax": 121281,
+    "view_ymax": 81843,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        120884,
+        81524,
+        121074,
+        81716
+      ]
+    ]
+  },
+  {
+    "task_index": 48,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 76100,
+    "view_ymin": 47994,
+    "view_xmax": 76705,
+    "view_ymax": 48439,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        76303,
+        48112,
+        76504,
+        48322
+      ]
+    ]
+  },
+  {
+    "task_index": 49,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 79156,
+    "view_ymin": 59528,
+    "view_xmax": 79761,
+    "view_ymax": 59973,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        79366,
+        59661,
+        79553,
+        59839
+      ]
+    ]
+  },
+  {
+    "task_index": 50,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 105948,
+    "view_ymin": 81352,
+    "view_xmax": 106553,
+    "view_ymax": 81797,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        106156,
+        81480,
+        106345,
+        81671
+      ]
+    ]
+  },
+  {
+    "task_index": 51,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 74836,
+    "view_ymin": 55398,
+    "view_xmax": 75441,
+    "view_ymax": 55843,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        75036,
+        55534,
+        75242,
+        55706
+      ]
+    ]
+  },
+  {
+    "task_index": 52,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 66636,
+    "view_ymin": 39744,
+    "view_xmax": 67241,
+    "view_ymax": 40189,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        66831,
+        39865,
+        67045,
+        40067
+      ]
+    ]
+  },
+  {
+    "task_index": 53,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 76912,
+    "view_ymin": 60028,
+    "view_xmax": 77517,
+    "view_ymax": 60473,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        77119,
+        60150,
+        77312,
+        60353
+      ]
+    ]
+  },
+  {
+    "task_index": 54,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 110984,
+    "view_ymin": 87220,
+    "view_xmax": 111589,
+    "view_ymax": 87665,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        111134,
+        87292,
+        111439,
+        87594
+      ]
+    ]
+  },
+  {
+    "task_index": 55,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 59034,
+    "view_ymin": 4270,
+    "view_xmax": 59639,
+    "view_ymax": 4715,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        59259,
+        4378,
+        59413,
+        4606
+      ]
+    ]
+  },
+  {
+    "task_index": 56,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 78570,
+    "view_ymin": 69336,
+    "view_xmax": 79175,
+    "view_ymax": 69781,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        78690,
+        69396,
+        79054,
+        69722
+      ]
+    ]
+  },
+  {
+    "task_index": 57,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 56700,
+    "view_ymin": 802,
+    "view_xmax": 57305,
+    "view_ymax": 1247,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        56908,
+        931,
+        57099,
+        1118
+      ]
+    ]
+  },
+  {
+    "task_index": 58,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 63766,
+    "view_ymin": 54808,
+    "view_xmax": 64371,
+    "view_ymax": 55253,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        63963,
+        54933,
+        64176,
+        55130
+      ]
+    ]
+  },
+  {
+    "task_index": 59,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 54352,
+    "view_ymin": 26596,
+    "view_xmax": 54957,
+    "view_ymax": 27041,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        54540,
+        26701,
+        54770,
+        26937
+      ]
+    ]
+  },
+  {
+    "task_index": 60,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 82626,
+    "view_ymin": 78976,
+    "view_xmax": 83231,
+    "view_ymax": 79421,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        82792,
+        79073,
+        83067,
+        79326
+      ]
+    ]
+  },
+  {
+    "task_index": 61,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 73802,
+    "view_ymin": 71470,
+    "view_xmax": 74407,
+    "view_ymax": 71915,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        73987,
+        71594,
+        74224,
+        71791
+      ]
+    ]
+  },
+  {
+    "task_index": 62,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 64804,
+    "view_ymin": 60008,
+    "view_xmax": 65409,
+    "view_ymax": 60453,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        65012,
+        60138,
+        65203,
+        60322
+      ]
+    ]
+  },
+  {
+    "task_index": 63,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 71228,
+    "view_ymin": 69536,
+    "view_xmax": 71833,
+    "view_ymax": 69981,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        71439,
+        69665,
+        71622,
+        69853
+      ]
+    ]
+  },
+  {
+    "task_index": 64,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 54820,
+    "view_ymin": 38486,
+    "view_xmax": 55425,
+    "view_ymax": 38931,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        55028,
+        38612,
+        55218,
+        38804
+      ]
+    ]
+  },
+  {
+    "task_index": 65,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 55218,
+    "view_ymin": 41650,
+    "view_xmax": 55823,
+    "view_ymax": 42095,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        55420,
+        41772,
+        55621,
+        41972
+      ]
+    ]
+  },
+  {
+    "task_index": 66,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 61504,
+    "view_ymin": 57198,
+    "view_xmax": 62109,
+    "view_ymax": 57643,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        61712,
+        57322,
+        61903,
+        57518
+      ]
+    ]
+  },
+  {
+    "task_index": 67,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 67394,
+    "view_ymin": 67158,
+    "view_xmax": 67999,
+    "view_ymax": 67603,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        67605,
+        67293,
+        67789,
+        67470
+      ]
+    ]
+  },
+  {
+    "task_index": 68,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 50868,
+    "view_ymin": 32190,
+    "view_xmax": 51473,
+    "view_ymax": 32635,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        51071,
+        32320,
+        51271,
+        32505
+      ]
+    ]
+  },
+  {
+    "task_index": 69,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 78684,
+    "view_ymin": 82114,
+    "view_xmax": 79289,
+    "view_ymax": 82559,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        78890,
+        82241,
+        79084,
+        82434
+      ]
+    ]
+  },
+  {
+    "task_index": 70,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 157096,
+    "view_ymin": 99622,
+    "view_xmax": 157701,
+    "view_ymax": 100067,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        157267,
+        99717,
+        157531,
+        99973
+      ]
+    ]
+  },
+  {
+    "task_index": 71,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 172306,
+    "view_ymin": 94388,
+    "view_xmax": 172911,
+    "view_ymax": 94833,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        172463,
+        94478,
+        172756,
+        94744
+      ]
+    ]
+  },
+  {
+    "task_index": 72,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 190258,
+    "view_ymin": 82858,
+    "view_xmax": 190863,
+    "view_ymax": 83303,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        190426,
+        82969,
+        190697,
+        83192
+      ]
+    ]
+  },
+  {
+    "task_index": 73,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 70792,
+    "view_ymin": 75906,
+    "view_xmax": 71397,
+    "view_ymax": 76351,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        70990,
+        76025,
+        71198,
+        76232
+      ]
+    ]
+  },
+  {
+    "task_index": 74,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 90048,
+    "view_ymin": 91492,
+    "view_xmax": 90653,
+    "view_ymax": 91937,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        90243,
+        91605,
+        90458,
+        91824
+      ]
+    ]
+  },
+  {
+    "task_index": 75,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 47288,
+    "view_ymin": 23448,
+    "view_xmax": 47893,
+    "view_ymax": 23893,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        47503,
+        23580,
+        47680,
+        23762
+      ]
+    ]
+  },
+  {
+    "task_index": 76,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 51948,
+    "view_ymin": 46154,
+    "view_xmax": 52553,
+    "view_ymax": 46599,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        52134,
+        46266,
+        52369,
+        46486
+      ]
+    ]
+  },
+  {
+    "task_index": 77,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 69804,
+    "view_ymin": 75854,
+    "view_xmax": 70409,
+    "view_ymax": 76299,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        70011,
+        75985,
+        70204,
+        76167
+      ]
+    ]
+  },
+  {
+    "task_index": 78,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 161582,
+    "view_ymin": 100586,
+    "view_xmax": 162187,
+    "view_ymax": 101031,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        161746,
+        100669,
+        162025,
+        100947
+      ]
+    ]
+  },
+  {
+    "task_index": 79,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 55236,
+    "view_ymin": 56340,
+    "view_xmax": 55841,
+    "view_ymax": 56785,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        55422,
+        56452,
+        55657,
+        56674
+      ]
+    ]
+  },
+  {
+    "task_index": 80,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 169040,
+    "view_ymin": 98946,
+    "view_xmax": 169645,
+    "view_ymax": 99391,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        169208,
+        99044,
+        169476,
+        99292
+      ]
+    ]
+  },
+  {
+    "task_index": 81,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 44150,
+    "view_ymin": 496,
+    "view_xmax": 44755,
+    "view_ymax": 941,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        44354,
+        621,
+        44552,
+        818
+      ]
+    ]
+  },
+  {
+    "task_index": 82,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 181400,
+    "view_ymin": 95510,
+    "view_xmax": 182005,
+    "view_ymax": 95955,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        181565,
+        95599,
+        181842,
+        95868
+      ]
+    ]
+  },
+  {
+    "task_index": 83,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 50836,
+    "view_ymin": 56728,
+    "view_xmax": 51441,
+    "view_ymax": 57173,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        51026,
+        56839,
+        51253,
+        57064
+      ]
+    ]
+  },
+  {
+    "task_index": 84,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 43882,
+    "view_ymin": 37114,
+    "view_xmax": 44487,
+    "view_ymax": 37559,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        44035,
+        37188,
+        44336,
+        37485
+      ]
+    ]
+  },
+  {
+    "task_index": 85,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 82972,
+    "view_ymin": 94270,
+    "view_xmax": 83577,
+    "view_ymax": 94715,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        83179,
+        94403,
+        83369,
+        94581
+      ]
+    ]
+  },
+  {
+    "task_index": 86,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 103806,
+    "view_ymin": 104890,
+    "view_xmax": 104411,
+    "view_ymax": 105335,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        104006,
+        105014,
+        104210,
+        105212
+      ]
+    ]
+  },
+  {
+    "task_index": 87,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 59142,
+    "view_ymin": 72060,
+    "view_xmax": 59747,
+    "view_ymax": 72505,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        59350,
+        72195,
+        59540,
+        72372
+      ]
+    ]
+  },
+  {
+    "task_index": 88,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 40944,
+    "view_ymin": 17958,
+    "view_xmax": 41549,
+    "view_ymax": 18403,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        41116,
+        18062,
+        41379,
+        18301
+      ]
+    ]
+  },
+  {
+    "task_index": 89,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 183474,
+    "view_ymin": 97440,
+    "view_xmax": 184079,
+    "view_ymax": 97885,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        183608,
+        97501,
+        183945,
+        97824
+      ]
+    ]
+  },
+  {
+    "task_index": 90,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 38674,
+    "view_ymin": 1844,
+    "view_xmax": 39279,
+    "view_ymax": 2289,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        38872,
+        1968,
+        39083,
+        2167
+      ]
+    ]
+  },
+  {
+    "task_index": 91,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 59974,
+    "view_ymin": 78696,
+    "view_xmax": 60579,
+    "view_ymax": 79141,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        60109,
+        78754,
+        60446,
+        79085
+      ]
+    ]
+  },
+  {
+    "task_index": 92,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 43666,
+    "view_ymin": 52016,
+    "view_xmax": 44271,
+    "view_ymax": 52461,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        43861,
+        52128,
+        44076,
+        52349
+      ]
+    ]
+  },
+  {
+    "task_index": 93,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 46776,
+    "view_ymin": 62756,
+    "view_xmax": 47381,
+    "view_ymax": 63201,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        46982,
+        62881,
+        47177,
+        63076
+      ]
+    ]
+  },
+  {
+    "task_index": 94,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 110814,
+    "view_ymin": 112968,
+    "view_xmax": 111419,
+    "view_ymax": 113413,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        110985,
+        113069,
+        111249,
+        113314
+      ]
+    ]
+  },
+  {
+    "task_index": 95,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 66878,
+    "view_ymin": 90746,
+    "view_xmax": 67483,
+    "view_ymax": 91191,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        67079,
+        90866,
+        67284,
+        91071
+      ]
+    ]
+  },
+  {
+    "task_index": 96,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 50282,
+    "view_ymin": 72446,
+    "view_xmax": 50887,
+    "view_ymax": 72891,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        50478,
+        72576,
+        50693,
+        72763
+      ]
+    ]
+  },
+  {
+    "task_index": 97,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 35176,
+    "view_ymin": 36324,
+    "view_xmax": 35781,
+    "view_ymax": 36769,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        35370,
+        36440,
+        35589,
+        36654
+      ]
+    ]
+  },
+  {
+    "task_index": 98,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 87996,
+    "view_ymin": 108382,
+    "view_xmax": 88601,
+    "view_ymax": 108827,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        88194,
+        108498,
+        88403,
+        108713
+      ]
+    ]
+  },
+  {
+    "task_index": 99,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 41470,
+    "view_ymin": 61138,
+    "view_xmax": 42075,
+    "view_ymax": 61583,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        41686,
+        61273,
+        41859,
+        61448
+      ]
+    ]
+  },
+  {
+    "task_index": 100,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 32206,
+    "view_ymin": 882,
+    "view_xmax": 32811,
+    "view_ymax": 1327,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        32401,
+        1000,
+        32618,
+        1208
+      ]
+    ]
+  },
+  {
+    "task_index": 101,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 38232,
+    "view_ymin": 55436,
+    "view_xmax": 38837,
+    "view_ymax": 55881,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        38441,
+        55565,
+        38630,
+        55751
+      ]
+    ]
+  },
+  {
+    "task_index": 102,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 30776,
+    "view_ymin": 24808,
+    "view_xmax": 31381,
+    "view_ymax": 25253,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        30969,
+        24946,
+        31189,
+        25116
+      ]
+    ]
+  },
+  {
+    "task_index": 103,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 31288,
+    "view_ymin": 41308,
+    "view_xmax": 31893,
+    "view_ymax": 41753,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        31503,
+        41444,
+        31679,
+        41618
+      ]
+    ]
+  },
+  {
+    "task_index": 104,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 34940,
+    "view_ymin": 58572,
+    "view_xmax": 35545,
+    "view_ymax": 59017,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        35145,
+        58703,
+        35340,
+        58888
+      ]
+    ]
+  },
+  {
+    "task_index": 105,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 38516,
+    "view_ymin": 73086,
+    "view_xmax": 39121,
+    "view_ymax": 73531,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        38716,
+        73200,
+        38920,
+        73417
+      ]
+    ]
+  },
+  {
+    "task_index": 106,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 40020,
+    "view_ymin": 75652,
+    "view_xmax": 40625,
+    "view_ymax": 76097,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        40213,
+        75752,
+        40432,
+        75996
+      ]
+    ]
+  },
+  {
+    "task_index": 107,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 47856,
+    "view_ymin": 88638,
+    "view_xmax": 48461,
+    "view_ymax": 89083,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        48038,
+        88742,
+        48278,
+        88980
+      ]
+    ]
+  },
+  {
+    "task_index": 108,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 60918,
+    "view_ymin": 102316,
+    "view_xmax": 61523,
+    "view_ymax": 102761,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        61096,
+        102415,
+        61345,
+        102662
+      ]
+    ]
+  },
+  {
+    "task_index": 109,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 73358,
+    "view_ymin": 112920,
+    "view_xmax": 73963,
+    "view_ymax": 113365,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        73550,
+        113033,
+        73773,
+        113254
+      ]
+    ]
+  },
+  {
+    "task_index": 110,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 26222,
+    "view_ymin": 53420,
+    "view_xmax": 26827,
+    "view_ymax": 53865,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        26427,
+        53544,
+        26622,
+        53741
+      ]
+    ]
+  },
+  {
+    "task_index": 111,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 51660,
+    "view_ymin": 96132,
+    "view_xmax": 52265,
+    "view_ymax": 96577,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        51870,
+        96262,
+        52054,
+        96449
+      ]
+    ]
+  },
+  {
+    "task_index": 112,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 41620,
+    "view_ymin": 84562,
+    "view_xmax": 42225,
+    "view_ymax": 85007,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        41811,
+        84676,
+        42035,
+        84895
+      ]
+    ]
+  },
+  {
+    "task_index": 113,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 71288,
+    "view_ymin": 112966,
+    "view_xmax": 71893,
+    "view_ymax": 113411,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        71481,
+        113079,
+        71702,
+        113297
+      ]
+    ]
+  },
+  {
+    "task_index": 114,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 20696,
+    "view_ymin": 37230,
+    "view_xmax": 21301,
+    "view_ymax": 37675,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        20905,
+        37358,
+        21094,
+        37548
+      ]
+    ]
+  },
+  {
+    "task_index": 115,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 44254,
+    "view_ymin": 90036,
+    "view_xmax": 44859,
+    "view_ymax": 90481,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        44458,
+        90161,
+        44657,
+        90358
+      ]
+    ]
+  },
+  {
+    "task_index": 116,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 50646,
+    "view_ymin": 99540,
+    "view_xmax": 51251,
+    "view_ymax": 99985,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        50808,
+        99631,
+        51091,
+        99896
+      ]
+    ]
+  },
+  {
+    "task_index": 117,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 62280,
+    "view_ymin": 111144,
+    "view_xmax": 62885,
+    "view_ymax": 111589,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        62482,
+        111270,
+        62683,
+        111465
+      ]
+    ]
+  },
+  {
+    "task_index": 118,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 14280,
+    "view_ymin": 36462,
+    "view_xmax": 14885,
+    "view_ymax": 36907,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        14483,
+        36586,
+        14684,
+        36782
+      ]
+    ]
+  },
+  {
+    "task_index": 119,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 33218,
+    "view_ymin": 87160,
+    "view_xmax": 33823,
+    "view_ymax": 87605,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        33405,
+        87266,
+        33638,
+        87501
+      ]
+    ]
+  },
+  {
+    "task_index": 120,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 27776,
+    "view_ymin": 78828,
+    "view_xmax": 28381,
+    "view_ymax": 79273,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        28007,
+        78978,
+        28151,
+        79124
+      ]
+    ]
+  },
+  {
+    "task_index": 121,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 37056,
+    "view_ymin": 92770,
+    "view_xmax": 37661,
+    "view_ymax": 93215,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        37259,
+        92894,
+        37460,
+        93092
+      ]
+    ]
+  },
+  {
+    "task_index": 122,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 14294,
+    "view_ymin": 49756,
+    "view_xmax": 14899,
+    "view_ymax": 50201,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        14459,
+        49873,
+        14734,
+        50085
+      ]
+    ]
+  },
+  {
+    "task_index": 123,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 22080,
+    "view_ymin": 70992,
+    "view_xmax": 22685,
+    "view_ymax": 71437,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        22271,
+        71101,
+        22496,
+        71327
+      ]
+    ]
+  },
+  {
+    "task_index": 124,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 16058,
+    "view_ymin": 56760,
+    "view_xmax": 16663,
+    "view_ymax": 57205,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        16256,
+        56883,
+        16467,
+        57082
+      ]
+    ]
+  },
+  {
+    "task_index": 125,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 18382,
+    "view_ymin": 66692,
+    "view_xmax": 18987,
+    "view_ymax": 67137,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        18578,
+        66812,
+        18793,
+        67019
+      ]
+    ]
+  },
+  {
+    "task_index": 126,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 16368,
+    "view_ymin": 63290,
+    "view_xmax": 16973,
+    "view_ymax": 63735,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        16577,
+        63421,
+        16763,
+        63606
+      ]
+    ]
+  },
+  {
+    "task_index": 127,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 9560,
+    "view_ymin": 40638,
+    "view_xmax": 10165,
+    "view_ymax": 41083,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        9753,
+        40753,
+        9974,
+        40970
+      ]
+    ]
+  },
+  {
+    "task_index": 128,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 27436,
+    "view_ymin": 85928,
+    "view_xmax": 28041,
+    "view_ymax": 86373,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        27642,
+        86052,
+        27837,
+        86248
+      ]
+    ]
+  },
+  {
+    "task_index": 129,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 24982,
+    "view_ymin": 86696,
+    "view_xmax": 25587,
+    "view_ymax": 87141,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        25176,
+        86816,
+        25394,
+        87023
+      ]
+    ]
+  },
+  {
+    "task_index": 130,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 20358,
+    "view_ymin": 80524,
+    "view_xmax": 20963,
+    "view_ymax": 80969,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        20561,
+        80653,
+        20761,
+        80841
+      ]
+    ]
+  },
+  {
+    "task_index": 131,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 2212,
+    "view_ymin": 33430,
+    "view_xmax": 2817,
+    "view_ymax": 33875,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        2383,
+        33518,
+        2648,
+        33789
+      ]
+    ]
+  },
+  {
+    "task_index": 132,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 3538,
+    "view_ymin": 46678,
+    "view_xmax": 4143,
+    "view_ymax": 47123,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        3750,
+        46815,
+        3931,
+        46988
+      ]
+    ]
+  },
+  {
+    "task_index": 133,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 29646,
+    "view_ymin": 100812,
+    "view_xmax": 30251,
+    "view_ymax": 101257,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        29802,
+        100889,
+        30095,
+        101182
+      ]
+    ]
+  },
+  {
+    "task_index": 134,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 27398,
+    "view_ymin": 99294,
+    "view_xmax": 28003,
+    "view_ymax": 99739,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        27607,
+        99427,
+        27796,
+        99608
+      ]
+    ]
+  },
+  {
+    "task_index": 135,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 780,
+    "view_ymin": 38338,
+    "view_xmax": 1385,
+    "view_ymax": 38783,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        968,
+        38461,
+        1199,
+        38662
+      ]
+    ]
+  },
+  {
+    "task_index": 136,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 25406,
+    "view_ymin": 99528,
+    "view_xmax": 26011,
+    "view_ymax": 99973,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        25617,
+        99660,
+        25801,
+        99843
+      ]
+    ]
+  },
+  {
+    "task_index": 137,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 11080,
+    "view_ymin": 79864,
+    "view_xmax": 11685,
+    "view_ymax": 80309,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        11278,
+        79970,
+        11487,
+        80203
+      ]
+    ]
+  },
+  {
+    "task_index": 138,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 23156,
+    "view_ymin": 101934,
+    "view_xmax": 23761,
+    "view_ymax": 102379,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        23340,
+        102035,
+        23577,
+        102279
+      ]
+    ]
+  },
+  {
+    "task_index": 139,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 22006,
+    "view_ymin": 108678,
+    "view_xmax": 22611,
+    "view_ymax": 109123,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        22198,
+        108776,
+        22418,
+        109026
+      ]
+    ]
+  },
+  {
+    "task_index": 140,
+    "view_type": "MEG",
+    "smear_type": "BM",
+    "view_xmin": 8760,
+    "view_ymin": 111404,
+    "view_xmax": 9365,
+    "view_ymax": 111849,
+    "region_name": "MEG",
+    "cell_list": [
+      [
+        8964,
+        111533,
+        9163,
+        111719
       ]
     ]
   }

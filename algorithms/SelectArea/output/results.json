@@ -3,17 +3,17 @@
     "task_index": 1,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 178064,
-    "view_ymin": 93786,
-    "view_xmax": 178452,
-    "view_ymax": 94077,
+    "view_xmin": 131968,
+    "view_ymin": 19276,
+    "view_xmax": 132573,
+    "view_ymax": 19721,
     "region_name": "Initial",
     "cell_list": [
       [
-        178228,
-        93906,
-        178287,
-        93957
+        132244,
+        19474,
+        132296,
+        19525
       ]
     ]
   },
@@ -21,17 +21,23 @@
     "task_index": 2,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 179400,
-    "view_ymin": 91892,
-    "view_xmax": 179788,
-    "view_ymax": 92183,
+    "view_xmin": 132456,
+    "view_ymin": 19714,
+    "view_xmax": 133061,
+    "view_ymax": 20159,
     "region_name": "Initial",
     "cell_list": [
       [
-        179561,
-        92021,
-        179627,
-        92054
+        132829,
+        19763,
+        132897,
+        19841
+      ],
+      [
+        132626,
+        20049,
+        132681,
+        20097
       ]
     ]
   },
@@ -39,17 +45,23 @@
     "task_index": 3,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 180800,
-    "view_ymin": 91948,
-    "view_xmax": 181188,
-    "view_ymax": 92239,
+    "view_xmin": 132658,
+    "view_ymin": 19104,
+    "view_xmax": 133263,
+    "view_ymax": 19549,
     "region_name": "Initial",
     "cell_list": [
       [
-        180973,
-        92066,
-        181017,
-        92120
+        132901,
+        19304,
+        132967,
+        19378
+      ],
+      [
+        132958,
+        19280,
+        133021,
+        19347
       ]
     ]
   },
@@ -57,17 +69,35 @@
     "task_index": 4,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 181356,
-    "view_ymin": 92556,
-    "view_xmax": 181744,
-    "view_ymax": 92847,
+    "view_xmin": 133306,
+    "view_ymin": 19644,
+    "view_xmax": 133911,
+    "view_ymax": 20089,
     "region_name": "Initial",
     "cell_list": [
       [
-        181519,
-        92675,
-        181580,
-        92729
+        133496,
+        19646,
+        133556,
+        19701
+      ],
+      [
+        133393,
+        19968,
+        133459,
+        20023
+      ],
+      [
+        133322,
+        19985,
+        133388,
+        20055
+      ],
+      [
+        133827,
+        19807,
+        133900,
+        19885
       ]
     ]
   },
@@ -75,23 +105,47 @@
     "task_index": 5,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 181844,
-    "view_ymin": 93070,
-    "view_xmax": 182232,
-    "view_ymax": 93361,
+    "view_xmin": 133926,
+    "view_ymin": 19944,
+    "view_xmax": 134531,
+    "view_ymax": 20389,
     "region_name": "Initial",
     "cell_list": [
       [
-        181989,
-        93160,
-        182082,
-        93242
+        134150,
+        20125,
+        134218,
+        20192
       ],
       [
-        181996,
-        93222,
-        182087,
-        93238
+        134181,
+        20029,
+        134271,
+        20115
+      ],
+      [
+        134229,
+        20128,
+        134289,
+        20189
+      ],
+      [
+        134186,
+        20233,
+        134260,
+        20290
+      ],
+      [
+        134175,
+        20182,
+        134232,
+        20239
+      ],
+      [
+        134253,
+        20192,
+        134291,
+        20233
       ]
     ]
   },
@@ -99,17 +153,23 @@
     "task_index": 6,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 181982,
-    "view_ymin": 91892,
-    "view_xmax": 182370,
-    "view_ymax": 92183,
+    "view_xmin": 135066,
+    "view_ymin": 19570,
+    "view_xmax": 135671,
+    "view_ymax": 20015,
     "region_name": "Initial",
     "cell_list": [
       [
-        182134,
-        92022,
-        182217,
-        92054
+        135368,
+        19749,
+        135432,
+        19821
+      ],
+      [
+        135311,
+        19776,
+        135362,
+        19823
       ]
     ]
   },
@@ -117,17 +177,23 @@
     "task_index": 7,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182330,
-    "view_ymin": 92954,
-    "view_xmax": 182718,
-    "view_ymax": 93245,
+    "view_xmin": 135618,
+    "view_ymin": 19750,
+    "view_xmax": 136223,
+    "view_ymax": 20195,
     "region_name": "Initial",
     "cell_list": [
       [
-        182503,
-        93078,
-        182544,
-        93122
+        135827,
+        20010,
+        135889,
+        20078
+      ],
+      [
+        135942,
+        19864,
+        136026,
+        19941
       ]
     ]
   },
@@ -135,17 +201,23 @@
     "task_index": 8,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182342,
-    "view_ymin": 92200,
-    "view_xmax": 182730,
-    "view_ymax": 92491,
+    "view_xmin": 136380,
+    "view_ymin": 19770,
+    "view_xmax": 136985,
+    "view_ymax": 20215,
     "region_name": "Initial",
     "cell_list": [
       [
-        182510,
-        92319,
-        182561,
-        92373
+        136620,
+        19974,
+        136739,
+        20093
+      ],
+      [
+        136668,
+        19931,
+        136707,
+        19971
       ]
     ]
   },
@@ -153,17 +225,17 @@
     "task_index": 9,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182766,
-    "view_ymin": 94632,
-    "view_xmax": 183154,
-    "view_ymax": 94923,
+    "view_xmin": 136890,
+    "view_ymin": 19638,
+    "view_xmax": 137495,
+    "view_ymax": 20083,
     "region_name": "Initial",
     "cell_list": [
       [
-        182906,
-        94740,
-        183013,
-        94815
+        137157,
+        19828,
+        137228,
+        19892
       ]
     ]
   },
@@ -171,17 +243,17 @@
     "task_index": 10,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 183110,
-    "view_ymin": 94374,
-    "view_xmax": 183498,
-    "view_ymax": 94665,
+    "view_xmin": 137408,
+    "view_ymin": 19052,
+    "view_xmax": 138013,
+    "view_ymax": 19497,
     "region_name": "Initial",
     "cell_list": [
       [
-        183272,
-        94490,
-        183336,
-        94549
+        137673,
+        19242,
+        137747,
+        19309
       ]
     ]
   },
@@ -189,17 +261,53 @@
     "task_index": 11,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 183560,
-    "view_ymin": 94302,
-    "view_xmax": 183948,
-    "view_ymax": 94593,
+    "view_xmin": 137672,
+    "view_ymin": 19928,
+    "view_xmax": 138277,
+    "view_ymax": 20373,
     "region_name": "Initial",
     "cell_list": [
       [
-        183707,
-        94412,
-        183802,
-        94484
+        137806,
+        20052,
+        137873,
+        20104
+      ],
+      [
+        138139,
+        20243,
+        138232,
+        20343
+      ],
+      [
+        137826,
+        20165,
+        137882,
+        20221
+      ],
+      [
+        138092,
+        20300,
+        138150,
+        20381
+      ],
+      [
+        137908,
+        20298,
+        137956,
+        20347
+      ],
+      [
+        138146,
+        20196,
+        138190,
+        20241
+      ],
+      [
+        137732,
+        19926,
+        137795,
+        19999
       ]
     ]
   },
@@ -207,17 +315,23 @@
     "task_index": 12,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 184454,
-    "view_ymin": 96734,
-    "view_xmax": 184842,
-    "view_ymax": 97025,
+    "view_xmin": 138144,
+    "view_ymin": 19942,
+    "view_xmax": 138749,
+    "view_ymax": 20387,
     "region_name": "Initial",
     "cell_list": [
       [
-        184595,
-        96851,
-        184701,
-        96909
+        138233,
+        20036,
+        138331,
+        20127
+      ],
+      [
+        138578,
+        20214,
+        138642,
+        20279
       ]
     ]
   },
@@ -225,17 +339,29 @@
     "task_index": 13,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182902,
-    "view_ymin": 95814,
-    "view_xmax": 183290,
-    "view_ymax": 96105,
+    "view_xmin": 138220,
+    "view_ymin": 19572,
+    "view_xmax": 138825,
+    "view_ymax": 20017,
     "region_name": "Initial",
     "cell_list": [
       [
-        183059,
-        95928,
-        183132,
-        95991
+        138452,
+        19625,
+        138520,
+        19686
+      ],
+      [
+        138449,
+        19737,
+        138523,
+        19805
+      ],
+      [
+        138527,
+        19897,
+        138594,
+        19971
       ]
     ]
   },
@@ -243,17 +369,23 @@
     "task_index": 14,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 181484,
-    "view_ymin": 99324,
-    "view_xmax": 181872,
-    "view_ymax": 99615,
+    "view_xmin": 138986,
+    "view_ymin": 19588,
+    "view_xmax": 139591,
+    "view_ymax": 20033,
     "region_name": "Initial",
     "cell_list": [
       [
-        181652,
-        99444,
-        181703,
-        99495
+        139430,
+        19884,
+        139494,
+        19946
+      ],
+      [
+        139084,
+        19674,
+        139151,
+        19741
       ]
     ]
   },
@@ -261,17 +393,35 @@
     "task_index": 15,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 180544,
-    "view_ymin": 95646,
-    "view_xmax": 180932,
-    "view_ymax": 95937,
+    "view_xmin": 139432,
+    "view_ymin": 19210,
+    "view_xmax": 140037,
+    "view_ymax": 19655,
     "region_name": "Initial",
     "cell_list": [
       [
-        180715,
-        95776,
-        180761,
-        95808
+        139695,
+        19495,
+        139789,
+        19580
+      ],
+      [
+        139603,
+        19461,
+        139657,
+        19515
+      ],
+      [
+        139589,
+        19565,
+        139655,
+        19629
+      ],
+      [
+        139811,
+        19234,
+        139885,
+        19304
       ]
     ]
   },
@@ -279,17 +429,29 @@
     "task_index": 16,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 178550,
-    "view_ymin": 99570,
-    "view_xmax": 178938,
-    "view_ymax": 99861,
+    "view_xmin": 139204,
+    "view_ymin": 20272,
+    "view_xmax": 139809,
+    "view_ymax": 20717,
     "region_name": "Initial",
     "cell_list": [
       [
-        178687,
-        99658,
-        178801,
-        99773
+        139604,
+        20396,
+        139684,
+        20466
+      ],
+      [
+        139404,
+        20313,
+        139475,
+        20384
+      ],
+      [
+        139345,
+        20617,
+        139395,
+        20667
       ]
     ]
   },
@@ -297,17 +459,29 @@
     "task_index": 17,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 178244,
-    "view_ymin": 95532,
-    "view_xmax": 178632,
-    "view_ymax": 95823,
+    "view_xmin": 138964,
+    "view_ymin": 21106,
+    "view_xmax": 139569,
+    "view_ymax": 21551,
     "region_name": "Initial",
     "cell_list": [
       [
-        178410,
-        95649,
-        178468,
-        95706
+        139007,
+        21358,
+        139078,
+        21428
+      ],
+      [
+        139462,
+        21204,
+        139524,
+        21267
+      ],
+      [
+        139012,
+        21418,
+        139075,
+        21427
       ]
     ]
   },
@@ -315,17 +489,53 @@
     "task_index": 18,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 178790,
-    "view_ymin": 100488,
-    "view_xmax": 179178,
-    "view_ymax": 100779,
+    "view_xmin": 138786,
+    "view_ymin": 20126,
+    "view_xmax": 139391,
+    "view_ymax": 20571,
     "region_name": "Initial",
     "cell_list": [
       [
-        178923,
-        100594,
-        179045,
-        100673
+        139040,
+        20244,
+        139115,
+        20320
+      ],
+      [
+        139010,
+        20195,
+        139070,
+        20259
+      ],
+      [
+        139262,
+        20170,
+        139313,
+        20225
+      ],
+      [
+        139004,
+        20384,
+        139051,
+        20432
+      ],
+      [
+        138863,
+        20318,
+        138919,
+        20365
+      ],
+      [
+        138943,
+        20472,
+        139007,
+        20528
+      ],
+      [
+        139346,
+        20537,
+        139400,
+        20582
       ]
     ]
   },
@@ -333,17 +543,17 @@
     "task_index": 19,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 179010,
-    "view_ymin": 100180,
-    "view_xmax": 179398,
-    "view_ymax": 100471,
+    "view_xmin": 138430,
+    "view_ymin": 21252,
+    "view_xmax": 139035,
+    "view_ymax": 21697,
     "region_name": "Initial",
     "cell_list": [
       [
-        179180,
-        100299,
-        179227,
-        100351
+        138698,
+        21440,
+        138766,
+        21511
       ]
     ]
   },
@@ -351,17 +561,23 @@
     "task_index": 20,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 179964,
-    "view_ymin": 101880,
-    "view_xmax": 180352,
-    "view_ymax": 102171,
+    "view_xmin": 138368,
+    "view_ymin": 20424,
+    "view_xmax": 138973,
+    "view_ymax": 20869,
     "region_name": "Initial",
     "cell_list": [
       [
-        180129,
-        102000,
-        180186,
-        102051
+        138768,
+        20673,
+        138835,
+        20742
+      ],
+      [
+        138742,
+        20551,
+        138812,
+        20618
       ]
     ]
   },
@@ -369,17 +585,35 @@
     "task_index": 21,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182942,
-    "view_ymin": 102756,
-    "view_xmax": 183330,
-    "view_ymax": 103047,
+    "view_xmin": 138056,
+    "view_ymin": 21290,
+    "view_xmax": 138661,
+    "view_ymax": 21735,
     "region_name": "Initial",
     "cell_list": [
       [
-        183111,
-        102875,
-        183160,
-        102927
+        138460,
+        21466,
+        138532,
+        21536
+      ],
+      [
+        138554,
+        21360,
+        138602,
+        21410
+      ],
+      [
+        138439,
+        21409,
+        138509,
+        21474
+      ],
+      [
+        138107,
+        21604,
+        138172,
+        21674
       ]
     ]
   },
@@ -387,17 +621,59 @@
     "task_index": 22,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 183160,
-    "view_ymin": 103628,
-    "view_xmax": 183548,
-    "view_ymax": 103919,
+    "view_xmin": 137938,
+    "view_ymin": 20430,
+    "view_xmax": 138543,
+    "view_ymax": 20875,
     "region_name": "Initial",
     "cell_list": [
       [
-        183316,
-        103740,
-        183392,
-        103809
+        138166,
+        20547,
+        138226,
+        20612
+      ],
+      [
+        138187,
+        20468,
+        138244,
+        20531
+      ],
+      [
+        138132,
+        20747,
+        138186,
+        20806
+      ],
+      [
+        137975,
+        20490,
+        138023,
+        20545
+      ],
+      [
+        138193,
+        20627,
+        138239,
+        20681
+      ],
+      [
+        138417,
+        20759,
+        138547,
+        20855
+      ],
+      [
+        138505,
+        20613,
+        138578,
+        20679
+      ],
+      [
+        138425,
+        20601,
+        138511,
+        20685
       ]
     ]
   },
@@ -405,17 +681,23 @@
     "task_index": 23,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 183706,
-    "view_ymin": 101564,
-    "view_xmax": 184094,
-    "view_ymax": 101855,
+    "view_xmin": 137260,
+    "view_ymin": 20814,
+    "view_xmax": 137865,
+    "view_ymax": 21259,
     "region_name": "Initial",
     "cell_list": [
       [
-        183877,
-        101689,
-        183922,
-        101732
+        137582,
+        21043,
+        137638,
+        21099
+      ],
+      [
+        137483,
+        20958,
+        137551,
+        21045
       ]
     ]
   },
@@ -423,17 +705,47 @@
     "task_index": 24,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 183944,
-    "view_ymin": 100370,
-    "view_xmax": 184332,
-    "view_ymax": 100661,
+    "view_xmin": 136718,
+    "view_ymin": 20156,
+    "view_xmax": 137323,
+    "view_ymax": 20601,
     "region_name": "Initial",
     "cell_list": [
       [
-        184096,
-        100481,
-        184179,
-        100549
+        136905,
+        20246,
+        136971,
+        20316
+      ],
+      [
+        137124,
+        20292,
+        137197,
+        20363
+      ],
+      [
+        137068,
+        20449,
+        137139,
+        20504
+      ],
+      [
+        136853,
+        20264,
+        136911,
+        20333
+      ],
+      [
+        137080,
+        20408,
+        137128,
+        20447
+      ],
+      [
+        137028,
+        20355,
+        137071,
+        20403
       ]
     ]
   },
@@ -441,17 +753,23 @@
     "task_index": 25,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 184208,
-    "view_ymin": 103058,
-    "view_xmax": 184596,
-    "view_ymax": 103349,
+    "view_xmin": 136382,
+    "view_ymin": 20526,
+    "view_xmax": 136987,
+    "view_ymax": 20971,
     "region_name": "Initial",
     "cell_list": [
       [
-        184366,
-        103167,
-        184437,
-        103240
+        136785,
+        20642,
+        136856,
+        20710
+      ],
+      [
+        136886,
+        20870,
+        136925,
+        20913
       ]
     ]
   },
@@ -459,17 +777,23 @@
     "task_index": 26,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 185382,
-    "view_ymin": 103610,
-    "view_xmax": 185770,
-    "view_ymax": 103901,
+    "view_xmin": 136342,
+    "view_ymin": 20948,
+    "view_xmax": 136947,
+    "view_ymax": 21393,
     "region_name": "Initial",
     "cell_list": [
       [
-        185526,
-        103724,
-        185626,
-        103787
+        136519,
+        21144,
+        136564,
+        21186
+      ],
+      [
+        136780,
+        21313,
+        136816,
+        21351
       ]
     ]
   },
@@ -477,17 +801,35 @@
     "task_index": 27,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 186850,
-    "view_ymin": 107700,
-    "view_xmax": 187238,
-    "view_ymax": 107991,
+    "view_xmin": 136110,
+    "view_ymin": 20272,
+    "view_xmax": 136715,
+    "view_ymax": 20717,
     "region_name": "Initial",
     "cell_list": [
       [
-        187011,
-        107810,
-        187077,
-        107880
+        136437,
+        20580,
+        136490,
+        20634
+      ],
+      [
+        136313,
+        20448,
+        136377,
+        20497
+      ],
+      [
+        136345,
+        20476,
+        136411,
+        20555
+      ],
+      [
+        136454,
+        20494,
+        136508,
+        20542
       ]
     ]
   },
@@ -495,17 +837,47 @@
     "task_index": 28,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 186236,
-    "view_ymin": 106474,
-    "view_xmax": 186624,
-    "view_ymax": 106765,
+    "view_xmin": 135902,
+    "view_ymin": 20826,
+    "view_xmax": 136507,
+    "view_ymax": 21271,
     "region_name": "Initial",
     "cell_list": [
       [
-        186389,
-        106582,
-        186473,
-        106659
+        136247,
+        20921,
+        136311,
+        20997
+      ],
+      [
+        135936,
+        21171,
+        136018,
+        21256
+      ],
+      [
+        136394,
+        20848,
+        136468,
+        20922
+      ],
+      [
+        136465,
+        21125,
+        136515,
+        21173
+      ],
+      [
+        136391,
+        20918,
+        136439,
+        20957
+      ],
+      [
+        136471,
+        20983,
+        136536,
+        21039
       ]
     ]
   },
@@ -513,17 +885,29 @@
     "task_index": 29,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182474,
-    "view_ymin": 108284,
-    "view_xmax": 182862,
-    "view_ymax": 108575,
+    "view_xmin": 135892,
+    "view_ymin": 21292,
+    "view_xmax": 136497,
+    "view_ymax": 21737,
     "region_name": "Initial",
     "cell_list": [
       [
-        182644,
-        108403,
-        182693,
-        108458
+        136147,
+        21517,
+        136192,
+        21562
+      ],
+      [
+        136246,
+        21356,
+        136313,
+        21427
+      ],
+      [
+        136090,
+        21618,
+        136133,
+        21660
       ]
     ]
   },
@@ -531,17 +915,41 @@
     "task_index": 30,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 180340,
-    "view_ymin": 106926,
-    "view_xmax": 180728,
-    "view_ymax": 107217,
+    "view_xmin": 135488,
+    "view_ymin": 20490,
+    "view_xmax": 136093,
+    "view_ymax": 20935,
     "region_name": "Initial",
     "cell_list": [
       [
-        180482,
-        107045,
-        180585,
-        107099
+        135533,
+        20801,
+        135610,
+        20878
+      ],
+      [
+        135979,
+        20707,
+        136045,
+        20772
+      ],
+      [
+        135833,
+        20771,
+        135891,
+        20817
+      ],
+      [
+        135759,
+        20562,
+        135805,
+        20611
+      ],
+      [
+        135842,
+        20723,
+        135893,
+        20771
       ]
     ]
   },
@@ -549,17 +957,23 @@
     "task_index": 31,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 180338,
-    "view_ymin": 106002,
-    "view_xmax": 180726,
-    "view_ymax": 106293,
+    "view_xmin": 135208,
+    "view_ymin": 21276,
+    "view_xmax": 135813,
+    "view_ymax": 21721,
     "region_name": "Initial",
     "cell_list": [
       [
-        180484,
-        106099,
-        180582,
-        106196
+        135474,
+        21493,
+        135537,
+        21555
+      ],
+      [
+        135490,
+        21454,
+        135539,
+        21493
       ]
     ]
   },
@@ -567,17 +981,35 @@
     "task_index": 32,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 180188,
-    "view_ymin": 105464,
-    "view_xmax": 180576,
-    "view_ymax": 105755,
+    "view_xmin": 134940,
+    "view_ymin": 20226,
+    "view_xmax": 135545,
+    "view_ymax": 20671,
     "region_name": "Initial",
     "cell_list": [
       [
-        180329,
-        105560,
-        180437,
-        105658
+        135354,
+        20372,
+        135420,
+        20447
+      ],
+      [
+        135062,
+        20295,
+        135136,
+        20370
+      ],
+      [
+        135110,
+        20536,
+        135174,
+        20597
+      ],
+      [
+        135355,
+        20378,
+        135369,
+        20439
       ]
     ]
   },
@@ -585,17 +1017,29 @@
     "task_index": 33,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 182654,
-    "view_ymin": 111368,
-    "view_xmax": 183042,
-    "view_ymax": 111659,
+    "view_xmin": 134720,
+    "view_ymin": 21100,
+    "view_xmax": 135325,
+    "view_ymax": 21545,
     "region_name": "Initial",
     "cell_list": [
       [
-        182799,
-        111482,
-        182896,
-        111546
+        135173,
+        21177,
+        135254,
+        21257
+      ],
+      [
+        135114,
+        21377,
+        135194,
+        21446
+      ],
+      [
+        134807,
+        21402,
+        134859,
+        21454
       ]
     ]
   },
@@ -603,17 +1047,35 @@
     "task_index": 34,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 186136,
-    "view_ymin": 110432,
-    "view_xmax": 186524,
-    "view_ymax": 110723,
+    "view_xmin": 134516,
+    "view_ymin": 20630,
+    "view_xmax": 135121,
+    "view_ymax": 21075,
     "region_name": "Initial",
     "cell_list": [
       [
-        186307,
-        110555,
-        186353,
-        110601
+        134981,
+        20910,
+        135042,
+        20969
+      ],
+      [
+        134637,
+        20777,
+        134714,
+        20842
+      ],
+      [
+        134732,
+        20752,
+        134823,
+        20817
+      ],
+      [
+        134607,
+        20745,
+        134648,
+        20790
       ]
     ]
   },
@@ -621,17 +1083,29 @@
     "task_index": 35,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 187326,
-    "view_ymin": 113058,
-    "view_xmax": 187714,
-    "view_ymax": 113349,
+    "view_xmin": 133960,
+    "view_ymin": 20450,
+    "view_xmax": 134565,
+    "view_ymax": 20895,
     "region_name": "Initial",
     "cell_list": [
       [
-        187495,
-        113180,
-        187544,
-        113229
+        134424,
+        20477,
+        134498,
+        20553
+      ],
+      [
+        134042,
+        20766,
+        134086,
+        20817
+      ],
+      [
+        134422,
+        20795,
+        134493,
+        20864
       ]
     ]
   },
@@ -639,17 +1113,6483 @@
     "task_index": 36,
     "view_type": "WBC",
     "smear_type": "BM",
-    "view_xmin": 188140,
-    "view_ymin": 111788,
-    "view_xmax": 188528,
-    "view_ymax": 112079,
+    "view_xmin": 133514,
+    "view_ymin": 21432,
+    "view_xmax": 134119,
+    "view_ymax": 21877,
     "region_name": "Initial",
     "cell_list": [
       [
-        188300,
-        111910,
-        188367,
-        111959
+        133621,
+        21447,
+        133682,
+        21513
+      ],
+      [
+        133890,
+        21750,
+        133967,
+        21821
+      ],
+      [
+        133957,
+        21806,
+        134007,
+        21850
+      ]
+    ]
+  },
+  {
+    "task_index": 37,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133158,
+    "view_ymin": 20036,
+    "view_xmax": 133763,
+    "view_ymax": 20481,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        133596,
+        20260,
+        133675,
+        20343
+      ],
+      [
+        133686,
+        20225,
+        133753,
+        20289
+      ],
+      [
+        133474,
+        20415,
+        133536,
+        20481
+      ],
+      [
+        133167,
+        20426,
+        133235,
+        20491
+      ],
+      [
+        133628,
+        20015,
+        133700,
+        20103
+      ]
+    ]
+  },
+  {
+    "task_index": 38,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132922,
+    "view_ymin": 20774,
+    "view_xmax": 133527,
+    "view_ymax": 21219,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        133150,
+        21130,
+        133193,
+        21173
+      ],
+      [
+        133181,
+        21096,
+        133232,
+        21147
+      ],
+      [
+        133245,
+        20935,
+        133310,
+        20999
+      ]
+    ]
+  },
+  {
+    "task_index": 39,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132670,
+    "view_ymin": 20552,
+    "view_xmax": 133275,
+    "view_ymax": 20997,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        132717,
+        20666,
+        132806,
+        20752
+      ],
+      [
+        133154,
+        20715,
+        133218,
+        20777
+      ],
+      [
+        133094,
+        20570,
+        133157,
+        20637
+      ],
+      [
+        132774,
+        20735,
+        132826,
+        20780
+      ],
+      [
+        133237,
+        20811,
+        133303,
+        20876
+      ]
+    ]
+  },
+  {
+    "task_index": 40,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132334,
+    "view_ymin": 20128,
+    "view_xmax": 132939,
+    "view_ymax": 20573,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        132668,
+        20516,
+        132718,
+        20565
+      ],
+      [
+        132619,
+        20160,
+        132672,
+        20211
+      ],
+      [
+        132551,
+        20134,
+        132608,
+        20189
+      ]
+    ]
+  },
+  {
+    "task_index": 41,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132232,
+    "view_ymin": 20784,
+    "view_xmax": 132837,
+    "view_ymax": 21229,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        132652,
+        21039,
+        132742,
+        21128
+      ],
+      [
+        132379,
+        21072,
+        132464,
+        21167
+      ],
+      [
+        132345,
+        21129,
+        132402,
+        21187
+      ],
+      [
+        132809,
+        20919,
+        132854,
+        20972
+      ],
+      [
+        132495,
+        20825,
+        132560,
+        20887
+      ]
+    ]
+  },
+  {
+    "task_index": 42,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131990,
+    "view_ymin": 21428,
+    "view_xmax": 132595,
+    "view_ymax": 21873,
+    "region_name": "Initial",
+    "cell_list": [
+      [
+        132306,
+        21790,
+        132357,
+        21841
+      ],
+      [
+        132304,
+        21451,
+        132382,
+        21524
+      ]
+    ]
+  },
+  {
+    "task_index": 43,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133194,
+    "view_ymin": 21688,
+    "view_xmax": 133799,
+    "view_ymax": 22133,
+    "region_name": "Extra_1",
+    "cell_list": [
+      [
+        133607,
+        21747,
+        133695,
+        21831
+      ],
+      [
+        133567,
+        21980,
+        133626,
+        22042
+      ],
+      [
+        133369,
+        21784,
+        133423,
+        21841
+      ]
+    ]
+  },
+  {
+    "task_index": 44,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134524,
+    "view_ymin": 21608,
+    "view_xmax": 135129,
+    "view_ymax": 22053,
+    "region_name": "Extra_1",
+    "cell_list": [
+      [
+        134802,
+        21806,
+        134850,
+        21856
+      ]
+    ]
+  },
+  {
+    "task_index": 45,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137370,
+    "view_ymin": 21700,
+    "view_xmax": 137975,
+    "view_ymax": 22145,
+    "region_name": "Extra_1",
+    "cell_list": [
+      [
+        137632,
+        21883,
+        137715,
+        21962
+      ]
+    ]
+  },
+  {
+    "task_index": 46,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139050,
+    "view_ymin": 21624,
+    "view_xmax": 139655,
+    "view_ymax": 22069,
+    "region_name": "Extra_1",
+    "cell_list": [
+      [
+        139321,
+        21809,
+        139385,
+        21886
+      ]
+    ]
+  },
+  {
+    "task_index": 47,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132336,
+    "view_ymin": 22012,
+    "view_xmax": 132941,
+    "view_ymax": 22457,
+    "region_name": "Extra_2",
+    "cell_list": [
+      [
+        132364,
+        22149,
+        132432,
+        22222
+      ],
+      [
+        132561,
+        22026,
+        132655,
+        22117
+      ],
+      [
+        132818,
+        22114,
+        132869,
+        22159
+      ],
+      [
+        132857,
+        22170,
+        132906,
+        22225
+      ],
+      [
+        132802,
+        22158,
+        132864,
+        22199
+      ]
+    ]
+  },
+  {
+    "task_index": 48,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135048,
+    "view_ymin": 22032,
+    "view_xmax": 135653,
+    "view_ymax": 22477,
+    "region_name": "Extra_2",
+    "cell_list": [
+      [
+        135546,
+        22284,
+        135617,
+        22355
+      ],
+      [
+        135209,
+        22308,
+        135260,
+        22365
+      ],
+      [
+        135086,
+        22138,
+        135154,
+        22205
+      ]
+    ]
+  },
+  {
+    "task_index": 49,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137824,
+    "view_ymin": 22050,
+    "view_xmax": 138429,
+    "view_ymax": 22495,
+    "region_name": "Extra_2",
+    "cell_list": [
+      [
+        138108,
+        22240,
+        138144,
+        22307
+      ]
+    ]
+  },
+  {
+    "task_index": 50,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132238,
+    "view_ymin": 22340,
+    "view_xmax": 132843,
+    "view_ymax": 22785,
+    "region_name": "Extra_3",
+    "cell_list": [
+      [
+        132562,
+        22367,
+        132622,
+        22427
+      ],
+      [
+        132503,
+        22529,
+        132577,
+        22597
+      ]
+    ]
+  },
+  {
+    "task_index": 51,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138374,
+    "view_ymin": 22354,
+    "view_xmax": 138979,
+    "view_ymax": 22799,
+    "region_name": "Extra_3",
+    "cell_list": [
+      [
+        138495,
+        22613,
+        138545,
+        22670
+      ],
+      [
+        138800,
+        22482,
+        138867,
+        22540
+      ]
+    ]
+  },
+  {
+    "task_index": 52,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133520,
+    "view_ymin": 22394,
+    "view_xmax": 134125,
+    "view_ymax": 22839,
+    "region_name": "Extra_4",
+    "cell_list": [
+      [
+        133801,
+        22593,
+        133846,
+        22641
+      ]
+    ]
+  },
+  {
+    "task_index": 53,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133564,
+    "view_ymin": 22838,
+    "view_xmax": 134169,
+    "view_ymax": 23283,
+    "region_name": "Extra_5",
+    "cell_list": [
+      [
+        133761,
+        22917,
+        133823,
+        22978
+      ],
+      [
+        133901,
+        23135,
+        133981,
+        23217
+      ]
+    ]
+  },
+  {
+    "task_index": 54,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135064,
+    "view_ymin": 22792,
+    "view_xmax": 135669,
+    "view_ymax": 23237,
+    "region_name": "Extra_5",
+    "cell_list": [
+      [
+        135446,
+        23085,
+        135519,
+        23158
+      ],
+      [
+        135230,
+        22889,
+        135273,
+        22931
+      ]
+    ]
+  },
+  {
+    "task_index": 55,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134486,
+    "view_ymin": 23644,
+    "view_xmax": 135091,
+    "view_ymax": 24089,
+    "region_name": "Extra_6",
+    "cell_list": [
+      [
+        134760,
+        23829,
+        134818,
+        23906
+      ]
+    ]
+  },
+  {
+    "task_index": 56,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136950,
+    "view_ymin": 23622,
+    "view_xmax": 137555,
+    "view_ymax": 24067,
+    "region_name": "Extra_6",
+    "cell_list": [
+      [
+        137216,
+        23812,
+        137289,
+        23879
+      ]
+    ]
+  },
+  {
+    "task_index": 57,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132530,
+    "view_ymin": 18830,
+    "view_xmax": 133135,
+    "view_ymax": 19275,
+    "region_name": "Extra_7",
+    "cell_list": [
+      [
+        132910,
+        18827,
+        132973,
+        18899
+      ],
+      [
+        132695,
+        19061,
+        132765,
+        19131
+      ],
+      [
+        132869,
+        18879,
+        132929,
+        18952
+      ],
+      [
+        132742,
+        18887,
+        132792,
+        18934
+      ],
+      [
+        132699,
+        19219,
+        132748,
+        19264
+      ]
+    ]
+  },
+  {
+    "task_index": 58,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133726,
+    "view_ymin": 19012,
+    "view_xmax": 134331,
+    "view_ymax": 19457,
+    "region_name": "Extra_7",
+    "cell_list": [
+      [
+        134015,
+        19188,
+        134069,
+        19238
+      ],
+      [
+        133983,
+        19222,
+        134045,
+        19289
+      ]
+    ]
+  },
+  {
+    "task_index": 59,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134744,
+    "view_ymin": 18938,
+    "view_xmax": 135349,
+    "view_ymax": 19383,
+    "region_name": "Extra_7",
+    "cell_list": [
+      [
+        135013,
+        19131,
+        135080,
+        19192
+      ]
+    ]
+  },
+  {
+    "task_index": 60,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137046,
+    "view_ymin": 18948,
+    "view_xmax": 137651,
+    "view_ymax": 19393,
+    "region_name": "Extra_7",
+    "cell_list": [
+      [
+        137161,
+        19050,
+        137233,
+        19127
+      ],
+      [
+        137469,
+        19057,
+        137535,
+        19123
+      ],
+      [
+        137269,
+        19214,
+        137336,
+        19292
+      ]
+    ]
+  },
+  {
+    "task_index": 61,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137960,
+    "view_ymin": 18864,
+    "view_xmax": 138565,
+    "view_ymax": 19309,
+    "region_name": "Extra_7",
+    "cell_list": [
+      [
+        138228,
+        19051,
+        138298,
+        19122
+      ]
+    ]
+  },
+  {
+    "task_index": 62,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131854,
+    "view_ymin": 18690,
+    "view_xmax": 132459,
+    "view_ymax": 19135,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        132133,
+        18888,
+        132182,
+        18939
+      ]
+    ]
+  },
+  {
+    "task_index": 63,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135312,
+    "view_ymin": 18620,
+    "view_xmax": 135917,
+    "view_ymax": 19065,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        135669,
+        18897,
+        135743,
+        18970
+      ],
+      [
+        135495,
+        18720,
+        135550,
+        18781
+      ]
+    ]
+  },
+  {
+    "task_index": 64,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136414,
+    "view_ymin": 18754,
+    "view_xmax": 137019,
+    "view_ymax": 19199,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        136540,
+        18943,
+        136606,
+        19010
+      ],
+      [
+        136826,
+        18949,
+        136895,
+        19008
+      ]
+    ]
+  },
+  {
+    "task_index": 65,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138406,
+    "view_ymin": 18748,
+    "view_xmax": 139011,
+    "view_ymax": 19193,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        138753,
+        18929,
+        138810,
+        18984
+      ],
+      [
+        138808,
+        19023,
+        138858,
+        19074
+      ],
+      [
+        138814,
+        19075,
+        138863,
+        19129
+      ],
+      [
+        138556,
+        18924,
+        138604,
+        18977
+      ],
+      [
+        138575,
+        18868,
+        138645,
+        18927
+      ],
+      [
+        138554,
+        18808,
+        138626,
+        18873
+      ],
+      [
+        138668,
+        18921,
+        138744,
+        19014
+      ]
+    ]
+  },
+  {
+    "task_index": 66,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138958,
+    "view_ymin": 18654,
+    "view_xmax": 139563,
+    "view_ymax": 19099,
+    "region_name": "Extra_8",
+    "cell_list": [
+      [
+        139167,
+        18669,
+        139228,
+        18726
+      ],
+      [
+        139295,
+        19029,
+        139351,
+        19086
+      ],
+      [
+        139237,
+        18707,
+        139293,
+        18766
+      ]
+    ]
+  },
+  {
+    "task_index": 67,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139706,
+    "view_ymin": 18448,
+    "view_xmax": 140311,
+    "view_ymax": 18893,
+    "region_name": "Extra_9",
+    "cell_list": [
+      [
+        139974,
+        18637,
+        140044,
+        18706
+      ]
+    ]
+  },
+  {
+    "task_index": 68,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133132,
+    "view_ymin": 18166,
+    "view_xmax": 133737,
+    "view_ymax": 18611,
+    "region_name": "Extra_10",
+    "cell_list": [
+      [
+        133611,
+        18408,
+        133678,
+        18473
+      ],
+      [
+        133186,
+        18277,
+        133262,
+        18395
+      ]
+    ]
+  },
+  {
+    "task_index": 69,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132398,
+    "view_ymin": 18066,
+    "view_xmax": 133003,
+    "view_ymax": 18511,
+    "region_name": "Extra_11",
+    "cell_list": [
+      [
+        132699,
+        18226,
+        132764,
+        18281
+      ],
+      [
+        132644,
+        18293,
+        132699,
+        18353
+      ]
+    ]
+  },
+  {
+    "task_index": 70,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136848,
+    "view_ymin": 18028,
+    "view_xmax": 137453,
+    "view_ymax": 18473,
+    "region_name": "Extra_11",
+    "cell_list": [
+      [
+        137371,
+        18136,
+        137445,
+        18202
+      ],
+      [
+        136863,
+        18250,
+        136928,
+        18313
+      ],
+      [
+        136890,
+        18306,
+        136951,
+        18362
+      ]
+    ]
+  },
+  {
+    "task_index": 71,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135788,
+    "view_ymin": 17762,
+    "view_xmax": 136393,
+    "view_ymax": 18207,
+    "region_name": "Extra_12",
+    "cell_list": [
+      [
+        136359,
+        17884,
+        136424,
+        17954
+      ],
+      [
+        136181,
+        18055,
+        136253,
+        18125
+      ],
+      [
+        135928,
+        17846,
+        135999,
+        17916
+      ]
+    ]
+  },
+  {
+    "task_index": 72,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136282,
+    "view_ymin": 17856,
+    "view_xmax": 136887,
+    "view_ymax": 18301,
+    "region_name": "Extra_12",
+    "cell_list": [
+      [
+        136743,
+        18199,
+        136816,
+        18280
+      ],
+      [
+        136595,
+        18206,
+        136664,
+        18274
+      ],
+      [
+        136451,
+        17965,
+        136503,
+        18011
+      ]
+    ]
+  },
+  {
+    "task_index": 73,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137596,
+    "view_ymin": 17816,
+    "view_xmax": 138201,
+    "view_ymax": 18261,
+    "region_name": "Extra_12",
+    "cell_list": [
+      [
+        137925,
+        18160,
+        137990,
+        18227
+      ]
+    ]
+  },
+  {
+    "task_index": 74,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139534,
+    "view_ymin": 17906,
+    "view_xmax": 140139,
+    "view_ymax": 18351,
+    "region_name": "Extra_12",
+    "cell_list": [
+      [
+        139704,
+        18009,
+        139779,
+        18094
+      ],
+      [
+        139908,
+        18174,
+        139953,
+        18236
+      ]
+    ]
+  },
+  {
+    "task_index": 75,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131660,
+    "view_ymin": 18310,
+    "view_xmax": 132265,
+    "view_ymax": 18755,
+    "region_name": "Extra_13",
+    "cell_list": [
+      [
+        132126,
+        18429,
+        132189,
+        18502
+      ],
+      [
+        131739,
+        18567,
+        131801,
+        18634
+      ]
+    ]
+  },
+  {
+    "task_index": 76,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131638,
+    "view_ymin": 20238,
+    "view_xmax": 132243,
+    "view_ymax": 20683,
+    "region_name": "Extra_13",
+    "cell_list": [
+      [
+        131906,
+        20457,
+        131961,
+        20512
+      ],
+      [
+        131924,
+        20413,
+        131973,
+        20458
+      ]
+    ]
+  },
+  {
+    "task_index": 77,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131700,
+    "view_ymin": 21056,
+    "view_xmax": 132305,
+    "view_ymax": 21501,
+    "region_name": "Extra_13",
+    "cell_list": [
+      [
+        132185,
+        21212,
+        132278,
+        21303
+      ],
+      [
+        131746,
+        21424,
+        131799,
+        21484
+      ],
+      [
+        132147,
+        21161,
+        132196,
+        21210
+      ],
+      [
+        132143,
+        21119,
+        132186,
+        21159
+      ],
+      [
+        132167,
+        21079,
+        132216,
+        21128
+      ],
+      [
+        132211,
+        21463,
+        132276,
+        21533
+      ]
+    ]
+  },
+  {
+    "task_index": 78,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131754,
+    "view_ymin": 22560,
+    "view_xmax": 132359,
+    "view_ymax": 23005,
+    "region_name": "Extra_13",
+    "cell_list": [
+      [
+        131938,
+        22593,
+        131999,
+        22654
+      ],
+      [
+        131948,
+        22912,
+        132007,
+        22974
+      ],
+      [
+        132118,
+        22669,
+        132169,
+        22719
+      ]
+    ]
+  },
+  {
+    "task_index": 79,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131500,
+    "view_ymin": 17934,
+    "view_xmax": 132105,
+    "view_ymax": 18379,
+    "region_name": "Extra_14",
+    "cell_list": [
+      [
+        132001,
+        17950,
+        132060,
+        18014
+      ],
+      [
+        131532,
+        18290,
+        131615,
+        18373
+      ]
+    ]
+  },
+  {
+    "task_index": 80,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131432,
+    "view_ymin": 20800,
+    "view_xmax": 132037,
+    "view_ymax": 21245,
+    "region_name": "Extra_14",
+    "cell_list": [
+      [
+        131707,
+        20996,
+        131764,
+        21050
+      ]
+    ]
+  },
+  {
+    "task_index": 81,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131148,
+    "view_ymin": 19546,
+    "view_xmax": 131753,
+    "view_ymax": 19991,
+    "region_name": "Extra_15",
+    "cell_list": []
+  },
+  {
+    "task_index": 82,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131306,
+    "view_ymin": 18952,
+    "view_xmax": 131911,
+    "view_ymax": 19397,
+    "region_name": "Extra_15",
+    "cell_list": [
+      [
+        131731,
+        19043,
+        131845,
+        19115
+      ],
+      [
+        131407,
+        19242,
+        131453,
+        19297
+      ]
+    ]
+  },
+  {
+    "task_index": 83,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130942,
+    "view_ymin": 21906,
+    "view_xmax": 131547,
+    "view_ymax": 22351,
+    "region_name": "Extra_16",
+    "cell_list": [
+      [
+        131215,
+        22096,
+        131273,
+        22160
+      ]
+    ]
+  },
+  {
+    "task_index": 84,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131112,
+    "view_ymin": 20948,
+    "view_xmax": 131717,
+    "view_ymax": 21393,
+    "region_name": "Extra_16",
+    "cell_list": [
+      [
+        131631,
+        21005,
+        131691,
+        21071
+      ],
+      [
+        131198,
+        21269,
+        131209,
+        21334
+      ],
+      [
+        131130,
+        21264,
+        131208,
+        21340
+      ],
+      [
+        131410,
+        21148,
+        131476,
+        21214
+      ]
+    ]
+  },
+  {
+    "task_index": 85,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130864,
+    "view_ymin": 19624,
+    "view_xmax": 131469,
+    "view_ymax": 20069,
+    "region_name": "Extra_17",
+    "cell_list": [
+      [
+        131278,
+        19838,
+        131320,
+        19880
+      ],
+      [
+        130892,
+        19881,
+        130952,
+        19939
+      ],
+      [
+        131175,
+        19813,
+        131225,
+        19858
+      ],
+      [
+        131253,
+        19774,
+        131309,
+        19820
+      ],
+      [
+        131430,
+        19746,
+        131473,
+        19793
+      ],
+      [
+        131391,
+        19760,
+        131432,
+        19808
+      ],
+      [
+        131241,
+        19816,
+        131283,
+        19858
+      ]
+    ]
+  },
+  {
+    "task_index": 86,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130592,
+    "view_ymin": 19046,
+    "view_xmax": 131197,
+    "view_ymax": 19491,
+    "region_name": "Extra_18",
+    "cell_list": [
+      [
+        130870,
+        19243,
+        130918,
+        19296
+      ]
+    ]
+  },
+  {
+    "task_index": 87,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130658,
+    "view_ymin": 18282,
+    "view_xmax": 131263,
+    "view_ymax": 18727,
+    "region_name": "Extra_18",
+    "cell_list": [
+      [
+        130927,
+        18471,
+        130995,
+        18540
+      ]
+    ]
+  },
+  {
+    "task_index": 88,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130662,
+    "view_ymin": 20472,
+    "view_xmax": 131267,
+    "view_ymax": 20917,
+    "region_name": "Extra_18",
+    "cell_list": [
+      [
+        131146,
+        20808,
+        131184,
+        20856
+      ]
+    ]
+  },
+  {
+    "task_index": 89,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130232,
+    "view_ymin": 19862,
+    "view_xmax": 130837,
+    "view_ymax": 20307,
+    "region_name": "Extra_19",
+    "cell_list": [
+      [
+        130634,
+        19981,
+        130697,
+        20050
+      ],
+      [
+        130419,
+        20158,
+        130466,
+        20177
+      ],
+      [
+        130377,
+        20130,
+        130432,
+        20175
+      ]
+    ]
+  },
+  {
+    "task_index": 90,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130372,
+    "view_ymin": 17898,
+    "view_xmax": 130977,
+    "view_ymax": 18343,
+    "region_name": "Extra_19",
+    "cell_list": [
+      [
+        130632,
+        18062,
+        130714,
+        18145
+      ],
+      [
+        130645,
+        18130,
+        130706,
+        18145
+      ]
+    ]
+  },
+  {
+    "task_index": 91,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130358,
+    "view_ymin": 21162,
+    "view_xmax": 130963,
+    "view_ymax": 21607,
+    "region_name": "Extra_19",
+    "cell_list": [
+      [
+        130610,
+        21374,
+        130673,
+        21436
+      ],
+      [
+        130649,
+        21335,
+        130711,
+        21396
+      ]
+    ]
+  },
+  {
+    "task_index": 92,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130282,
+    "view_ymin": 21642,
+    "view_xmax": 130887,
+    "view_ymax": 22087,
+    "region_name": "Extra_19",
+    "cell_list": [
+      [
+        130629,
+        21672,
+        130699,
+        21743
+      ],
+      [
+        130473,
+        21990,
+        130537,
+        22054
+      ]
+    ]
+  },
+  {
+    "task_index": 93,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130040,
+    "view_ymin": 19568,
+    "view_xmax": 130645,
+    "view_ymax": 20013,
+    "region_name": "Extra_20",
+    "cell_list": [
+      [
+        130562,
+        19965,
+        130636,
+        20037
+      ],
+      [
+        130313,
+        19757,
+        130374,
+        19826
+      ]
+    ]
+  },
+  {
+    "task_index": 94,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130146,
+    "view_ymin": 19062,
+    "view_xmax": 130751,
+    "view_ymax": 19507,
+    "region_name": "Extra_20",
+    "cell_list": [
+      [
+        130497,
+        19331,
+        130573,
+        19399
+      ],
+      [
+        130396,
+        19179,
+        130467,
+        19233
+      ],
+      [
+        130334,
+        19214,
+        130395,
+        19264
+      ]
+    ]
+  },
+  {
+    "task_index": 95,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130198,
+    "view_ymin": 20312,
+    "view_xmax": 130803,
+    "view_ymax": 20757,
+    "region_name": "Extra_20",
+    "cell_list": [
+      [
+        130284,
+        20529,
+        130357,
+        20605
+      ],
+      [
+        130360,
+        20523,
+        130418,
+        20588
+      ],
+      [
+        130647,
+        20474,
+        130713,
+        20531
+      ],
+      [
+        130745,
+        20541,
+        130782,
+        20578
+      ]
+    ]
+  },
+  {
+    "task_index": 96,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129920,
+    "view_ymin": 21282,
+    "view_xmax": 130525,
+    "view_ymax": 21727,
+    "region_name": "Extra_21",
+    "cell_list": [
+      [
+        130166,
+        21467,
+        130249,
+        21551
+      ],
+      [
+        130332,
+        21602,
+        130389,
+        21658
+      ],
+      [
+        130300,
+        21358,
+        130347,
+        21401
+      ],
+      [
+        130293,
+        21415,
+        130344,
+        21457
+      ],
+      [
+        130225,
+        21592,
+        130268,
+        21643
+      ],
+      [
+        130050,
+        21556,
+        130118,
+        21622
+      ]
+    ]
+  },
+  {
+    "task_index": 97,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129946,
+    "view_ymin": 22544,
+    "view_xmax": 130551,
+    "view_ymax": 22989,
+    "region_name": "Extra_21",
+    "cell_list": [
+      [
+        130218,
+        22735,
+        130281,
+        22799
+      ]
+    ]
+  },
+  {
+    "task_index": 98,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129992,
+    "view_ymin": 22218,
+    "view_xmax": 130597,
+    "view_ymax": 22663,
+    "region_name": "Extra_21",
+    "cell_list": [
+      [
+        130293,
+        22414,
+        130349,
+        22471
+      ],
+      [
+        130249,
+        22418,
+        130289,
+        22459
+      ]
+    ]
+  },
+  {
+    "task_index": 99,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129582,
+    "view_ymin": 18294,
+    "view_xmax": 130187,
+    "view_ymax": 18739,
+    "region_name": "Extra_22",
+    "cell_list": [
+      [
+        129776,
+        18375,
+        129852,
+        18453
+      ],
+      [
+        129655,
+        18526,
+        129720,
+        18534
+      ],
+      [
+        129826,
+        18595,
+        129871,
+        18641
+      ],
+      [
+        130055,
+        18396,
+        130117,
+        18459
+      ],
+      [
+        129639,
+        18528,
+        129728,
+        18637
+      ]
+    ]
+  },
+  {
+    "task_index": 100,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129670,
+    "view_ymin": 19868,
+    "view_xmax": 130275,
+    "view_ymax": 20313,
+    "region_name": "Extra_22",
+    "cell_list": [
+      [
+        129997,
+        20030,
+        130065,
+        20098
+      ],
+      [
+        129879,
+        20090,
+        129949,
+        20147
+      ]
+    ]
+  },
+  {
+    "task_index": 101,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129410,
+    "view_ymin": 20798,
+    "view_xmax": 130015,
+    "view_ymax": 21243,
+    "region_name": "Extra_23",
+    "cell_list": [
+      [
+        129678,
+        20991,
+        129748,
+        21051
+      ]
+    ]
+  },
+  {
+    "task_index": 102,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129970,
+    "view_ymin": 17600,
+    "view_xmax": 130575,
+    "view_ymax": 18045,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        130181,
+        17864,
+        130254,
+        17931
+      ],
+      [
+        130291,
+        17707,
+        130362,
+        17789
+      ]
+    ]
+  },
+  {
+    "task_index": 103,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131236,
+    "view_ymin": 17668,
+    "view_xmax": 131841,
+    "view_ymax": 18113,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        131555,
+        17901,
+        131620,
+        17969
+      ],
+      [
+        131485,
+        17846,
+        131575,
+        17926
+      ],
+      [
+        131515,
+        17925,
+        131553,
+        17966
+      ],
+      [
+        131465,
+        17810,
+        131514,
+        17865
+      ]
+    ]
+  },
+  {
+    "task_index": 104,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133642,
+    "view_ymin": 17538,
+    "view_xmax": 134247,
+    "view_ymax": 17983,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        134001,
+        17837,
+        134070,
+        17909
+      ],
+      [
+        133895,
+        17886,
+        133960,
+        17952
+      ],
+      [
+        133849,
+        17930,
+        133900,
+        17981
+      ],
+      [
+        133819,
+        17539,
+        133893,
+        17596
+      ]
+    ]
+  },
+  {
+    "task_index": 105,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134164,
+    "view_ymin": 17662,
+    "view_xmax": 134769,
+    "view_ymax": 18107,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        134434,
+        17851,
+        134501,
+        17917
+      ]
+    ]
+  },
+  {
+    "task_index": 106,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134864,
+    "view_ymin": 17578,
+    "view_xmax": 135469,
+    "view_ymax": 18023,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        135140,
+        17773,
+        135192,
+        17830
+      ]
+    ]
+  },
+  {
+    "task_index": 107,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136918,
+    "view_ymin": 17476,
+    "view_xmax": 137523,
+    "view_ymax": 17921,
+    "region_name": "Extra_24",
+    "cell_list": [
+      [
+        137094,
+        17785,
+        137173,
+        17854
+      ],
+      [
+        137129,
+        17601,
+        137180,
+        17650
+      ],
+      [
+        137278,
+        17594,
+        137335,
+        17656
+      ],
+      [
+        137180,
+        17664,
+        137248,
+        17716
+      ]
+    ]
+  },
+  {
+    "task_index": 108,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133028,
+    "view_ymin": 17376,
+    "view_xmax": 133633,
+    "view_ymax": 17821,
+    "region_name": "Extra_25",
+    "cell_list": [
+      [
+        133393,
+        17671,
+        133458,
+        17736
+      ],
+      [
+        133486,
+        17504,
+        133546,
+        17562
+      ],
+      [
+        133047,
+        17635,
+        133120,
+        17692
+      ],
+      [
+        133498,
+        17564,
+        133553,
+        17610
+      ],
+      [
+        133541,
+        17451,
+        133619,
+        17540
+      ]
+    ]
+  },
+  {
+    "task_index": 109,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137412,
+    "view_ymin": 17442,
+    "view_xmax": 138017,
+    "view_ymax": 17887,
+    "region_name": "Extra_25",
+    "cell_list": [
+      [
+        137590,
+        17732,
+        137664,
+        17807
+      ],
+      [
+        137764,
+        17800,
+        137839,
+        17870
+      ],
+      [
+        137794,
+        17852,
+        137884,
+        17919
+      ],
+      [
+        137605,
+        17466,
+        137686,
+        17525
+      ]
+    ]
+  },
+  {
+    "task_index": 110,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138290,
+    "view_ymin": 17386,
+    "view_xmax": 138895,
+    "view_ymax": 17831,
+    "region_name": "Extra_25",
+    "cell_list": [
+      [
+        138387,
+        17700,
+        138449,
+        17767
+      ],
+      [
+        138451,
+        17710,
+        138513,
+        17781
+      ],
+      [
+        138716,
+        17419,
+        138823,
+        17522
+      ],
+      [
+        138470,
+        17593,
+        138563,
+        17670
+      ]
+    ]
+  },
+  {
+    "task_index": 111,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140032,
+    "view_ymin": 17262,
+    "view_xmax": 140637,
+    "view_ymax": 17707,
+    "region_name": "Extra_25",
+    "cell_list": [
+      [
+        140044,
+        17393,
+        140111,
+        17472
+      ],
+      [
+        140294,
+        17342,
+        140369,
+        17410
+      ],
+      [
+        140298,
+        17554,
+        140377,
+        17630
+      ],
+      [
+        140000,
+        17227,
+        140072,
+        17310
+      ]
+    ]
+  },
+  {
+    "task_index": 112,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131872,
+    "view_ymin": 17210,
+    "view_xmax": 132477,
+    "view_ymax": 17655,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        132210,
+        17346,
+        132268,
+        17412
+      ],
+      [
+        132280,
+        17310,
+        132343,
+        17367
+      ],
+      [
+        132000,
+        17488,
+        132077,
+        17569
+      ]
+    ]
+  },
+  {
+    "task_index": 113,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134280,
+    "view_ymin": 17190,
+    "view_xmax": 134885,
+    "view_ymax": 17635,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        134458,
+        17311,
+        134518,
+        17382
+      ],
+      [
+        134554,
+        17549,
+        134613,
+        17609
+      ],
+      [
+        134646,
+        17218,
+        134709,
+        17277
+      ]
+    ]
+  },
+  {
+    "task_index": 114,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135218,
+    "view_ymin": 17064,
+    "view_xmax": 135823,
+    "view_ymax": 17509,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        135541,
+        17082,
+        135617,
+        17159
+      ],
+      [
+        135427,
+        17271,
+        135498,
+        17334
+      ],
+      [
+        135461,
+        17418,
+        135523,
+        17486
+      ]
+    ]
+  },
+  {
+    "task_index": 115,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136016,
+    "view_ymin": 17146,
+    "view_xmax": 136621,
+    "view_ymax": 17591,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        136284,
+        17335,
+        136352,
+        17402
+      ]
+    ]
+  },
+  {
+    "task_index": 116,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136960,
+    "view_ymin": 17140,
+    "view_xmax": 137565,
+    "view_ymax": 17585,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        136980,
+        17321,
+        137055,
+        17394
+      ],
+      [
+        137474,
+        17304,
+        137544,
+        17365
+      ],
+      [
+        137364,
+        17258,
+        137421,
+        17328
+      ],
+      [
+        137251,
+        17311,
+        137324,
+        17384
+      ],
+      [
+        137118,
+        17405,
+        137169,
+        17463
+      ],
+      [
+        137246,
+        17550,
+        137297,
+        17605
+      ],
+      [
+        137298,
+        17268,
+        137360,
+        17343
+      ]
+    ]
+  },
+  {
+    "task_index": 117,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139538,
+    "view_ymin": 17118,
+    "view_xmax": 140143,
+    "view_ymax": 17563,
+    "region_name": "Extra_26",
+    "cell_list": [
+      [
+        139862,
+        17272,
+        139945,
+        17355
+      ],
+      [
+        139878,
+        17206,
+        139976,
+        17289
+      ],
+      [
+        139579,
+        17382,
+        139632,
+        17431
+      ],
+      [
+        139949,
+        17245,
+        139998,
+        17331
+      ]
+    ]
+  },
+  {
+    "task_index": 118,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131446,
+    "view_ymin": 16998,
+    "view_xmax": 132051,
+    "view_ymax": 17443,
+    "region_name": "Extra_27",
+    "cell_list": [
+      [
+        131714,
+        17186,
+        131782,
+        17257
+      ]
+    ]
+  },
+  {
+    "task_index": 119,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133458,
+    "view_ymin": 16960,
+    "view_xmax": 134063,
+    "view_ymax": 17405,
+    "region_name": "Extra_27",
+    "cell_list": [
+      [
+        133889,
+        17103,
+        133960,
+        17170
+      ],
+      [
+        133567,
+        17197,
+        133628,
+        17260
+      ]
+    ]
+  },
+  {
+    "task_index": 120,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137602,
+    "view_ymin": 16844,
+    "view_xmax": 138207,
+    "view_ymax": 17289,
+    "region_name": "Extra_27",
+    "cell_list": [
+      [
+        137992,
+        17173,
+        138071,
+        17250
+      ],
+      [
+        137885,
+        17151,
+        137969,
+        17224
+      ],
+      [
+        137746,
+        16892,
+        137810,
+        16956
+      ]
+    ]
+  },
+  {
+    "task_index": 121,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134158,
+    "view_ymin": 16628,
+    "view_xmax": 134763,
+    "view_ymax": 17073,
+    "region_name": "Extra_28",
+    "cell_list": [
+      [
+        134465,
+        16774,
+        134530,
+        16832
+      ],
+      [
+        134392,
+        16868,
+        134455,
+        16931
+      ]
+    ]
+  },
+  {
+    "task_index": 122,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135360,
+    "view_ymin": 16628,
+    "view_xmax": 135965,
+    "view_ymax": 17073,
+    "region_name": "Extra_28",
+    "cell_list": [
+      [
+        135625,
+        16819,
+        135699,
+        16884
+      ]
+    ]
+  },
+  {
+    "task_index": 123,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130806,
+    "view_ymin": 16352,
+    "view_xmax": 131411,
+    "view_ymax": 16797,
+    "region_name": "Extra_29",
+    "cell_list": [
+      [
+        131302,
+        16433,
+        131349,
+        16481
+      ],
+      [
+        130864,
+        16666,
+        130922,
+        16718
+      ]
+    ]
+  },
+  {
+    "task_index": 124,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131474,
+    "view_ymin": 16460,
+    "view_xmax": 132079,
+    "view_ymax": 16905,
+    "region_name": "Extra_29",
+    "cell_list": [
+      [
+        131933,
+        16646,
+        131999,
+        16706
+      ],
+      [
+        131607,
+        16796,
+        131677,
+        16869
+      ],
+      [
+        131565,
+        16817,
+        131609,
+        16869
+      ]
+    ]
+  },
+  {
+    "task_index": 125,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137100,
+    "view_ymin": 16448,
+    "view_xmax": 137705,
+    "view_ymax": 16893,
+    "region_name": "Extra_29",
+    "cell_list": [
+      [
+        137472,
+        16545,
+        137534,
+        16603
+      ],
+      [
+        137269,
+        16737,
+        137333,
+        16798
+      ]
+    ]
+  },
+  {
+    "task_index": 126,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138990,
+    "view_ymin": 16478,
+    "view_xmax": 139595,
+    "view_ymax": 16923,
+    "region_name": "Extra_29",
+    "cell_list": [
+      [
+        139243,
+        16698,
+        139296,
+        16748
+      ],
+      [
+        139176,
+        16660,
+        139255,
+        16740
+      ],
+      [
+        139346,
+        16655,
+        139397,
+        16704
+      ]
+    ]
+  },
+  {
+    "task_index": 127,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140214,
+    "view_ymin": 16394,
+    "view_xmax": 140819,
+    "view_ymax": 16839,
+    "region_name": "Extra_29",
+    "cell_list": [
+      [
+        140312,
+        16406,
+        140400,
+        16494
+      ],
+      [
+        140644,
+        16750,
+        140715,
+        16818
+      ]
+    ]
+  },
+  {
+    "task_index": 128,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129976,
+    "view_ymin": 16332,
+    "view_xmax": 130581,
+    "view_ymax": 16777,
+    "region_name": "Extra_30",
+    "cell_list": [
+      [
+        130357,
+        16416,
+        130422,
+        16483
+      ],
+      [
+        130141,
+        16630,
+        130199,
+        16693
+      ]
+    ]
+  },
+  {
+    "task_index": 129,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131226,
+    "view_ymin": 16190,
+    "view_xmax": 131831,
+    "view_ymax": 16635,
+    "region_name": "Extra_30",
+    "cell_list": [
+      [
+        131499,
+        16383,
+        131557,
+        16441
+      ],
+      [
+        131775,
+        16478,
+        131856,
+        16569
+      ]
+    ]
+  },
+  {
+    "task_index": 130,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135010,
+    "view_ymin": 16252,
+    "view_xmax": 135615,
+    "view_ymax": 16697,
+    "region_name": "Extra_30",
+    "cell_list": [
+      [
+        135173,
+        16277,
+        135227,
+        16331
+      ],
+      [
+        135390,
+        16615,
+        135461,
+        16680
+      ],
+      [
+        135190,
+        16323,
+        135249,
+        16381
+      ]
+    ]
+  },
+  {
+    "task_index": 131,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139374,
+    "view_ymin": 16176,
+    "view_xmax": 139979,
+    "view_ymax": 16621,
+    "region_name": "Extra_30",
+    "cell_list": [
+      [
+        139643,
+        16365,
+        139712,
+        16433
+      ]
+    ]
+  },
+  {
+    "task_index": 132,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133056,
+    "view_ymin": 16064,
+    "view_xmax": 133661,
+    "view_ymax": 16509,
+    "region_name": "Extra_31",
+    "cell_list": [
+      [
+        133469,
+        16267,
+        133534,
+        16333
+      ],
+      [
+        133190,
+        16242,
+        133244,
+        16305
+      ]
+    ]
+  },
+  {
+    "task_index": 133,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137290,
+    "view_ymin": 16036,
+    "view_xmax": 137895,
+    "view_ymax": 16481,
+    "region_name": "Extra_31",
+    "cell_list": [
+      [
+        137546,
+        16338,
+        137621,
+        16418
+      ],
+      [
+        137572,
+        16107,
+        137636,
+        16175
+      ]
+    ]
+  },
+  {
+    "task_index": 134,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140446,
+    "view_ymin": 15978,
+    "view_xmax": 141051,
+    "view_ymax": 16423,
+    "region_name": "Extra_31",
+    "cell_list": [
+      [
+        140623,
+        16139,
+        140698,
+        16216
+      ],
+      [
+        140805,
+        16191,
+        140868,
+        16259
+      ]
+    ]
+  },
+  {
+    "task_index": 135,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129416,
+    "view_ymin": 15868,
+    "view_xmax": 130021,
+    "view_ymax": 16313,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        129800,
+        15853,
+        129877,
+        15924
+      ],
+      [
+        129687,
+        16058,
+        129752,
+        16122
+      ]
+    ]
+  },
+  {
+    "task_index": 136,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129950,
+    "view_ymin": 15798,
+    "view_xmax": 130555,
+    "view_ymax": 16243,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        130209,
+        15965,
+        130283,
+        16034
+      ],
+      [
+        130184,
+        15924,
+        130256,
+        15980
+      ],
+      [
+        130424,
+        16141,
+        130489,
+        16205
+      ],
+      [
+        130286,
+        16158,
+        130347,
+        16220
+      ],
+      [
+        130294,
+        15840,
+        130386,
+        15939
+      ],
+      [
+        130184,
+        15925,
+        130192,
+        15975
+      ]
+    ]
+  },
+  {
+    "task_index": 137,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130938,
+    "view_ymin": 15790,
+    "view_xmax": 131543,
+    "view_ymax": 16235,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        130999,
+        15935,
+        131081,
+        15992
+      ],
+      [
+        130999,
+        16001,
+        131057,
+        16058
+      ],
+      [
+        131420,
+        16029,
+        131491,
+        16095
+      ]
+    ]
+  },
+  {
+    "task_index": 138,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131890,
+    "view_ymin": 15684,
+    "view_xmax": 132495,
+    "view_ymax": 16129,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        132203,
+        15803,
+        132288,
+        15884
+      ],
+      [
+        132105,
+        15945,
+        132172,
+        15998
+      ]
+    ]
+  },
+  {
+    "task_index": 139,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136312,
+    "view_ymin": 15784,
+    "view_xmax": 136917,
+    "view_ymax": 16229,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        136580,
+        15976,
+        136649,
+        16036
+      ]
+    ]
+  },
+  {
+    "task_index": 140,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138954,
+    "view_ymin": 15874,
+    "view_xmax": 139559,
+    "view_ymax": 16319,
+    "region_name": "Extra_32",
+    "cell_list": [
+      [
+        139283,
+        16196,
+        139363,
+        16258
+      ],
+      [
+        139156,
+        15932,
+        139228,
+        16002
+      ]
+    ]
+  },
+  {
+    "task_index": 141,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129558,
+    "view_ymin": 15544,
+    "view_xmax": 130163,
+    "view_ymax": 15989,
+    "region_name": "Extra_33",
+    "cell_list": [
+      [
+        129809,
+        15614,
+        129887,
+        15677
+      ],
+      [
+        130007,
+        15813,
+        130090,
+        15894
+      ],
+      [
+        129851,
+        15699,
+        129917,
+        15778
+      ]
+    ]
+  },
+  {
+    "task_index": 142,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132304,
+    "view_ymin": 15560,
+    "view_xmax": 132909,
+    "view_ymax": 16005,
+    "region_name": "Extra_33",
+    "cell_list": [
+      [
+        132582,
+        15758,
+        132633,
+        15809
+      ]
+    ]
+  },
+  {
+    "task_index": 143,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137182,
+    "view_ymin": 15592,
+    "view_xmax": 137787,
+    "view_ymax": 16037,
+    "region_name": "Extra_33",
+    "cell_list": [
+      [
+        137295,
+        15737,
+        137375,
+        15822
+      ],
+      [
+        137490,
+        15812,
+        137565,
+        15889
+      ],
+      [
+        137598,
+        15798,
+        137674,
+        15863
+      ]
+    ]
+  },
+  {
+    "task_index": 144,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140452,
+    "view_ymin": 15620,
+    "view_xmax": 141057,
+    "view_ymax": 16065,
+    "region_name": "Extra_33",
+    "cell_list": [
+      [
+        140910,
+        15736,
+        140992,
+        15821
+      ],
+      [
+        140921,
+        15869,
+        140994,
+        15943
+      ],
+      [
+        140514,
+        15833,
+        140589,
+        15904
+      ]
+    ]
+  },
+  {
+    "task_index": 145,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130948,
+    "view_ymin": 15356,
+    "view_xmax": 131553,
+    "view_ymax": 15801,
+    "region_name": "Extra_34",
+    "cell_list": [
+      [
+        131123,
+        15629,
+        131195,
+        15702
+      ],
+      [
+        131307,
+        15460,
+        131377,
+        15527
+      ]
+    ]
+  },
+  {
+    "task_index": 146,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133028,
+    "view_ymin": 15364,
+    "view_xmax": 133633,
+    "view_ymax": 15809,
+    "region_name": "Extra_34",
+    "cell_list": [
+      [
+        133277,
+        15556,
+        133383,
+        15619
+      ]
+    ]
+  },
+  {
+    "task_index": 147,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135482,
+    "view_ymin": 15354,
+    "view_xmax": 136087,
+    "view_ymax": 15799,
+    "region_name": "Extra_34",
+    "cell_list": [
+      [
+        135904,
+        15538,
+        135978,
+        15615
+      ],
+      [
+        135601,
+        15550,
+        135656,
+        15606
+      ]
+    ]
+  },
+  {
+    "task_index": 148,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139736,
+    "view_ymin": 15388,
+    "view_xmax": 140341,
+    "view_ymax": 15833,
+    "region_name": "Extra_34",
+    "cell_list": [
+      [
+        139892,
+        15581,
+        139955,
+        15652
+      ],
+      [
+        140110,
+        15418,
+        140209,
+        15481
+      ],
+      [
+        139899,
+        15753,
+        139936,
+        15790
+      ]
+    ]
+  },
+  {
+    "task_index": 149,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135566,
+    "view_ymin": 23788,
+    "view_xmax": 136171,
+    "view_ymax": 24233,
+    "region_name": "Extra_35",
+    "cell_list": [
+      [
+        135808,
+        24097,
+        135879,
+        24171
+      ],
+      [
+        135867,
+        23858,
+        135924,
+        23921
+      ]
+    ]
+  },
+  {
+    "task_index": 150,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137952,
+    "view_ymin": 23818,
+    "view_xmax": 138557,
+    "view_ymax": 24263,
+    "region_name": "Extra_35",
+    "cell_list": [
+      [
+        138186,
+        23997,
+        138249,
+        24058
+      ],
+      [
+        138252,
+        24009,
+        138333,
+        24100
+      ]
+    ]
+  },
+  {
+    "task_index": 151,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130958,
+    "view_ymin": 15074,
+    "view_xmax": 131563,
+    "view_ymax": 15519,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        131228,
+        15263,
+        131292,
+        15329
+      ],
+      [
+        131518,
+        15051,
+        131569,
+        15106
+      ]
+    ]
+  },
+  {
+    "task_index": 152,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132178,
+    "view_ymin": 15008,
+    "view_xmax": 132783,
+    "view_ymax": 15453,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        132461,
+        15186,
+        132523,
+        15253
+      ],
+      [
+        132670,
+        15272,
+        132732,
+        15336
+      ],
+      [
+        132356,
+        15134,
+        132408,
+        15185
+      ],
+      [
+        132225,
+        15149,
+        132299,
+        15218
+      ]
+    ]
+  },
+  {
+    "task_index": 153,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133980,
+    "view_ymin": 15140,
+    "view_xmax": 134585,
+    "view_ymax": 15585,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        134209,
+        15344,
+        134294,
+        15419
+      ],
+      [
+        134283,
+        15313,
+        134343,
+        15374
+      ]
+    ]
+  },
+  {
+    "task_index": 154,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136852,
+    "view_ymin": 15008,
+    "view_xmax": 137457,
+    "view_ymax": 15453,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        137122,
+        15224,
+        137189,
+        15239
+      ]
+    ]
+  },
+  {
+    "task_index": 155,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138834,
+    "view_ymin": 15022,
+    "view_xmax": 139439,
+    "view_ymax": 15467,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        139159,
+        15174,
+        139223,
+        15231
+      ],
+      [
+        139125,
+        15217,
+        139174,
+        15277
+      ],
+      [
+        139055,
+        15260,
+        139110,
+        15312
+      ]
+    ]
+  },
+  {
+    "task_index": 156,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140048,
+    "view_ymin": 15012,
+    "view_xmax": 140653,
+    "view_ymax": 15457,
+    "region_name": "Extra_36",
+    "cell_list": [
+      [
+        140326,
+        15186,
+        140407,
+        15270
+      ],
+      [
+        140244,
+        15248,
+        140296,
+        15299
+      ],
+      [
+        140393,
+        15164,
+        140467,
+        15231
+      ]
+    ]
+  },
+  {
+    "task_index": 157,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129168,
+    "view_ymin": 17516,
+    "view_xmax": 129773,
+    "view_ymax": 17961,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        129341,
+        17863,
+        129402,
+        17929
+      ],
+      [
+        129530,
+        17539,
+        129609,
+        17624
+      ]
+    ]
+  },
+  {
+    "task_index": 158,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129296,
+    "view_ymin": 16950,
+    "view_xmax": 129901,
+    "view_ymax": 17395,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        129796,
+        17079,
+        129868,
+        17146
+      ],
+      [
+        129334,
+        17203,
+        129398,
+        17264
+      ]
+    ]
+  },
+  {
+    "task_index": 159,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129332,
+    "view_ymin": 17874,
+    "view_xmax": 129937,
+    "view_ymax": 18319,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        129644,
+        17940,
+        129710,
+        18012
+      ],
+      [
+        129565,
+        18189,
+        129622,
+        18245
+      ]
+    ]
+  },
+  {
+    "task_index": 160,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129296,
+    "view_ymin": 20292,
+    "view_xmax": 129901,
+    "view_ymax": 20737,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        129568,
+        20484,
+        129631,
+        20545
+      ]
+    ]
+  },
+  {
+    "task_index": 161,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129264,
+    "view_ymin": 21284,
+    "view_xmax": 129869,
+    "view_ymax": 21729,
+    "region_name": "Extra_37",
+    "cell_list": [
+      [
+        129612,
+        21565,
+        129668,
+        21627
+      ],
+      [
+        129461,
+        21389,
+        129530,
+        21446
+      ]
+    ]
+  },
+  {
+    "task_index": 162,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131452,
+    "view_ymin": 14998,
+    "view_xmax": 132057,
+    "view_ymax": 15443,
+    "region_name": "Extra_38",
+    "cell_list": [
+      [
+        131681,
+        15230,
+        131735,
+        15240
+      ],
+      [
+        131671,
+        15229,
+        131742,
+        15303
+      ],
+      [
+        131941,
+        15340,
+        131990,
+        15389
+      ]
+    ]
+  },
+  {
+    "task_index": 163,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134972,
+    "view_ymin": 14950,
+    "view_xmax": 135577,
+    "view_ymax": 15395,
+    "region_name": "Extra_38",
+    "cell_list": [
+      [
+        135223,
+        15112,
+        135297,
+        15175
+      ],
+      [
+        135258,
+        15170,
+        135323,
+        15238
+      ]
+    ]
+  },
+  {
+    "task_index": 164,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137542,
+    "view_ymin": 14802,
+    "view_xmax": 138147,
+    "view_ymax": 15247,
+    "region_name": "Extra_38",
+    "cell_list": [
+      [
+        137671,
+        15035,
+        137731,
+        15092
+      ],
+      [
+        137951,
+        14956,
+        138024,
+        15015
+      ]
+    ]
+  },
+  {
+    "task_index": 165,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 129868,
+    "view_ymin": 14770,
+    "view_xmax": 130473,
+    "view_ymax": 15215,
+    "region_name": "Extra_39",
+    "cell_list": [
+      [
+        129988,
+        14841,
+        130044,
+        14902
+      ],
+      [
+        129979,
+        14920,
+        130053,
+        15010
+      ],
+      [
+        130117,
+        15098,
+        130191,
+        15181
+      ],
+      [
+        130296,
+        14836,
+        130357,
+        14854
+      ]
+    ]
+  },
+  {
+    "task_index": 166,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132808,
+    "view_ymin": 14754,
+    "view_xmax": 133413,
+    "view_ymax": 15199,
+    "region_name": "Extra_39",
+    "cell_list": [
+      [
+        132986,
+        14919,
+        133053,
+        14992
+      ],
+      [
+        133163,
+        14957,
+        133241,
+        15039
+      ]
+    ]
+  },
+  {
+    "task_index": 167,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131226,
+    "view_ymin": 14442,
+    "view_xmax": 131831,
+    "view_ymax": 14887,
+    "region_name": "Extra_40",
+    "cell_list": [
+      [
+        131355,
+        14782,
+        131431,
+        14841
+      ],
+      [
+        131650,
+        14501,
+        131731,
+        14585
+      ],
+      [
+        131330,
+        14525,
+        131407,
+        14595
+      ],
+      [
+        131516,
+        14488,
+        131578,
+        14546
+      ]
+    ]
+  },
+  {
+    "task_index": 168,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132032,
+    "view_ymin": 14456,
+    "view_xmax": 132637,
+    "view_ymax": 14901,
+    "region_name": "Extra_40",
+    "cell_list": [
+      [
+        132426,
+        14519,
+        132498,
+        14587
+      ],
+      [
+        132554,
+        14460,
+        132605,
+        14511
+      ],
+      [
+        132186,
+        14509,
+        132232,
+        14553
+      ],
+      [
+        132341,
+        14774,
+        132402,
+        14853
+      ],
+      [
+        132401,
+        14774,
+        132459,
+        14881
+      ]
+    ]
+  },
+  {
+    "task_index": 169,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136722,
+    "view_ymin": 14520,
+    "view_xmax": 137327,
+    "view_ymax": 14965,
+    "region_name": "Extra_40",
+    "cell_list": [
+      [
+        136769,
+        14642,
+        136883,
+        14736
+      ],
+      [
+        137191,
+        14762,
+        137256,
+        14834
+      ]
+    ]
+  },
+  {
+    "task_index": 170,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131578,
+    "view_ymin": 14244,
+    "view_xmax": 132183,
+    "view_ymax": 14689,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        131628,
+        14231,
+        131672,
+        14276
+      ],
+      [
+        131839,
+        14455,
+        131881,
+        14496
+      ],
+      [
+        131883,
+        14436,
+        131924,
+        14479
+      ]
+    ]
+  },
+  {
+    "task_index": 171,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132346,
+    "view_ymin": 14232,
+    "view_xmax": 132951,
+    "view_ymax": 14677,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        132693,
+        14406,
+        132746,
+        14446
+      ]
+    ]
+  },
+  {
+    "task_index": 172,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132988,
+    "view_ymin": 14202,
+    "view_xmax": 133593,
+    "view_ymax": 14647,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        133373,
+        14275,
+        133439,
+        14337
+      ],
+      [
+        133145,
+        14512,
+        133210,
+        14579
+      ]
+    ]
+  },
+  {
+    "task_index": 173,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134866,
+    "view_ymin": 14160,
+    "view_xmax": 135471,
+    "view_ymax": 14605,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        135011,
+        14417,
+        135080,
+        14483
+      ],
+      [
+        135264,
+        14293,
+        135319,
+        14338
+      ]
+    ]
+  },
+  {
+    "task_index": 174,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137822,
+    "view_ymin": 14294,
+    "view_xmax": 138427,
+    "view_ymax": 14739,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        138106,
+        14540,
+        138184,
+        14611
+      ],
+      [
+        138058,
+        14426,
+        138148,
+        14489
+      ]
+    ]
+  },
+  {
+    "task_index": 175,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139860,
+    "view_ymin": 14172,
+    "view_xmax": 140465,
+    "view_ymax": 14617,
+    "region_name": "Extra_41",
+    "cell_list": [
+      [
+        140263,
+        14188,
+        140333,
+        14257
+      ],
+      [
+        139998,
+        14541,
+        140054,
+        14594
+      ],
+      [
+        140257,
+        14295,
+        140323,
+        14360
+      ],
+      [
+        140058,
+        14196,
+        140146,
+        14282
+      ]
+    ]
+  },
+  {
+    "task_index": 176,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128934,
+    "view_ymin": 18854,
+    "view_xmax": 129539,
+    "view_ymax": 19299,
+    "region_name": "Extra_42",
+    "cell_list": [
+      [
+        129040,
+        18951,
+        129110,
+        19026
+      ],
+      [
+        129229,
+        18943,
+        129301,
+        19010
+      ],
+      [
+        129387,
+        18923,
+        129456,
+        18988
+      ],
+      [
+        129030,
+        19064,
+        129073,
+        19115
+      ]
+    ]
+  },
+  {
+    "task_index": 177,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128948,
+    "view_ymin": 19812,
+    "view_xmax": 129553,
+    "view_ymax": 20257,
+    "region_name": "Extra_42",
+    "cell_list": [
+      [
+        129219,
+        20004,
+        129284,
+        20066
+      ]
+    ]
+  },
+  {
+    "task_index": 178,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130122,
+    "view_ymin": 13880,
+    "view_xmax": 130727,
+    "view_ymax": 14325,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        130395,
+        14076,
+        130454,
+        14131
+      ]
+    ]
+  },
+  {
+    "task_index": 179,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130940,
+    "view_ymin": 13950,
+    "view_xmax": 131545,
+    "view_ymax": 14395,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        131388,
+        14215,
+        131468,
+        14293
+      ],
+      [
+        131027,
+        14027,
+        131092,
+        14093
+      ],
+      [
+        131353,
+        14265,
+        131397,
+        14310
+      ],
+      [
+        131340,
+        14124,
+        131404,
+        14187
+      ]
+    ]
+  },
+  {
+    "task_index": 180,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131562,
+    "view_ymin": 13900,
+    "view_xmax": 132167,
+    "view_ymax": 14345,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        131960,
+        13958,
+        132033,
+        14023
+      ],
+      [
+        131626,
+        14029,
+        131687,
+        14102
+      ],
+      [
+        132046,
+        14024,
+        132113,
+        14096
+      ]
+    ]
+  },
+  {
+    "task_index": 181,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133610,
+    "view_ymin": 14084,
+    "view_xmax": 134215,
+    "view_ymax": 14529,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        133901,
+        14182,
+        133966,
+        14246
+      ],
+      [
+        134126,
+        14369,
+        134192,
+        14431
+      ],
+      [
+        134134,
+        14433,
+        134185,
+        14482
+      ],
+      [
+        133631,
+        14305,
+        133699,
+        14362
+      ],
+      [
+        133941,
+        14133,
+        133998,
+        14178
+      ]
+    ]
+  },
+  {
+    "task_index": 182,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134388,
+    "view_ymin": 14018,
+    "view_xmax": 134993,
+    "view_ymax": 14463,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        134647,
+        14198,
+        134736,
+        14285
+      ]
+    ]
+  },
+  {
+    "task_index": 183,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135702,
+    "view_ymin": 14018,
+    "view_xmax": 136307,
+    "view_ymax": 14463,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        136210,
+        14325,
+        136285,
+        14397
+      ],
+      [
+        136036,
+        14360,
+        136099,
+        14423
+      ],
+      [
+        135731,
+        14053,
+        135793,
+        14124
+      ],
+      [
+        136259,
+        14264,
+        136327,
+        14330
+      ],
+      [
+        135747,
+        14305,
+        135815,
+        14366
+      ],
+      [
+        136056,
+        14306,
+        136120,
+        14365
+      ],
+      [
+        135878,
+        14177,
+        135938,
+        14232
+      ]
+    ]
+  },
+  {
+    "task_index": 184,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135990,
+    "view_ymin": 14074,
+    "view_xmax": 136595,
+    "view_ymax": 14519,
+    "region_name": "Extra_43",
+    "cell_list": []
+  },
+  {
+    "task_index": 185,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137310,
+    "view_ymin": 14078,
+    "view_xmax": 137915,
+    "view_ymax": 14523,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        137732,
+        14425,
+        137806,
+        14502
+      ],
+      [
+        137424,
+        14104,
+        137490,
+        14173
+      ]
+    ]
+  },
+  {
+    "task_index": 186,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139024,
+    "view_ymin": 13992,
+    "view_xmax": 139629,
+    "view_ymax": 14437,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        139326,
+        14184,
+        139389,
+        14254
+      ],
+      [
+        139264,
+        14179,
+        139327,
+        14242
+      ]
+    ]
+  },
+  {
+    "task_index": 187,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140486,
+    "view_ymin": 13976,
+    "view_xmax": 141091,
+    "view_ymax": 14421,
+    "region_name": "Extra_43",
+    "cell_list": [
+      [
+        140757,
+        14164,
+        140820,
+        14235
+      ]
+    ]
+  },
+  {
+    "task_index": 188,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130192,
+    "view_ymin": 13656,
+    "view_xmax": 130797,
+    "view_ymax": 14101,
+    "region_name": "Extra_44",
+    "cell_list": [
+      [
+        130509,
+        14000,
+        130570,
+        14065
+      ],
+      [
+        130477,
+        13694,
+        130538,
+        13760
+      ],
+      [
+        130603,
+        13763,
+        130660,
+        13827
+      ],
+      [
+        130336,
+        13940,
+        130379,
+        13997
+      ]
+    ]
+  },
+  {
+    "task_index": 189,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132640,
+    "view_ymin": 13462,
+    "view_xmax": 133245,
+    "view_ymax": 13907,
+    "region_name": "Extra_45",
+    "cell_list": [
+      [
+        132745,
+        13569,
+        132814,
+        13647
+      ],
+      [
+        133074,
+        13730,
+        133142,
+        13791
+      ]
+    ]
+  },
+  {
+    "task_index": 190,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135826,
+    "view_ymin": 13596,
+    "view_xmax": 136431,
+    "view_ymax": 14041,
+    "region_name": "Extra_45",
+    "cell_list": [
+      [
+        136093,
+        13781,
+        136165,
+        13856
+      ]
+    ]
+  },
+  {
+    "task_index": 191,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139302,
+    "view_ymin": 13506,
+    "view_xmax": 139907,
+    "view_ymax": 13951,
+    "region_name": "Extra_45",
+    "cell_list": [
+      [
+        139566,
+        13688,
+        139645,
+        13769
+      ]
+    ]
+  },
+  {
+    "task_index": 192,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140038,
+    "view_ymin": 13564,
+    "view_xmax": 140643,
+    "view_ymax": 14009,
+    "region_name": "Extra_45",
+    "cell_list": [
+      [
+        140276,
+        13780,
+        140340,
+        13871
+      ],
+      [
+        140311,
+        13717,
+        140380,
+        13780
+      ],
+      [
+        140343,
+        13772,
+        140408,
+        13851
+      ]
+    ]
+  },
+  {
+    "task_index": 193,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128690,
+    "view_ymin": 19132,
+    "view_xmax": 129295,
+    "view_ymax": 19577,
+    "region_name": "Extra_46",
+    "cell_list": [
+      [
+        128929,
+        19312,
+        128978,
+        19363
+      ],
+      [
+        129007,
+        19349,
+        129056,
+        19399
+      ],
+      [
+        129225,
+        19172,
+        129285,
+        19227
+      ]
+    ]
+  },
+  {
+    "task_index": 194,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128718,
+    "view_ymin": 17650,
+    "view_xmax": 129323,
+    "view_ymax": 18095,
+    "region_name": "Extra_46",
+    "cell_list": [
+      [
+        128990,
+        17845,
+        129053,
+        17902
+      ]
+    ]
+  },
+  {
+    "task_index": 195,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128750,
+    "view_ymin": 20162,
+    "view_xmax": 129355,
+    "view_ymax": 20607,
+    "region_name": "Extra_46",
+    "cell_list": [
+      [
+        129022,
+        20349,
+        129084,
+        20422
+      ]
+    ]
+  },
+  {
+    "task_index": 196,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128642,
+    "view_ymin": 18370,
+    "view_xmax": 129247,
+    "view_ymax": 18815,
+    "region_name": "Extra_47",
+    "cell_list": [
+      [
+        129038,
+        18619,
+        129097,
+        18679
+      ],
+      [
+        128794,
+        18506,
+        128852,
+        18567
+      ]
+    ]
+  },
+  {
+    "task_index": 197,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128540,
+    "view_ymin": 21418,
+    "view_xmax": 129145,
+    "view_ymax": 21863,
+    "region_name": "Extra_47",
+    "cell_list": [
+      [
+        129040,
+        21439,
+        129095,
+        21487
+      ],
+      [
+        128581,
+        21804,
+        128652,
+        21832
+      ],
+      [
+        129002,
+        21697,
+        129076,
+        21765
+      ]
+    ]
+  },
+  {
+    "task_index": 198,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128234,
+    "view_ymin": 22082,
+    "view_xmax": 128839,
+    "view_ymax": 22527,
+    "region_name": "Extra_48",
+    "cell_list": [
+      [
+        128401,
+        22349,
+        128469,
+        22410
+      ],
+      [
+        128489,
+        22303,
+        128544,
+        22364
+      ],
+      [
+        128598,
+        22261,
+        128655,
+        22318
+      ],
+      [
+        128611,
+        22200,
+        128666,
+        22258
+      ]
+    ]
+  },
+  {
+    "task_index": 199,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128256,
+    "view_ymin": 21246,
+    "view_xmax": 128861,
+    "view_ymax": 21691,
+    "region_name": "Extra_48",
+    "cell_list": [
+      [
+        128569,
+        21300,
+        128630,
+        21362
+      ],
+      [
+        128354,
+        21464,
+        128415,
+        21522
+      ],
+      [
+        128650,
+        21454,
+        128707,
+        21512
+      ],
+      [
+        128709,
+        21425,
+        128754,
+        21466
+      ]
+    ]
+  },
+  {
+    "task_index": 200,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128412,
+    "view_ymin": 20968,
+    "view_xmax": 129017,
+    "view_ymax": 21413,
+    "region_name": "Extra_48",
+    "cell_list": [
+      [
+        128428,
+        21018,
+        128491,
+        21081
+      ],
+      [
+        128937,
+        21061,
+        129003,
+        21126
+      ]
+    ]
+  },
+  {
+    "task_index": 201,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134838,
+    "view_ymin": 13304,
+    "view_xmax": 135443,
+    "view_ymax": 13749,
+    "region_name": "Extra_49",
+    "cell_list": [
+      [
+        135098,
+        13538,
+        135154,
+        13597
+      ],
+      [
+        135103,
+        13430,
+        135209,
+        13545
+      ]
+    ]
+  },
+  {
+    "task_index": 202,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136798,
+    "view_ymin": 13400,
+    "view_xmax": 137403,
+    "view_ymax": 13845,
+    "region_name": "Extra_49",
+    "cell_list": [
+      [
+        137072,
+        13605,
+        137158,
+        13694
+      ],
+      [
+        137062,
+        13575,
+        137115,
+        13618
+      ]
+    ]
+  },
+  {
+    "task_index": 203,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138184,
+    "view_ymin": 13272,
+    "view_xmax": 138789,
+    "view_ymax": 13717,
+    "region_name": "Extra_49",
+    "cell_list": [
+      [
+        138435,
+        13457,
+        138537,
+        13534
+      ]
+    ]
+  },
+  {
+    "task_index": 204,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131526,
+    "view_ymin": 12988,
+    "view_xmax": 132131,
+    "view_ymax": 13433,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        131857,
+        13131,
+        131908,
+        13184
+      ],
+      [
+        131740,
+        13228,
+        131808,
+        13297
+      ]
+    ]
+  },
+  {
+    "task_index": 205,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132226,
+    "view_ymin": 13122,
+    "view_xmax": 132831,
+    "view_ymax": 13567,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        132587,
+        13263,
+        132632,
+        13304
+      ],
+      [
+        132497,
+        13342,
+        132555,
+        13405
+      ],
+      [
+        132413,
+        13372,
+        132481,
+        13444
+      ]
+    ]
+  },
+  {
+    "task_index": 206,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133554,
+    "view_ymin": 13206,
+    "view_xmax": 134159,
+    "view_ymax": 13651,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        133682,
+        13252,
+        133761,
+        13331
+      ],
+      [
+        133650,
+        13250,
+        133694,
+        13294
+      ],
+      [
+        134008,
+        13553,
+        134075,
+        13618
+      ]
+    ]
+  },
+  {
+    "task_index": 207,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136086,
+    "view_ymin": 13136,
+    "view_xmax": 136691,
+    "view_ymax": 13581,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        136347,
+        13316,
+        136429,
+        13400
+      ]
+    ]
+  },
+  {
+    "task_index": 208,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137088,
+    "view_ymin": 13060,
+    "view_xmax": 137693,
+    "view_ymax": 13505,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        137411,
+        13216,
+        137479,
+        13286
+      ],
+      [
+        137338,
+        13095,
+        137405,
+        13157
+      ],
+      [
+        137306,
+        13342,
+        137371,
+        13410
+      ],
+      [
+        137397,
+        13406,
+        137471,
+        13477
+      ]
+    ]
+  },
+  {
+    "task_index": 209,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138864,
+    "view_ymin": 13042,
+    "view_xmax": 139469,
+    "view_ymax": 13487,
+    "region_name": "Extra_50",
+    "cell_list": [
+      [
+        139139,
+        13234,
+        139196,
+        13294
+      ]
+    ]
+  },
+  {
+    "task_index": 210,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130278,
+    "view_ymin": 12942,
+    "view_xmax": 130883,
+    "view_ymax": 13387,
+    "region_name": "Extra_51",
+    "cell_list": [
+      [
+        130407,
+        13192,
+        130490,
+        13279
+      ],
+      [
+        130380,
+        12984,
+        130439,
+        13048
+      ],
+      [
+        130774,
+        13068,
+        130822,
+        13115
+      ],
+      [
+        130338,
+        13274,
+        130391,
+        13338
+      ],
+      [
+        130400,
+        13284,
+        130463,
+        13347
+      ]
+    ]
+  },
+  {
+    "task_index": 211,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132254,
+    "view_ymin": 12804,
+    "view_xmax": 132859,
+    "view_ymax": 13249,
+    "region_name": "Extra_51",
+    "cell_list": [
+      [
+        132418,
+        12961,
+        132465,
+        13007
+      ],
+      [
+        132655,
+        13052,
+        132687,
+        13086
+      ]
+    ]
+  },
+  {
+    "task_index": 212,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132894,
+    "view_ymin": 12938,
+    "view_xmax": 133499,
+    "view_ymax": 13383,
+    "region_name": "Extra_51",
+    "cell_list": [
+      [
+        133175,
+        12999,
+        133241,
+        13064
+      ],
+      [
+        133114,
+        12984,
+        133180,
+        13040
+      ],
+      [
+        133311,
+        13123,
+        133381,
+        13184
+      ],
+      [
+        133025,
+        12981,
+        133070,
+        13030
+      ],
+      [
+        133280,
+        13285,
+        133344,
+        13351
+      ]
+    ]
+  },
+  {
+    "task_index": 213,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139340,
+    "view_ymin": 12774,
+    "view_xmax": 139945,
+    "view_ymax": 13219,
+    "region_name": "Extra_51",
+    "cell_list": [
+      [
+        139445,
+        13037,
+        139538,
+        13131
+      ],
+      [
+        139762,
+        12875,
+        139830,
+        12948
+      ]
+    ]
+  },
+  {
+    "task_index": 214,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140180,
+    "view_ymin": 12826,
+    "view_xmax": 140785,
+    "view_ymax": 13271,
+    "region_name": "Extra_51",
+    "cell_list": [
+      [
+        140451,
+        13020,
+        140514,
+        13079
+      ]
+    ]
+  },
+  {
+    "task_index": 215,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130992,
+    "view_ymin": 12674,
+    "view_xmax": 131597,
+    "view_ymax": 13119,
+    "region_name": "Extra_52",
+    "cell_list": [
+      [
+        131373,
+        12830,
+        131465,
+        12910
+      ],
+      [
+        131077,
+        12836,
+        131150,
+        12911
+      ],
+      [
+        131396,
+        12907,
+        131466,
+        12968
+      ],
+      [
+        131095,
+        12909,
+        131149,
+        12957
+      ],
+      [
+        131444,
+        12927,
+        131508,
+        12996
+      ],
+      [
+        131182,
+        12856,
+        131226,
+        12907
+      ],
+      [
+        131227,
+        12803,
+        131288,
+        12864
+      ]
+    ]
+  },
+  {
+    "task_index": 216,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132812,
+    "view_ymin": 12542,
+    "view_xmax": 133417,
+    "view_ymax": 12987,
+    "region_name": "Extra_52",
+    "cell_list": [
+      [
+        133017,
+        12708,
+        133089,
+        12779
+      ],
+      [
+        133303,
+        12859,
+        133359,
+        12920
+      ],
+      [
+        132929,
+        12721,
+        132990,
+        12791
+      ],
+      [
+        133254,
+        12813,
+        133322,
+        12874
+      ],
+      [
+        132878,
+        12730,
+        132922,
+        12776
+      ],
+      [
+        132940,
+        12857,
+        133002,
+        12922
+      ],
+      [
+        133162,
+        12607,
+        133228,
+        12676
+      ]
+    ]
+  },
+  {
+    "task_index": 217,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133578,
+    "view_ymin": 12692,
+    "view_xmax": 134183,
+    "view_ymax": 13137,
+    "region_name": "Extra_52",
+    "cell_list": [
+      [
+        134004,
+        13062,
+        134072,
+        13132
+      ],
+      [
+        133690,
+        12823,
+        133755,
+        12883
+      ],
+      [
+        133784,
+        12697,
+        133861,
+        12769
+      ]
+    ]
+  },
+  {
+    "task_index": 218,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135268,
+    "view_ymin": 12606,
+    "view_xmax": 135873,
+    "view_ymax": 13051,
+    "region_name": "Extra_52",
+    "cell_list": [
+      [
+        135624,
+        12873,
+        135705,
+        12962
+      ],
+      [
+        135441,
+        12708,
+        135510,
+        12775
+      ]
+    ]
+  },
+  {
+    "task_index": 219,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135816,
+    "view_ymin": 12712,
+    "view_xmax": 136421,
+    "view_ymax": 13157,
+    "region_name": "Extra_52",
+    "cell_list": [
+      [
+        136087,
+        12906,
+        136151,
+        12962
+      ]
+    ]
+  },
+  {
+    "task_index": 220,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130908,
+    "view_ymin": 12312,
+    "view_xmax": 131513,
+    "view_ymax": 12757,
+    "region_name": "Extra_53",
+    "cell_list": [
+      [
+        131232,
+        12546,
+        131304,
+        12619
+      ],
+      [
+        131121,
+        12455,
+        131187,
+        12520
+      ]
+    ]
+  },
+  {
+    "task_index": 221,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131640,
+    "view_ymin": 12526,
+    "view_xmax": 132245,
+    "view_ymax": 12971,
+    "region_name": "Extra_53",
+    "cell_list": [
+      [
+        131911,
+        12717,
+        131974,
+        12779
+      ]
+    ]
+  },
+  {
+    "task_index": 222,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134068,
+    "view_ymin": 12470,
+    "view_xmax": 134673,
+    "view_ymax": 12915,
+    "region_name": "Extra_53",
+    "cell_list": [
+      [
+        134416,
+        12470,
+        134519,
+        12569
+      ],
+      [
+        134398,
+        12553,
+        134468,
+        12618
+      ],
+      [
+        134240,
+        12832,
+        134307,
+        12900
+      ]
+    ]
+  },
+  {
+    "task_index": 223,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138518,
+    "view_ymin": 12380,
+    "view_xmax": 139123,
+    "view_ymax": 12825,
+    "region_name": "Extra_53",
+    "cell_list": [
+      [
+        138868,
+        12551,
+        138937,
+        12615
+      ],
+      [
+        138774,
+        12506,
+        138833,
+        12561
+      ],
+      [
+        138742,
+        12555,
+        138809,
+        12617
+      ],
+      [
+        138703,
+        12638,
+        138773,
+        12706
+      ]
+    ]
+  },
+  {
+    "task_index": 224,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130470,
+    "view_ymin": 12120,
+    "view_xmax": 131075,
+    "view_ymax": 12565,
+    "region_name": "Extra_54",
+    "cell_list": [
+      [
+        130729,
+        12297,
+        130817,
+        12390
+      ]
+    ]
+  },
+  {
+    "task_index": 225,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136582,
+    "view_ymin": 12144,
+    "view_xmax": 137187,
+    "view_ymax": 12589,
+    "region_name": "Extra_54",
+    "cell_list": [
+      [
+        136847,
+        12359,
+        136893,
+        12406
+      ],
+      [
+        136792,
+        12188,
+        136865,
+        12271
+      ],
+      [
+        136900,
+        12463,
+        136981,
+        12544
+      ]
+    ]
+  },
+  {
+    "task_index": 226,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137682,
+    "view_ymin": 12232,
+    "view_xmax": 138287,
+    "view_ymax": 12677,
+    "region_name": "Extra_54",
+    "cell_list": [
+      [
+        138158,
+        12435,
+        138253,
+        12544
+      ],
+      [
+        138150,
+        12336,
+        138220,
+        12407
+      ],
+      [
+        137843,
+        12512,
+        137903,
+        12566
+      ],
+      [
+        137730,
+        12443,
+        137802,
+        12500
+      ]
+    ]
+  },
+  {
+    "task_index": 227,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139950,
+    "view_ymin": 12248,
+    "view_xmax": 140555,
+    "view_ymax": 12693,
+    "region_name": "Extra_54",
+    "cell_list": [
+      [
+        140009,
+        12536,
+        140080,
+        12596
+      ],
+      [
+        140429,
+        12341,
+        140495,
+        12410
+      ]
+    ]
+  },
+  {
+    "task_index": 228,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140442,
+    "view_ymin": 12276,
+    "view_xmax": 141047,
+    "view_ymax": 12721,
+    "region_name": "Extra_54",
+    "cell_list": [
+      [
+        140820,
+        12602,
+        140895,
+        12669
+      ],
+      [
+        140775,
+        12576,
+        140834,
+        12648
+      ],
+      [
+        140597,
+        12328,
+        140664,
+        12395
+      ]
+    ]
+  },
+  {
+    "task_index": 229,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132380,
+    "view_ymin": 12018,
+    "view_xmax": 132985,
+    "view_ymax": 12463,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        132883,
+        12341,
+        132956,
+        12414
+      ],
+      [
+        132532,
+        12251,
+        132595,
+        12316
+      ],
+      [
+        132416,
+        12068,
+        132478,
+        12137
+      ]
+    ]
+  },
+  {
+    "task_index": 230,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135030,
+    "view_ymin": 12052,
+    "view_xmax": 135635,
+    "view_ymax": 12497,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        135506,
+        12303,
+        135571,
+        12371
+      ],
+      [
+        135543,
+        12263,
+        135608,
+        12327
+      ],
+      [
+        135079,
+        12166,
+        135173,
+        12256
+      ]
+    ]
+  },
+  {
+    "task_index": 231,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135448,
+    "view_ymin": 12004,
+    "view_xmax": 136053,
+    "view_ymax": 12449,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        135888,
+        12119,
+        135963,
+        12195
+      ]
+    ]
+  },
+  {
+    "task_index": 232,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136064,
+    "view_ymin": 11984,
+    "view_xmax": 136669,
+    "view_ymax": 12429,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        136281,
+        12234,
+        136347,
+        12301
+      ],
+      [
+        136336,
+        12070,
+        136388,
+        12126
+      ],
+      [
+        136396,
+        12244,
+        136459,
+        12304
+      ],
+      [
+        136470,
+        12292,
+        136514,
+        12339
+      ],
+      [
+        136140,
+        12181,
+        136215,
+        12248
+      ],
+      [
+        136516,
+        12136,
+        136594,
+        12215
+      ]
+    ]
+  },
+  {
+    "task_index": 233,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136908,
+    "view_ymin": 11906,
+    "view_xmax": 137513,
+    "view_ymax": 12351,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        137149,
+        12118,
+        137224,
+        12206
+      ],
+      [
+        137198,
+        12059,
+        137270,
+        12130
+      ]
+    ]
+  },
+  {
+    "task_index": 234,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139240,
+    "view_ymin": 11864,
+    "view_xmax": 139845,
+    "view_ymax": 12309,
+    "region_name": "Extra_55",
+    "cell_list": [
+      [
+        139567,
+        12005,
+        139631,
+        12064
+      ],
+      [
+        139452,
+        12107,
+        139518,
+        12172
+      ],
+      [
+        139545,
+        12092,
+        139602,
+        12155
+      ]
+    ]
+  },
+  {
+    "task_index": 235,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130474,
+    "view_ymin": 11728,
+    "view_xmax": 131079,
+    "view_ymax": 12173,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        130587,
+        11789,
+        130660,
+        11861
+      ],
+      [
+        130902,
+        11862,
+        130961,
+        11925
+      ],
+      [
+        130590,
+        12040,
+        130653,
+        12115
+      ]
+    ]
+  },
+  {
+    "task_index": 236,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131152,
+    "view_ymin": 11850,
+    "view_xmax": 131757,
+    "view_ymax": 12295,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        131292,
+        12126,
+        131351,
+        12188
+      ],
+      [
+        131354,
+        12124,
+        131417,
+        12189
+      ],
+      [
+        131566,
+        11964,
+        131610,
+        12011
+      ]
+    ]
+  },
+  {
+    "task_index": 237,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133126,
+    "view_ymin": 11754,
+    "view_xmax": 133731,
+    "view_ymax": 12199,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        133395,
+        11787,
+        133469,
+        11847
+      ],
+      [
+        133620,
+        12113,
+        133666,
+        12158
+      ],
+      [
+        133178,
+        11935,
+        133250,
+        11996
+      ]
+    ]
+  },
+  {
+    "task_index": 238,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134318,
+    "view_ymin": 11644,
+    "view_xmax": 134923,
+    "view_ymax": 12089,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        134598,
+        11839,
+        134645,
+        11895
+      ]
+    ]
+  },
+  {
+    "task_index": 239,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137616,
+    "view_ymin": 11756,
+    "view_xmax": 138221,
+    "view_ymax": 12201,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        137893,
+        11953,
+        137946,
+        12003
+      ]
+    ]
+  },
+  {
+    "task_index": 240,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 138488,
+    "view_ymin": 11652,
+    "view_xmax": 139093,
+    "view_ymax": 12097,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        138759,
+        11843,
+        138824,
+        11905
+      ]
+    ]
+  },
+  {
+    "task_index": 241,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139806,
+    "view_ymin": 11690,
+    "view_xmax": 140411,
+    "view_ymax": 12135,
+    "region_name": "Extra_56",
+    "cell_list": [
+      [
+        140070,
+        11873,
+        140146,
+        11951
+      ]
+    ]
+  },
+  {
+    "task_index": 242,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133574,
+    "view_ymin": 11560,
+    "view_xmax": 134179,
+    "view_ymax": 12005,
+    "region_name": "Extra_57",
+    "cell_list": [
+      [
+        133853,
+        11756,
+        133900,
+        11808
+      ]
+    ]
+  },
+  {
+    "task_index": 243,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130812,
+    "view_ymin": 11286,
+    "view_xmax": 131417,
+    "view_ymax": 11731,
+    "region_name": "Extra_58",
+    "cell_list": [
+      [
+        131236,
+        11460,
+        131299,
+        11523
+      ],
+      [
+        131285,
+        11429,
+        131334,
+        11494
+      ],
+      [
+        131296,
+        11540,
+        131356,
+        11561
+      ],
+      [
+        130872,
+        11540,
+        130935,
+        11575
+      ]
+    ]
+  },
+  {
+    "task_index": 244,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131650,
+    "view_ymin": 11242,
+    "view_xmax": 132255,
+    "view_ymax": 11687,
+    "region_name": "Extra_58",
+    "cell_list": [
+      [
+        131919,
+        11430,
+        131986,
+        11498
+      ]
+    ]
+  },
+  {
+    "task_index": 245,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135748,
+    "view_ymin": 11314,
+    "view_xmax": 136353,
+    "view_ymax": 11759,
+    "region_name": "Extra_58",
+    "cell_list": [
+      [
+        136185,
+        11393,
+        136245,
+        11451
+      ],
+      [
+        136156,
+        11444,
+        136208,
+        11491
+      ],
+      [
+        135868,
+        11626,
+        135907,
+        11677
+      ]
+    ]
+  },
+  {
+    "task_index": 246,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139338,
+    "view_ymin": 11352,
+    "view_xmax": 139943,
+    "view_ymax": 11797,
+    "region_name": "Extra_58",
+    "cell_list": [
+      [
+        139355,
+        11561,
+        139427,
+        11631
+      ],
+      [
+        139848,
+        11540,
+        139932,
+        11569
+      ]
+    ]
+  },
+  {
+    "task_index": 247,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140260,
+    "view_ymin": 11196,
+    "view_xmax": 140865,
+    "view_ymax": 11641,
+    "region_name": "Extra_58",
+    "cell_list": [
+      [
+        140293,
+        11407,
+        140387,
+        11496
+      ],
+      [
+        140744,
+        11493,
+        140825,
+        11573
+      ],
+      [
+        140702,
+        11280,
+        140749,
+        11331
+      ]
+    ]
+  },
+  {
+    "task_index": 248,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134728,
+    "view_ymin": 11152,
+    "view_xmax": 135333,
+    "view_ymax": 11597,
+    "region_name": "Extra_59",
+    "cell_list": [
+      [
+        135043,
+        11248,
+        135117,
+        11328
+      ],
+      [
+        134945,
+        11426,
+        135015,
+        11501
+      ]
+    ]
+  },
+  {
+    "task_index": 249,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137360,
+    "view_ymin": 11082,
+    "view_xmax": 137965,
+    "view_ymax": 11527,
+    "region_name": "Extra_59",
+    "cell_list": [
+      [
+        137636,
+        11277,
+        137690,
+        11334
+      ]
+    ]
+  },
+  {
+    "task_index": 250,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131568,
+    "view_ymin": 10774,
+    "view_xmax": 132173,
+    "view_ymax": 11219,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        131831,
+        10954,
+        131912,
+        11038
+      ]
+    ]
+  },
+  {
+    "task_index": 251,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133524,
+    "view_ymin": 10928,
+    "view_xmax": 134129,
+    "view_ymax": 11373,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        133980,
+        11158,
+        134064,
+        11244
+      ],
+      [
+        133594,
+        11041,
+        133669,
+        11106
+      ],
+      [
+        133598,
+        10974,
+        133670,
+        11038
+      ],
+      [
+        133900,
+        11263,
+        133963,
+        11327
+      ],
+      [
+        134048,
+        11111,
+        134111,
+        11169
+      ]
+    ]
+  },
+  {
+    "task_index": 252,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134024,
+    "view_ymin": 10858,
+    "view_xmax": 134629,
+    "view_ymax": 11303,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        134543,
+        10997,
+        134609,
+        11050
+      ]
+    ]
+  },
+  {
+    "task_index": 253,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134834,
+    "view_ymin": 10828,
+    "view_xmax": 135439,
+    "view_ymax": 11273,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        135099,
+        11017,
+        135173,
+        11086
+      ]
+    ]
+  },
+  {
+    "task_index": 254,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136710,
+    "view_ymin": 10914,
+    "view_xmax": 137315,
+    "view_ymax": 11359,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        136840,
+        11075,
+        136904,
+        11139
+      ],
+      [
+        137120,
+        11135,
+        137190,
+        11201
+      ]
+    ]
+  },
+  {
+    "task_index": 255,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137854,
+    "view_ymin": 10802,
+    "view_xmax": 138459,
+    "view_ymax": 11247,
+    "region_name": "Extra_60",
+    "cell_list": [
+      [
+        138198,
+        11032,
+        138256,
+        11092
+      ],
+      [
+        138049,
+        10951,
+        138121,
+        11028
+      ]
+    ]
+  },
+  {
+    "task_index": 256,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137102,
+    "view_ymin": 10598,
+    "view_xmax": 137707,
+    "view_ymax": 11043,
+    "region_name": "Extra_61",
+    "cell_list": [
+      [
+        137368,
+        10785,
+        137442,
+        10856
+      ]
+    ]
+  },
+  {
+    "task_index": 257,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 139634,
+    "view_ymin": 10730,
+    "view_xmax": 140239,
+    "view_ymax": 11175,
+    "region_name": "Extra_61",
+    "cell_list": [
+      [
+        139902,
+        10919,
+        139970,
+        10985
+      ]
+    ]
+  },
+  {
+    "task_index": 258,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 130896,
+    "view_ymin": 10362,
+    "view_xmax": 131501,
+    "view_ymax": 10807,
+    "region_name": "Extra_62",
+    "cell_list": [
+      [
+        131032,
+        10524,
+        131110,
+        10601
+      ],
+      [
+        130968,
+        10576,
+        131039,
+        10635
+      ],
+      [
+        131370,
+        10524,
+        131421,
+        10571
+      ],
+      [
+        131077,
+        10601,
+        131118,
+        10644
+      ]
+    ]
+  },
+  {
+    "task_index": 259,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132328,
+    "view_ymin": 10480,
+    "view_xmax": 132933,
+    "view_ymax": 10925,
+    "region_name": "Extra_62",
+    "cell_list": [
+      [
+        132595,
+        10667,
+        132668,
+        10738
+      ]
+    ]
+  },
+  {
+    "task_index": 260,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133708,
+    "view_ymin": 10388,
+    "view_xmax": 134313,
+    "view_ymax": 10833,
+    "region_name": "Extra_62",
+    "cell_list": [
+      [
+        134045,
+        10398,
+        134119,
+        10469
+      ],
+      [
+        133916,
+        10764,
+        133961,
+        10812
+      ]
+    ]
+  },
+  {
+    "task_index": 261,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134768,
+    "view_ymin": 10074,
+    "view_xmax": 135373,
+    "view_ymax": 10519,
+    "region_name": "Extra_63",
+    "cell_list": [
+      [
+        135144,
+        10298,
+        135224,
+        10368
+      ],
+      [
+        134921,
+        10224,
+        134995,
+        10295
+      ]
+    ]
+  },
+  {
+    "task_index": 262,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136216,
+    "view_ymin": 10154,
+    "view_xmax": 136821,
+    "view_ymax": 10599,
+    "region_name": "Extra_63",
+    "cell_list": [
+      [
+        136474,
+        10339,
+        136562,
+        10415
+      ]
+    ]
+  },
+  {
+    "task_index": 263,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 135424,
+    "view_ymin": 9988,
+    "view_xmax": 136029,
+    "view_ymax": 10433,
+    "region_name": "Extra_64",
+    "cell_list": [
+      [
+        135693,
+        10180,
+        135759,
+        10242
+      ]
+    ]
+  },
+  {
+    "task_index": 264,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131848,
+    "view_ymin": 9762,
+    "view_xmax": 132453,
+    "view_ymax": 10207,
+    "region_name": "Extra_65",
+    "cell_list": [
+      [
+        131919,
+        9865,
+        131981,
+        9934
+      ],
+      [
+        132317,
+        10034,
+        132386,
+        10105
+      ]
+    ]
+  },
+  {
+    "task_index": 265,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 132590,
+    "view_ymin": 9548,
+    "view_xmax": 133195,
+    "view_ymax": 9993,
+    "region_name": "Extra_66",
+    "cell_list": [
+      [
+        132940,
+        9815,
+        133019,
+        9887
+      ],
+      [
+        132774,
+        9654,
+        132842,
+        9729
+      ]
+    ]
+  },
+  {
+    "task_index": 266,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133886,
+    "view_ymin": 9512,
+    "view_xmax": 134491,
+    "view_ymax": 9957,
+    "region_name": "Extra_66",
+    "cell_list": [
+      [
+        134278,
+        9629,
+        134357,
+        9710
+      ],
+      [
+        134031,
+        9769,
+        134088,
+        9830
+      ],
+      [
+        134239,
+        9655,
+        134283,
+        9712
+      ]
+    ]
+  },
+  {
+    "task_index": 267,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 134646,
+    "view_ymin": 9608,
+    "view_xmax": 135251,
+    "view_ymax": 10053,
+    "region_name": "Extra_66",
+    "cell_list": [
+      [
+        134912,
+        9793,
+        134987,
+        9869
+      ]
+    ]
+  },
+  {
+    "task_index": 268,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 140788,
+    "view_ymin": 12716,
+    "view_xmax": 141393,
+    "view_ymax": 13161,
+    "region_name": "Extra_67",
+    "cell_list": [
+      [
+        141262,
+        12980,
+        141341,
+        13047
+      ],
+      [
+        141123,
+        12837,
+        141176,
+        12894
+      ],
+      [
+        140857,
+        12926,
+        140915,
+        12973
+      ],
+      [
+        140844,
+        12975,
+        140920,
+        13044
+      ]
+    ]
+  },
+  {
+    "task_index": 269,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 141110,
+    "view_ymin": 11550,
+    "view_xmax": 141715,
+    "view_ymax": 11995,
+    "region_name": "Extra_68",
+    "cell_list": [
+      [
+        141233,
+        11564,
+        141298,
+        11634
+      ],
+      [
+        141363,
+        11595,
+        141432,
+        11655
+      ],
+      [
+        141438,
+        11900,
+        141509,
+        11967
+      ],
+      [
+        141523,
+        11913,
+        141600,
+        11978
+      ]
+    ]
+  },
+  {
+    "task_index": 270,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 141200,
+    "view_ymin": 13202,
+    "view_xmax": 141805,
+    "view_ymax": 13647,
+    "region_name": "Extra_68",
+    "cell_list": [
+      [
+        141496,
+        13424,
+        141554,
+        13479
+      ],
+      [
+        141447,
+        13365,
+        141517,
+        13435
+      ]
+    ]
+  },
+  {
+    "task_index": 271,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 136906,
+    "view_ymin": 24052,
+    "view_xmax": 137511,
+    "view_ymax": 24497,
+    "region_name": "Extra_69",
+    "cell_list": [
+      [
+        137094,
+        24201,
+        137173,
+        24286
+      ],
+      [
+        137254,
+        24275,
+        137313,
+        24337
+      ]
+    ]
+  },
+  {
+    "task_index": 272,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137726,
+    "view_ymin": 24134,
+    "view_xmax": 138331,
+    "view_ymax": 24579,
+    "region_name": "Extra_69",
+    "cell_list": [
+      [
+        137892,
+        24142,
+        137971,
+        24218
+      ],
+      [
+        137910,
+        24409,
+        137990,
+        24490
+      ],
+      [
+        138095,
+        24501,
+        138160,
+        24570
+      ]
+    ]
+  },
+  {
+    "task_index": 273,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 128040,
+    "view_ymin": 20406,
+    "view_xmax": 128645,
+    "view_ymax": 20851,
+    "region_name": "Extra_70",
+    "cell_list": [
+      [
+        128316,
+        20473,
+        128384,
+        20538
+      ],
+      [
+        128311,
+        20730,
+        128362,
+        20777
+      ]
+    ]
+  },
+  {
+    "task_index": 274,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 127964,
+    "view_ymin": 21702,
+    "view_xmax": 128569,
+    "view_ymax": 22147,
+    "region_name": "Extra_71",
+    "cell_list": [
+      [
+        128312,
+        21769,
+        128388,
+        21847
+      ],
+      [
+        128215,
+        21812,
+        128281,
+        21877
+      ],
+      [
+        128055,
+        22026,
+        128105,
+        22077
+      ],
+      [
+        128425,
+        21769,
+        128481,
+        21824
+      ]
+    ]
+  },
+  {
+    "task_index": 275,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 131494,
+    "view_ymin": 9214,
+    "view_xmax": 132099,
+    "view_ymax": 9659,
+    "region_name": "Extra_72",
+    "cell_list": [
+      [
+        131765,
+        9407,
+        131830,
+        9467
+      ]
+    ]
+  },
+  {
+    "task_index": 276,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 133158,
+    "view_ymin": 9288,
+    "view_xmax": 133763,
+    "view_ymax": 9733,
+    "region_name": "Extra_72",
+    "cell_list": [
+      [
+        133425,
+        9475,
+        133496,
+        9545
+      ]
+    ]
+  },
+  {
+    "task_index": 277,
+    "view_type": "WBC",
+    "smear_type": "BM",
+    "view_xmin": 137856,
+    "view_ymin": 24616,
+    "view_xmax": 138461,
+    "view_ymax": 25061,
+    "region_name": "Extra_73",
+    "cell_list": [
+      [
+        138136,
+        24813,
+        138183,
+        24864
       ]
     ]
   }
