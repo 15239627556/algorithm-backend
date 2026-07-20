@@ -28,7 +28,7 @@ from .pipeline_meg import MegSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/202607170001/4f1171e158ed4d5aa9470047d933a30e.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/20260720003/3a341f76f9984792b656d84d952107a3.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -236,7 +236,7 @@ def main() -> None:
     print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=50*3, 
+    bm_cfg = BM40Config(target_cell_num_MEG=200*3, 
                         dpi=134912, 
                         x100_rect_width=605,
                         x100_rect_height=445,

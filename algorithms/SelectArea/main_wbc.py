@@ -29,7 +29,7 @@ class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/202607170001/4f1171e158ed4d5aa9470047d933a30e.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/20260720003/3a341f76f9984792b656d84d952107a3.json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
 
     def get_color(self, region_name: str) -> str:
@@ -214,7 +214,7 @@ def main() -> None:
                         x100_rect_width=605,
                         x100_rect_height=445,
                         View_type="WBC", 
-                        heatmap_orientation=0,
+                        heatmap_orientation=1,
                         Smear_type=project.smear_type)
     # pipeline = WBCSamplingPipeline(bm_cfg)
     

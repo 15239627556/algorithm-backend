@@ -47,7 +47,7 @@ def build_forbidden_mask(
     """
     构建网格禁区掩码。支持从 Tile 评分中识别 label=5，或直接传入物理坐标矩形。
     label=5 区域映射到网格后，仅保留 8-连通域格数 >= forbidden_label5_min_component_size
-    的块（默认 5，即连续超过 4 格才视为禁区）。
+    的块（默认 32，过滤孤立小连通域）。
     """
     rows, cols = grid.values.shape
     forbidden_mask = np.zeros((rows, cols), dtype=np.uint8)
