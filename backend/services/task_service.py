@@ -15,7 +15,6 @@ from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
 from backend.tools.combo_validator import validate_combo, _get_dpi_bucket, _parse_cell_types
 from backend.tools.json_safe_writer import serialize_non_json_fields
-from backend.tools.dedup_cells_across_tiles import dedup_cells_across_tiles
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_incomplete,
     filter_edge_incomplete_cells,
@@ -29,6 +28,7 @@ from backend.tools.model_control import warmup_model
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
+from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +501,7 @@ class TaskService:
             dpi = ctx.info.get('dpi', 144750)
             layer = project.get_layer(dpi)
             tiles = layer.iter_tiles()
-            tiles = dedup_cells_across_tiles(tiles)
+            tiles = dedup_cells_across_tiles_per_type(tiles)
             t6 = time.time()
             logger.info(
                 "dedup_cells_across_tiles task_id=%s ms=%.2f",
