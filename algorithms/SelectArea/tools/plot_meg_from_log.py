@@ -10,6 +10,8 @@ import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 
+from _paths import OUTPUT_DIR
+
 
 def _read_line(path: Path, line_no: int) -> str:
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -188,7 +190,7 @@ def main() -> None:
         "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/202607170001/app.log"
     )
     line_no = 29980
-    out_path = Path(__file__).resolve().parent / "output" / "fig4_meg_tasks_from_log.png"
+    out_path = OUTPUT_DIR / "fig4_meg_tasks_from_log.png"
 
     log_line = _read_line(log_path, line_no)
     tasks = parse_task_list_from_log_line(log_line)

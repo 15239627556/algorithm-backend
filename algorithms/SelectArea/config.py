@@ -56,6 +56,7 @@ class BM40Config:
     kernel_margin: int = field(default=2, init=False)                        # 均值滤波时卷积核预留边缘
     filter_border_type: int = field(default=cv2.BORDER_CONSTANT, init=False) # 边界填充策略
     bmp_label: int = field(default=5, init=False)                            # 骨髓小粒规避参数
+    forbidden_label5_min_component_size: int = field(default=32, init=False)    # label=5 连通域格数 >=32 才视为禁区
     init_task_select_ratio: float = field(default=0.3, init=False)           # 生成初始拍摄任务时，阈值搜索允许误差比例
     edge_avoidance_radius: int = field(default=20, init=False)                # 边缘规避半径（单位：格子数）
     edge_penalty_magnitude: float = field(default=-10.0, init=False)         # 边缘惩罚幅度

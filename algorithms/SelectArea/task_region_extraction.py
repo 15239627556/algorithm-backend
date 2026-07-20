@@ -16,6 +16,27 @@ from .config import BM40Config
 from .data_structure import SelectionResult, Rect
 
 
+def _filter_small_forbidden_components(
+    forbidden_mask: np.ndarray,
+    min_component_size: int,
+) -> np.ndarray:
+    """
+    仅保留 8-连通域格数 >= min_component_size 的禁区。
+    用于过滤过小的 label=5 网格块，避免孤立小区域误伤细胞选区。
+    """
+    if min_component_size <= 1 or not np.any(forbidden_mask):
+        return forbidden_mask
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+        forbidden_mask.astype(np.uint8),
+        connectivity=8,
+    )
+    filtered = np.zeros_like(forbidden_mask)
+    for label_id in range(1, num_labels):
+        if stats[label_id, cv2.CC_STAT_AREA] >= min_component_size:
+            filtered[labels == label_id] = 1
+    return filtered
+
 
 def build_forbidden_mask(
     grid: HeatmapGrid, 
@@ -25,6 +46,8 @@ def build_forbidden_mask(
 ) -> np.ndarray:
     """
     构建网格禁区掩码。支持从 Tile 评分中识别 label=5，或直接传入物理坐标矩形。
+    label=5 区域映射到网格后，仅保留 8-连通域格数 >= forbidden_label5_min_component_size
+    的块（默认 5，即连续超过 4 格才视为禁区）。
     """
     rows, cols = grid.values.shape
     forbidden_mask = np.zeros((rows, cols), dtype=np.uint8)
@@ -68,7 +91,13 @@ def build_forbidden_mask(
             gy1, gy2 = max(0, min(rows, gy1)), max(0, min(rows, gy2))
             if gx1 < gx2 and gy1 < gy2:
                 forbidden_mask[gy1:gy2, gx1:gx2] = 1
-                    
+
+    min_component_size = int(getattr(config, "forbidden_label5_min_component_size", 1) or 1)
+    if min_component_size > 1:
+        forbidden_mask = _filter_small_forbidden_components(
+            forbidden_mask, min_component_size
+        )
+
     return forbidden_mask
 
 

@@ -1,16 +1,15 @@
 # plot_meg_dedup_compare.py
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 
-root_dir = Path(__file__).resolve().parents[2]
-if str(root_dir) not in sys.path:
-    sys.path.append(str(root_dir))
+from _paths import OUTPUT_DIR, setup_sys_path
+
+setup_sys_path()
 
 from project.smear_project import SmearProject
 from project.tiles import Tile
@@ -25,16 +24,15 @@ class VizConfig:
         "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/"
         "202607170002/edd259c80c1546bf943b83d346c04ad0_old.json"
     )
-    new_json: str = (
-        "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output/"
-        "edd259c80c1546bf943b83d346c04ad0_old_dedup_meg.json"
+    new_json: str = str(
+        OUTPUT_DIR / "edd259c80c1546bf943b83d346c04ad0_old_dedup_meg.json"
     )
 
     # new_json: str = (
     #     "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/"
     #     "202607170002/edd259c80c1546bf943b83d346c04ad0.json"
     # )
-    out_dir: str = str(Path(__file__).resolve().parent / "output")
+    out_dir: str = str(OUTPUT_DIR)
     out_name: str = "fig_meg_dedup_compare_2.png"
     dpi: Optional[int] = None
     cell_type: int = 100001  # 巨核细胞
