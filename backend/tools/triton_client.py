@@ -317,13 +317,7 @@ def _post_raw_pipeline_infer(
     resp: requests.Response | None = None
 
     for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
-        logger.info(
-            "file_name=%s, 发送请求的时间：%s (attempt %d/%d)",
-            filename,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
-            attempt,
-            _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
-        )
+        # logger.info("file_name=%s, 发送请求的时间：%s (attempt %d/%d)",filename,datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),attempt,_PIPELINE_HTTP_POST_MAX_ATTEMPTS)
         try:
             resp = _get_pipeline_session().post(
                 url,
