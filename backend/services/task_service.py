@@ -403,7 +403,7 @@ class TaskService:
         """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
         filename = f"{row_index}_{col_index}.jpg"
         # 记录日志，task_id,file_name,接收到图片的时间,转换为时分秒毫秒
-        logger.info("file_name=%s, 接收到图片的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        # logger.info("file_name=%s, 接收到图片的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         image_bytes = tile_image.read()
         if row_index is None or col_index is None:
             return {
@@ -463,7 +463,7 @@ class TaskService:
                 filename=filename,
             )
             # 记录日志，task_id,file_name,推理完成的时间
-            logger.info("file_name=%s, 推理完成的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            # logger.info("file_name=%s, 推理完成的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             cells = result["cells"]
             scores = result.get("scores", [])
             cell_list = result.get("cell_list", [])
@@ -475,7 +475,7 @@ class TaskService:
             if cells:
                 tile.add_cells(cells)
             # 记录日志，task_id,file_name,返回结果的时间
-            logger.info("file_name=%s, 返回结果的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            # logger.info("file_name=%s, 返回结果的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -501,6 +501,7 @@ class TaskService:
             dpi = ctx.info.get('dpi', 144750)
             layer = project.get_layer(dpi)
             tiles = layer.iter_tiles()
+            project.save_json(os.path.join(upload_folder, f"{task_id}_before_dedup.json"))
             tiles = dedup_cells_across_tiles_per_type(tiles)
             t6 = time.time()
             logger.info(
