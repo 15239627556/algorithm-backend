@@ -1,100 +1,60 @@
-from flask_restx import Namespace, Resource
-from werkzeug.datastructures import FileStorage
-import cv2
-from io import BytesIO
-import numpy as np
-from flask import send_file
+from fastapi import APIRouter, File, UploadFile
+from fastapi.responses import JSONResponse, Response
 
-# from backend.tools import x100EnhancemModule, x40EnhancemModule
-from backend.tools.triton_client import infer_image_enhance
+from backend.tools.triton_client import infer_image_enhance, infer_opencv_enhance
 
-ImgFilter = Namespace('img_filter', description='图片滤镜接口')
-
-post_img = ImgFilter.parser()
-post_img.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）',
-                      location='files')
+ImgFilter = APIRouter(prefix="/img_filter", tags=["图片滤镜接口"])
 
 
-# @ImgFilter.route('/x100_img_filter')
-# class UploadImg(Resource):
-#     @ImgFilter.doc(description='上传图片并应用滤镜')
-#     @ImgFilter.expect(post_img)
-#     def post(self):
-#         """
-#         上传图片并应用滤镜
-#         :return: 返回处理后的图片
-#         """
-#         args = post_img.parse_args()
-#         image_file = args.get('image_file')
-#         if not image_file or not isinstance(image_file, FileStorage):
-#             return {"message": "Invalid image file"}, 400
-#         filename = image_file.filename
-#         image_bytes = image_file.read()
-#         np_arr = np.frombuffer(image_bytes, np.uint8)
-#         img_np = cv2.imdecode(np_arr, cv2.COLOR_BGR2RGB)
-#         out = x100EnhancemModule.x100PicEnhance(img_np)
-#         _, img_encode = cv2.imencode('.jpg', out)
-#         new_img_bytes = img_encode.tobytes()
-#         # 返回处理后的图像
-#         return send_file(
-#             BytesIO(new_img_bytes),
-#             mimetype='image/jpeg',
-#             as_attachment=True,
-#             download_name=filename
-#         )
+def _image_filter_response(
+    filename: str,
+    enhanced_bytes: bytes,
+    content_type: str = "image/jpeg",
+) -> Response:
+    return Response(
+        content=enhanced_bytes,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
-# @ImgFilter.route('/x40_img_filter_pt')
-# class X40ImageFilterPt(Resource):
-#     @ImgFilter.doc(description='上传图片并应用超分辨率滤镜（普通模式）')
-#     @ImgFilter.expect(post_img)
-#     def post(self):
-#         """
-#         上传图片并应用滤镜
-#         :return: 返回处理后的图片
-#         """
-#         args = post_img.parse_args()
-#         image_file = args.get('image_file')
-#         if not image_file or not isinstance(image_file, FileStorage):
-#             return {"message": "Invalid image file"}, 400
-#         filename = image_file.filename
-#         image_bytes = image_file.read()
-#         np_arr = np.frombuffer(image_bytes, np.uint8)
-#         img_np = cv2.imdecode(np_arr, cv2.COLOR_BGR2RGB)
-#         out = x40EnhancemModule.x40PicEnhance(img_np)
-#         _, img_encode = cv2.imencode('.jpg', out)
-#         new_img_bytes = img_encode.tobytes()
-#         # 返回处理后的图像
-#         return send_file(
-#             BytesIO(new_img_bytes),
-#             mimetype='image/jpeg',
-#             as_attachment=True,
-#             download_name=filename
-#         )
+@ImgFilter.post("/x100_img_filter", summary="x100 滤镜")
+def x100_img_filter(image_file: UploadFile = File(..., description="图像文件（.jpg格式）")):
+    """上传图片并应用 x100 滤镜（multi_pipeline opencv_enhance）。"""
+    filename = image_file.filename or "enhanced.jpg"
+    image_bytes = image_file.file.read()
+    if not image_bytes:
+        return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
+    try:
+        enhanced_bytes, content_type = infer_opencv_enhance(image_bytes)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
+    return _image_filter_response(filename, enhanced_bytes, content_type)
 
 
-@ImgFilter.route('/x40_img_filter')
-class X40ImageFilter(Resource):
-    @ImgFilter.doc(description='上传图片并应用超分辨率滤镜(深度学习模式, Triton)')
-    @ImgFilter.expect(post_img)
-    def post(self):
-        """
-        上传图片并应用滤镜（Triton Image_enhance_pipeline，同步推理）
-        :return: 返回处理后的图片
-        """
-        args = post_img.parse_args()
-        image_file = args.get('image_file')
-        if not image_file or not isinstance(image_file, FileStorage):
-            return {"message": "Invalid image file"}, 400
-        filename = image_file.filename
-        image_bytes = image_file.read()
-        try:
-            enhanced_bytes = infer_image_enhance(image_bytes)
-        except Exception as e:
-            return {"message": f"Filter inference failed: {str(e)}"}, 500
-        return send_file(
-            BytesIO(enhanced_bytes),
-            mimetype='image/jpeg',
-            as_attachment=True,
-            download_name=filename
-        )
+@ImgFilter.post("/x40_img_filter_pt", summary="x40 超分辨率滤镜（普通模式）")
+def x40_img_filter_pt(image_file: UploadFile = File(..., description="图像文件（.jpg格式）")):
+    """上传图片并应用 x40 普通滤镜（multi_pipeline opencv_enhance）。"""
+    filename = image_file.filename or "enhanced.jpg"
+    image_bytes = image_file.file.read()
+    if not image_bytes:
+        return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
+    try:
+        enhanced_bytes, content_type = infer_opencv_enhance(image_bytes)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
+    return _image_filter_response(filename, enhanced_bytes, content_type)
+
+
+@ImgFilter.post("/x40_img_filter", summary="x40 超分辨率滤镜（深度学习模式）")
+def x40_img_filter(image_file: UploadFile = File(..., description="图像文件（.jpg格式）")):
+    """上传图片并应用 x40 深度学习滤镜（multi_pipeline image_enhance）。"""
+    filename = image_file.filename or "enhanced.jpg"
+    image_bytes = image_file.file.read()
+    if not image_bytes:
+        return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
+    try:
+        enhanced_bytes, content_type = infer_image_enhance(image_bytes)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
+    return _image_filter_response(filename, enhanced_bytes, content_type)

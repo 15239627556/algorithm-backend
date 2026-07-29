@@ -104,6 +104,27 @@ class SmearProject:
         data = orjson.loads(path.read_bytes())
         return cls.from_dict(data)
 
+    def save_pickle(self, path: str) -> str:
+        """Python 专用快路径（选区等）；原子写入。"""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+        with open(tmp, "wb") as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)
+        return "save success"
+
+    @classmethod
+    def load_pickle(cls, path: str) -> "SmearProject":
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(path)
+        with open(path, "rb") as f:
+            obj = pickle.load(f)
+        if not isinstance(obj, cls):
+            raise TypeError(f"pickle 内容不是 SmearProject: {type(obj)!r}")
+        return obj
+
 
 if __name__ == '__main__':
     project = SmearProject.load_json('../backend/uploads/b2364dafea904bea8fb978bfd218e1b9.json')

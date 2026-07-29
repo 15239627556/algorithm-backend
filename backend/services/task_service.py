@@ -1,15 +1,15 @@
-import json
 import os
+import shutil
 import threading
 from io import BytesIO
 import time
 import uuid
 import logging
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from cachetools import TTLCache
+import orjson
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
@@ -30,23 +30,24 @@ from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
+
 logger = logging.getLogger(__name__)
+
+# 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
+_task_info_cache: dict[str, dict] = {}
+_task_info_cache_lock = threading.Lock()
 
 
 def _async_finish_after_update_coordinates() -> bool:
-    """为 True 时 update_coordinates 在更新坐标后立即返回，去重/过滤/落盘在后台线程执行。"""
+    """为 True 时 update_coordinates 立即返回，合并坐标/去重/过滤/落盘均在后台执行。"""
     v = os.environ.get("UPDATE_COORDINATES_ASYNC_FINISH", "1").strip().lower()
     return v not in ("0", "false", "no", "off", "")
 
 
-# In-memory cache TTL (10 min), clear on restart. TTLCache is thread-safe.
-CACHE_TTL_SEC = int(os.environ.get("ROI_CACHE_TTL", "600"))
-ROI_CACHE_MAXSIZE = int(os.environ.get("ROI_CACHE_MAXSIZE", "200"))
-PROJECT_X100_CACHE_MAXSIZE = int(os.environ.get("PROJECT_X100_CACHE_MAXSIZE", "50"))
-
-# Task 内存上下文：自最后一次读/写起超过该时间则从 self.tasks 淘汰（可再经 load_data 从磁盘恢复）
-TASK_CONTEXT_IDLE_TTL_SEC = int(os.environ.get("TASK_CONTEXT_IDLE_TTL", "1800"))
-
+def _run_in_background(fn, *, name: str = "bg") -> None:
+    """后台执行 CPU/阻塞任务，接口立即返回（daemon 线程）。"""
+    th = threading.Thread(target=fn, name=name, daemon=True)
+    th.start()
 
 def _ensure_json_serializable(obj):
     """将 scores（可能含 numpy、嵌套列表）转为 JSON 可序列化的 Python 原生类型"""
@@ -74,28 +75,77 @@ def _task_info_path(task_id: str) -> str:
     return os.path.join(upload_folder, f"{task_id}.info.json")
 
 
+def _task_tiles_dir(task_id: str) -> str:
+    """单块推理结果目录：uploads/{task_id}/tiles/{row}_{col}.json"""
+    return os.path.join(upload_folder, task_id, "tiles")
+
+
+def _tile_result_path(task_id: str, row_index: int, col_index: int) -> str:
+    return os.path.join(_task_tiles_dir(task_id), f"{row_index}_{col_index}.json")
+
+
 def _save_task_info(task_id: str, info: dict) -> None:
-    """持久化 task_info（matcher 的 key 转为 "r,c" 字符串以便 JSON 序列化）"""
+    """持久化 task_info（orjson，适配多进程共享）。"""
     os.makedirs(upload_folder, exist_ok=True)
-    payload = dict(info)
-    matcher = payload.get("matcher", {})
-    if matcher:
-        payload["matcher"] = {f"{k[0]},{k[1]}": v for k, v in matcher.items()}
-    with open(_task_info_path(task_id), "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    path = _task_info_path(task_id)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    payload = {k: v for k, v in info.items() if k != "matcher"}
+    with open(tmp, "wb") as f:
+        f.write(orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY))
+    os.replace(tmp, path)
+    with _task_info_cache_lock:
+        _task_info_cache[task_id] = dict(payload)
 
 
-def _load_task_info(task_id: str) -> dict | None:
-    """从磁盘加载 task_info"""
+def _load_task_info_from_disk(task_id: str) -> dict | None:
+    """从磁盘加载 task_info（不读缓存）。"""
     path = _task_info_path(task_id)
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    matcher_data = data.get("matcher", {})
-    if matcher_data:
-        data["matcher"] = {tuple(int(x) for x in k.split(",")): v for k, v in matcher_data.items()}
+    with open(path, "rb") as f:
+        return orjson.loads(f.read())
+
+
+def _load_task_info_cached(task_id: str) -> dict | None:
+    """upload_image 专用：优先缓存，未命中再读盘并回填缓存。"""
+    with _task_info_cache_lock:
+        cached = _task_info_cache.get(task_id)
+        if cached is not None:
+            return dict(cached)
+    data = _load_task_info_from_disk(task_id)
+    if data is not None:
+        with _task_info_cache_lock:
+            _task_info_cache[task_id] = dict(data)
     return data
+
+
+def _write_tile_result(task_id: str, row_index: int, col_index: int, payload: dict) -> str:
+    """原子写入单块结果 JSON（orjson）。"""
+    path = _tile_result_path(task_id, row_index, col_index)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY))
+    os.replace(tmp, path)
+    return path
+
+
+def _read_tile_result(task_id: str, row_index: int, col_index: int) -> dict | None:
+    path = _tile_result_path(task_id, row_index, col_index)
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return orjson.loads(f.read())
+
+
+def _cells_to_dicts(cells) -> list[dict]:
+    out = []
+    for c in cells or []:
+        if hasattr(c, "to_dict"):
+            out.append(c.to_dict())
+        elif isinstance(c, dict):
+            out.append(c)
+    return out
 
 
 def _parse_edge_cell_filter_flag(value) -> bool:
@@ -183,79 +233,87 @@ def _map_cells_from_shrink_canvas(cells: list[Cell], orig_w: int, orig_h: int) -
     return mapped
 
 
-@dataclass
-class TaskContext:
-    """单任务上下文，聚合 project、info、lock（已去掉 num_rows/num_cols 与 grid）"""
-    project: SmearProject
-    info: dict
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    coord_mutex: threading.Lock = field(default_factory=threading.Lock)
-    # finish_thread: Optional[threading.Thread] = field(default=None, repr=False)
+
+def _task_project_path(task_id: str) -> str:
+    return os.path.join(upload_folder, f"{task_id}.json")
+
+
+def _task_project_pickle_path(task_id: str) -> str:
+    """选区专用快路径（仅 get_task_list_x100 使用）。"""
+    return os.path.join(upload_folder, f"{task_id}.roi.pkl")
+
+
+def _task_not_found_error(**extra) -> dict:
+    out = {
+        'ret_code': RetCode.CLIENT_ERROR.value,
+        'ret_desc': 'Task ID not found',
+        'reason': 'Task ID not found',
+    }
+    out.update(extra)
+    return out
+
+
+def _require_task_info(task_id: str) -> tuple[dict | None, dict | None]:
+    """从磁盘加载 task info（不读缓存，任务完成以落盘为准）。返回 (info, error_response)。"""
+    info = _load_task_info_from_disk(task_id)
+    if info is None:
+        return None, _task_not_found_error()
+    return info, None
+
+
+def _require_task_info_for_upload(task_id: str) -> tuple[dict | None, dict | None]:
+    """upload_image 专用：允许读缓存。返回 (info, error_response)。"""
+    info = _load_task_info_cached(task_id)
+    if info is None:
+        return None, _task_not_found_error()
+    return info, None
+
+
+def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, dict | None]:
+    """从磁盘加载已完成的大 JSON project。返回 (project, info, error_response)。"""
+    info, err = _require_task_info(task_id)
+    if err:
+        return None, None, err
+    path = _task_project_path(task_id)
+    if not os.path.exists(path):
+        return None, info, {
+            'ret_code': RetCode.CLIENT_ERROR.value,
+            'ret_desc': 'Task project not found (not finished?)',
+            'reason': 'Task project not found (not finished?)',
+        }
+    return SmearProject.load_json(path), info, None
+
+
+def _require_project_for_roi(task_id: str) -> tuple[SmearProject | None, dict | None, dict | None]:
+    """
+    选区专用：优先读 {task_id}.roi.pkl，失败或不存在则回退 JSON。
+    """
+    info, err = _require_task_info(task_id)
+    if err:
+        return None, None, err
+    pkl_path = _task_project_pickle_path(task_id)
+    if os.path.exists(pkl_path):
+        try:
+            t0 = time.time()
+            project = SmearProject.load_pickle(pkl_path)
+            logger.info(
+                "roi load_pickle task_id=%s ms=%.2f",
+                task_id[:8],
+                (time.time() - t0) * 1000,
+            )
+            return project, info, None
+        except Exception as e:
+            logger.warning(
+                "roi pickle load failed task_id=%s path=%s err=%s; fallback json",
+                task_id[:8],
+                pkl_path,
+                e,
+            )
+    return _require_project(task_id)
 
 
 class TaskService:
-    def __init__(self):
-        self.tasks: Dict[str, TaskContext] = {}
-        self._tasks_lock = threading.Lock()
-        self._task_last_access: Dict[str, float] = {}
-        self.roi_cache = TTLCache(maxsize=ROI_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
-        self.roi_cache_lock = threading.Lock()
-        self.project_x100 = TTLCache(maxsize=PROJECT_X100_CACHE_MAXSIZE, ttl=CACHE_TTL_SEC)
-        self.project_x100_lock = threading.Lock()
-
-    def _evict_idle_tasks_unlocked(self) -> None:
-        if not self._task_last_access:
-            return
-        now = time.time()
-        deadline = now - TASK_CONTEXT_IDLE_TTL_SEC
-        stale = [tid for tid, t in self._task_last_access.items() if t < deadline]
-        for tid in stale:
-            self.tasks.pop(tid, None)
-            self._task_last_access.pop(tid, None)
-
-    def _touch_task(self, task_id: str) -> None:
-        """在任意成功访问/写入该任务后调用，刷新 idle 计时，并清理其它过期任务。勿在 ctx.lock 内调用。"""
-        with self._tasks_lock:
-            self._evict_idle_tasks_unlocked()
-            if task_id in self.tasks:
-                self._task_last_access[task_id] = time.time()
-
-    def load_data(self, task_id):
-        with self._tasks_lock:
-            self._evict_idle_tasks_unlocked()
-            if task_id in self.tasks:
-                self._task_last_access[task_id] = time.time()
-                return None
-        os.makedirs(upload_folder, exist_ok=True)
-        file_path = os.path.join(upload_folder, f"{task_id}.json")
-        if not os.path.exists(file_path):
-            return {"ret_code": RetCode.CLIENT_ERROR.value,
-                    "ret_desc": 'Task ID not found',
-                    'reason': 'Task ID not found',
-                    'msg': f"file for task_id '{task_id}' not found."}
-        project = SmearProject.load_json(file_path)
-        info = _load_task_info(task_id)
-        if info is None:
-            dpi = project.list_layers()[0].dpi
-            layer = project.get_layer(dpi)
-            tiles = list(layer.iter_tiles())
-            info = {
-                "dpi": layer.dpi,
-                "smear_type": project.smear_type,
-                "tile_width": tiles[0].w if tiles else 2448,
-                "tile_height": tiles[0].h if tiles else 2048,
-                "task_status": RetCode.TASK_FINISHED.value if tiles else RetCode.TASK_RUNNING.value,
-                "finished": True,
-                "matcher": {},
-            }
-            for t in tiles:
-                r, c = t.meta.get("row_index"), t.meta.get("col_index")
-                if r is not None and c is not None:
-                    info.setdefault("matcher", {})[(r, c)] = t.image_uid
-        with self._tasks_lock:
-            self._evict_idle_tasks_unlocked()
-            self.tasks[task_id] = TaskContext(project=project, info=info)
-            self._task_last_access[task_id] = time.time()
+    """无状态服务类：方法仅通过磁盘交互，适配多进程/多 worker。"""
 
     def create_task(self, task_info: dict) -> dict:
         dpi = task_info.get('dpi')
@@ -273,15 +331,11 @@ class TaskService:
         task_info['task_status'] = RetCode.TASK_RUNNING.value
         task_info['heatmap_orientation'] = int(task_info.get('heatmap_orientation', -1))
         task_info['finished'] = False
-        task_info['matcher'] = {}
-        project = SmearProject(smear_type=task_info['smear_type'])
-        project.add_layer(task_info['dpi'])
-
-        with self._tasks_lock:
-            self._evict_idle_tasks_unlocked()
-            self.tasks[task_id] = TaskContext(project=project, info=task_info)
-            self._task_last_access[task_id] = time.time()
+        task_info['wbc_pixel_count'] = 0
+        task_info['red_pixel_count'] = 0
+        os.makedirs(_task_tiles_dir(task_id), exist_ok=True)
         _save_task_info(task_id, task_info)
+
         model_name, model_warning = get_model_by_dpi(
             dpi,
             smear_type=task_info.get('smear_type', 'BM'),
@@ -303,183 +357,168 @@ class TaskService:
             response['warning'] = warning
         return response
 
-    def update_coordinates(self, task_id, tiles_msg):
+    def _build_project_from_tiles(
+        self, task_id: str, tiles_msg: list, info: dict
+    ) -> tuple[SmearProject, dict, list]:
+        """按 tiles_msg 读分块 json 合并为 SmearProject，并汇总像素计数。"""
         t0 = time.time()
-        if task_id not in self.tasks:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        t_load = time.time()
-        ctx = self.tasks[task_id]
-        self._touch_task(task_id)
-        project = ctx.project
-        dpi = ctx.info.get('dpi', 144750)
-        layer = project.get_layer(dpi)
-        project_info = ctx.info
+        dpi = int(info.get('dpi', 144750))
+        smear_type = info.get('smear_type', 'BM')
+        project = SmearProject(smear_type=smear_type)
+        layer = project.add_layer(dpi)
 
-        with ctx.coord_mutex:
-            with ctx.lock:
-                matcher = project_info.get('matcher')
-                if not matcher:
-                    matcher = {}
-                    project_info['matcher'] = matcher
-                # prev = ctx.finish_thread
-                # if prev is not None and prev.is_alive():
-                #     prev.join(timeout=3600)
+        failed_tiles = []
+        wbc_pixel_count = 0
+        red_pixel_count = 0
+        tile_w = int(info.get('tile_width', 2448))
+        tile_h = int(info.get('tile_height', 2048))
 
-                # tiles_list = layer.iter_tiles()
-                # rowcol_to_tile = {}
-                # for tile in tiles_list:
-                #     r, c = tile.meta.get("row_index"), tile.meta.get("col_index")
-                #     if r is not None and c is not None:
-                #         rowcol_to_tile[(int(r), int(c))] = tile
+        for tile_info in tiles_msg or []:
+            try:
+                row_index = int(tile_info['row_index'])
+                col_index = int(tile_info['col_index'])
+                position_x = int(tile_info['position_x'])
+                position_y = int(tile_info['position_y'])
+            except (KeyError, TypeError, ValueError) as e:
+                bad = dict(tile_info) if isinstance(tile_info, dict) else {'raw': tile_info}
+                bad['reason'] = f'invalid tiles_msg item: {e}'
+                failed_tiles.append(bad)
+                continue
 
-                failed_tiles = []
-                for tile_info in tiles_msg:
-                    row_index = int(tile_info['row_index'])
-                    col_index = int(tile_info['col_index'])
-                    position_x = int(tile_info['position_x'])
-                    position_y = int(tile_info['position_y'])
-                    image_uid = matcher.get((row_index, col_index))
-                    # if image_uid is None:
-                    #     tile = rowcol_to_tile.get((row_index, col_index))
-                    #     if tile is None:
-                    #         tile_info['reason'] = 'tile not found'
-                    #         failed_tiles.append(tile_info)
-                    #     else:
-                    #         tile.x = position_x
-                    #         tile.y = position_y
-                    # else:
-                    try:
-                        tile = layer.get_tile(image_uid)
-                        if tile is None:
-                            tile_info['reason'] = 'tile not found'
-                            failed_tiles.append(tile_info)
-                        else:
-                            tile.x = position_x
-                            tile.y = position_y
-                    except Exception as e:
-                        tile_info['reason'] = str(e)
-                        failed_tiles.append(tile_info)
+            data = _read_tile_result(task_id, row_index, col_index)
+            if data is None:
+                tile_info = dict(tile_info)
+                tile_info['reason'] = 'tile result json not found'
+                failed_tiles.append(tile_info)
+                continue
 
-        t_done = time.time()
+            tw = int(data.get('w', tile_w))
+            th = int(data.get('h', tile_h))
+            image_path = data.get('image_path') or f"{row_index}_{col_index}.jpg"
+            tile = layer.add_tile(
+                x=position_x,
+                y=position_y,
+                w=tw,
+                h=th,
+                image_data=None,
+                image_path=image_path,
+                extra_meta={
+                    'row_index': row_index,
+                    'col_index': col_index,
+                    'scores': data.get('scores') or [],
+                },
+            )
+            cells = [Cell.from_dict(c) for c in (data.get('cells') or [])]
+            if cells:
+                tile.add_cells(cells)
+            wbc_pixel_count += int(data.get('wbc_pixel_count') or 0)
+            red_pixel_count += int(data.get('red_pixel_count') or 0)
+
+        info['wbc_pixel_count'] = wbc_pixel_count
+        info['red_pixel_count'] = red_pixel_count
         logger.info(
-            "update_coordinates task_id=%s load_ms=%.2f coord_update_ms=%.2f",
+            "update_coordinates merge task_id=%s merge_ms=%.2f tiles=%s failed=%s",
             task_id[:8],
-            (t_load - t0) * 1000,
-            (t_done - t_load) * 1000,
+            (time.time() - t0) * 1000,
+            len(tiles_msg or []),
+            len(failed_tiles),
         )
+        return project, info, failed_tiles
 
+    def _merge_and_finish(self, task_id: str, tiles_msg: list, info: dict) -> list:
+        """合并坐标并 finish；供同步/后台线程共用。"""
+        try:
+            project, info, failed_tiles = self._build_project_from_tiles(task_id, tiles_msg, info)
+            if failed_tiles:
+                logger.warning(
+                    "update_coordinates failed_tiles task_id=%s count=%s sample=%s",
+                    task_id[:8],
+                    len(failed_tiles),
+                    failed_tiles[:3],
+                )
+            self._finish_task_impl(task_id, project, info)
+            return failed_tiles
+        except Exception as e:
+            info['task_status'] = RetCode.TASK_TIMEOUT.value
+            try:
+                _save_task_info(task_id, info)
+            except Exception:
+                logger.exception("failed to persist task status after merge error")
+            logger.exception("_merge_and_finish error task_id=%s: %s", task_id[:8], e)
+            return []
+
+    def update_coordinates(self, task_id, tiles_msg):
+        """按 tiles_msg 读取分块 json，写入全局坐标后合并为大项目并 finish。"""
+        info, err = _require_task_info(task_id)
+        if err:
+            return err
+
+        tiles_msg = list(tiles_msg or [])
         async_finish = _async_finish_after_update_coordinates()
         if async_finish:
-            def _run():
-                try:
-                    self._finish_task_impl(task_id)
-                finally:
-                    self._touch_task(task_id)
-
-            th = threading.Thread(
-                target=_run,
-                name=f"finish-{task_id[:8]}",
-                daemon=True,
+            info_snapshot = dict(info)
+            _run_in_background(
+                lambda: self._merge_and_finish(task_id, tiles_msg, info_snapshot),
+                name=f"merge-finish-{task_id[:8]}",
             )
-            # ctx.finish_thread = th
-            th.start()
-        else:
-            with ctx.lock:
-                self._finish_task_impl(task_id)
-            self._touch_task(task_id)
+            return {
+                'ret_code': RetCode.API_SUCCESS.value,
+                'ret_desc': RetDesc.API_SUCCESS.value,
+                'failed_tiles': [],
+                'finish_in_background': True,
+            }
 
-        out: Dict[str, Any] = {
+        failed_tiles = self._merge_and_finish(task_id, tiles_msg, info)
+        return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
             'failed_tiles': failed_tiles,
         }
-        if async_finish:
-            out['finish_in_background'] = True
-        return out
 
     def upload_image(self, task_id, row_index, col_index, tile_image):
-        """任务模式：上传拼图块到指定任务，DPI/smear_type 从 task_info 取"""
+        """
+        任务模式上传拼图块：推理后将结果以 orjson 写入磁盘，并实时返回 cell_list。
+        """
         filename = f"{row_index}_{col_index}.jpg"
-        # 记录日志，task_id,file_name,接收到图片的时间,转换为时分秒毫秒
-        # logger.info("file_name=%s, 接收到图片的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
-        image_bytes = tile_image.read()
+        image_bytes = tile_image.read() if hasattr(tile_image, "read") else tile_image
         if row_index is None or col_index is None:
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': 'Task mode requires row_index and col_index',
                 'reason': 'Task mode requires row_index and col_index',
             }
-        if task_id not in self.tasks:
-            result = self.load_data(task_id)
-            if result:
-                return result
-            if task_id not in self.tasks:
-                return {
-                    'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': 'Task ID not found',
-                    'reason': 'Task ID not found',
-                }
 
-        ctx = self.tasks[task_id]
+        info, err = _require_task_info_for_upload(task_id)
+        if err:
+            return err
+
         row_index, col_index = int(row_index), int(col_index)
-        # with ctx.lock:
-        #     matcher = ctx.info.get('matcher')
-        #     if not matcher:
-        #         matcher = {}
-        #         ctx.info['matcher'] = matcher
-        matcher = ctx.info.get('matcher')
-        image_uid = matcher.get((row_index, col_index))
-        project = ctx.project
-        dpi = ctx.info.get('dpi', 144750)
-        layer = project.get_layer(dpi)
-        task_info = ctx.info
-        smear_type = task_info.get('smear_type', 'BM')
-        target_cell_types = task_info.get('target_cell_types', '')
+        dpi = int(info.get('dpi', 144750))
+        smear_type = info.get('smear_type', 'BM')
+        target_cell_types = info.get('target_cell_types', '')
 
-        if image_uid is None:
-            tile = layer.add_tile(
-                x=None, y=None,
-                w=task_info['tile_width'],
-                h=task_info['tile_height'],
-                image_data=None,
-                image_path=filename,
-                extra_meta={
-                    'row_index': row_index,
-                    'col_index': col_index,
-                }
-            )
-            image_uid = tile.image_uid
-            matcher[(row_index, col_index)] = image_uid
-        else:
-            tile = layer.get_tile(image_uid)
         try:
             result = infer(
                 image_bytes,
-                dpi=int(dpi),
+                dpi=dpi,
                 smear_type=smear_type,
-                algorithm_types=target_cell_types or "",
+                algorithm_types=target_cell_types,
                 filename=filename,
             )
-            # 记录日志，task_id,file_name,推理完成的时间
-            # logger.info("file_name=%s, 推理完成的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
-            cells = result["cells"]
-            scores = result.get("scores", [])
-            cell_list = result.get("cell_list", [])
-            task_info["wbc_pixel_count"] = result.get("wbc_pixel_count", 0) + task_info.get("wbc_pixel_count", 0)
-            task_info["red_pixel_count"] = result.get("red_pixel_count", 0) + task_info.get("red_pixel_count", 0)
-            # tile.meta["wbc_pixel_count"] = wbc_pixel_count
-            # tile.meta["red_pixel_count"] = red_pixel_count
-            tile.meta["scores"] = _ensure_json_serializable(scores)
-            if cells:
-                tile.add_cells(cells)
-            # 记录日志，task_id,file_name,返回结果的时间
-            # logger.info("file_name=%s, 返回结果的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+            cells = result.get("cells") or []
+            scores = _ensure_json_serializable(result.get("scores", []))
+            cell_list = result.get("cell_list") or []
+            payload = {
+                'cells': _cells_to_dicts(cells),
+                'scores': scores,
+                'cell_list': cell_list,
+                'wbc_pixel_count': int(result.get("wbc_pixel_count") or 0),
+                'red_pixel_count': int(result.get("red_pixel_count") or 0),
+            }
+            _write_tile_result(task_id, row_index, col_index, payload)
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
-                'image_uid': image_uid,
                 'cell_list': cell_list,
             }
         except Exception as e:
@@ -490,19 +529,13 @@ class TaskService:
                 'reason': str(e),
             }
 
-    def _finish_task_impl(self, task_id: str) -> None:
-        """所有 tile 已上传并推理完成：去重、过滤、落盘。须在持有 ctx.lock 时调用。"""
+    def _finish_task_impl(self, task_id: str, project: SmearProject, info: dict) -> None:
+        """去重、过滤、落盘为大 JSON + 更新 info（后台可跑，不依赖内存任务表）。"""
         t5 = time.time()
-        ctx = self.tasks.get(task_id)
-        if not ctx:
-            return
         try:
-            project = ctx.project
-            dpi = ctx.info.get('dpi', 144750)
+            dpi = info.get('dpi', 144750)
             layer = project.get_layer(dpi)
-            tiles = layer.iter_tiles()
-            project.save_json(os.path.join(upload_folder, f"{task_id}_before_dedup.json"))
-            tiles = dedup_cells_across_tiles_per_type(tiles)
+            tiles = dedup_cells_across_tiles_per_type(layer.iter_tiles())
             t6 = time.time()
             logger.info(
                 "dedup_cells_across_tiles task_id=%s ms=%.2f",
@@ -517,16 +550,37 @@ class TaskService:
                 task_id[:8],
                 (t9 - t6) * 1000,
             )
-            project.save_json(os.path.join(upload_folder, f"{task_id}.json"))
+            project.save_json(_task_project_path(task_id))
             t7 = time.time()
             logger.info(
                 "save_json task_id=%s ms=%.2f",
                 task_id[:8],
                 (t7 - t9) * 1000,
             )
-            ctx.info['task_status'] = RetCode.TASK_FINISHED.value
-            ctx.info['finished'] = True
-            _save_task_info(task_id, ctx.info)
+            try:
+                project.save_pickle(_task_project_pickle_path(task_id))
+                logger.info(
+                    "save_roi_pickle task_id=%s ms=%.2f",
+                    task_id[:8],
+                    (time.time() - t7) * 1000,
+                )
+            except Exception as e:
+                logger.warning(
+                    "save_roi_pickle failed task_id=%s (roi will fallback to json): %s",
+                    task_id[:8],
+                    e,
+                )
+            info['task_status'] = RetCode.TASK_FINISHED.value
+            info['finished'] = True
+            info.pop('matcher', None)
+            _save_task_info(task_id, info)
+            # 大 JSON / info 落盘成功后清理分块临时目录 uploads/{task_id}/
+            tile_tmp_root = os.path.join(upload_folder, task_id)
+            try:
+                shutil.rmtree(tile_tmp_root, ignore_errors=False)
+                logger.info("removed tile temp dir task_id=%s path=%s", task_id[:8], tile_tmp_root)
+            except Exception as e:
+                logger.warning("failed to remove tile temp dir %s: %s", tile_tmp_root, e)
             t8 = time.time()
             logger.info(
                 "save_task_info task_id=%s ms=%.2f finish_total_ms=%.2f",
@@ -536,25 +590,19 @@ class TaskService:
             )
             logger.info("Task %s finished and saved.", task_id)
         except Exception as e:
-            if task_id in self.tasks:
-                self.tasks[task_id].info['task_status'] = RetCode.TASK_TIMEOUT.value
+            info['task_status'] = RetCode.TASK_TIMEOUT.value
+            try:
+                _save_task_info(task_id, info)
+            except Exception:
+                logger.exception("failed to persist task status after finish error")
             logger.exception("_finish_task_impl error: %s", e)
 
     def check_image(self, task_id: str) -> dict:
         """不再检测缺失块，直接返回成功与空 missing_tiles"""
         try:
-            if task_id not in self.tasks:
-                result = self.load_data(task_id)
-                if result:
-                    return result
-            ctx = self.tasks.get(task_id)
-            if not ctx:
-                return {
-                    'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': 'Task ID not found',
-                    'reason': 'Task ID not found',
-                }
-            self._touch_task(task_id)
+            _, err = _require_task_info(task_id)
+            if err:
+                return err
             return {
                 'ret_code': RetCode.API_SUCCESS.value,
                 'ret_desc': RetDesc.API_SUCCESS.value,
@@ -568,22 +616,13 @@ class TaskService:
             }
 
     def task_status(self, task_id: str) -> dict:
-        if task_id not in self.tasks:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        ctx = self.tasks.get(task_id)
-        if not ctx:
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'Task ID not found',
-                'reason': 'Task ID not found'
-        }
-        self._touch_task(task_id)
+        info, err = _require_task_info(task_id)
+        if err:
+            return err
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
-            'task_status': ctx.info.get('task_status')
+            'task_status': info.get('task_status')
         }
 
     def analyze_slide(self, task_id: str, analyze_names: list) -> dict:
@@ -591,19 +630,11 @@ class TaskService:
         玻片分析（骨髓玻片增生分析等）。
         cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
         """
-        if task_id not in self.tasks:
-            load_result = self.load_data(task_id)
-            if load_result is not None:
-                return load_result
-            if task_id not in self.tasks:
-                return {
-                    'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': 'Task ID not found',
-                    'reason': 'Task ID not found',
-                    'result': {},
-                }
-        self._touch_task(task_id)
-        info = self.tasks[task_id].info
+        info, err = _require_task_info(task_id)
+        if err:
+            err = dict(err)
+            err['result'] = {}
+            return err
         if not info.get('finished', False):
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -626,14 +657,10 @@ class TaskService:
         }
 
     def get_result(self, task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num):
-        if task_id not in self.tasks:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        ctx = self.tasks[task_id]
-        self._touch_task(task_id)
-        project = ctx.project
-        dpi = ctx.info.get('dpi', 144750)
+        project, info, err = _require_project(task_id)
+        if err:
+            return err
+        dpi = info.get('dpi', 144750)
         layer = project.get_layer(dpi)
 
         roi_xmin = 0 if roi_xmin is None else int(roi_xmin)
@@ -642,26 +669,11 @@ class TaskService:
         roi_ymax = float("inf") if roi_ymax is None else int(roi_ymax)
         offset = max(0, int(index_offset or 0))
         limit = max(0, int(request_task_num or 0))
-        roi_key = (roi_xmin, roi_ymin, roi_xmax, roi_ymax)
 
-        roi_cache_key = (task_id, roi_key)
-        with self.roi_cache_lock:
-            hit = self.roi_cache.get(roi_cache_key)
-
-        if hit is None:
-            cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax, is_Cell=True)
-            total = len(cells_all)
-            hit = (total, cells_all)
-            with self.roi_cache_lock:
-                self.roi_cache[roi_cache_key] = hit
-        else:
-            total, cells_all = hit
-
+        cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax, is_Cell=True)
+        total = len(cells_all)
         page_cells = cells_all[offset: offset + limit]
         page_dicts = [c.to_dict() for c in page_cells]
-        if (offset + limit) >= total:
-            with self.roi_cache_lock:
-                self.roi_cache.pop(roi_cache_key, None)
 
         return {
             "ret_code": RetCode.API_SUCCESS.value,
@@ -682,20 +694,11 @@ class TaskService:
         required_num: dict | None,
     ):
         logger.info("roi_selection task_id=%s, task_type=%s, user_choice_area=%s, view_width=%s, view_height=%s, kwargs=%s, required_num=%s", task_id, task_type, user_choice_area, view_width, view_height, kwargs, required_num)
-        if task_id not in self.tasks:
-            result = self.load_data(task_id)
-            if result:
-                return result
-        ctx = self.tasks.get(task_id)
-        if not ctx:
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'Task ID not found',
-                'reason': 'Task ID not found',
-                'result': {},
-            }
-        self._touch_task(task_id)
-        info = ctx.info
+        project, info, err = _require_project_for_roi(task_id)
+        if err:
+            err = dict(err)
+            err.setdefault('result', {})
+            return err
         if not info.get('finished', False):
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -703,7 +706,7 @@ class TaskService:
                 'reason': 'Task not completed',
                 'result': {},
             }
-        smear_type = (ctx.info or {}).get("smear_type")
+        smear_type = (info or {}).get("smear_type")
         dpi = info.get("dpi")
         heatmap_orientation = info.get('heatmap_orientation', -1)
         if not smear_type:
@@ -800,7 +803,6 @@ class TaskService:
                 "ret_desc": f"Unsupported smear_type: {smear_type}",
                 "reason": f"Unsupported smear_type: {smear_type}",
             }
-        project = ctx.project
         if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
             bm_cfg = BM40Config(
                 user_choice_area=user_choice_area,
@@ -1009,7 +1011,7 @@ class TaskService:
         - 任务模式：task_id + position 必填，结果保存到项目
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
-        logger.info("get_task_result_x100 task_id=%s, image_file=%s, target_cell_types=%s, dpi=%s, edge_cell_filter=%s, smear_type=%s, position_xmin=%s, position_ymin=%s, position_xmax=%s, position_ymax=%s", task_id, image_file, target_cell_types, dpi, edge_cell_filter, smear_type, position_xmin, position_ymin, position_xmax, position_ymax)
+        # logger.info("get_task_result_x100 task_id=%s, image_file=%s, target_cell_types=%s, dpi=%s, edge_cell_filter=%s, smear_type=%s, position_xmin=%s, position_ymin=%s, position_xmax=%s, position_ymax=%s", task_id, image_file, target_cell_types, dpi, edge_cell_filter, smear_type, position_xmin, position_ymin, position_xmax, position_ymax)
         image_bytes = image_file.read()
         edge_cell_filter = _parse_edge_cell_filter_flag(edge_cell_filter)
 
@@ -1030,6 +1032,15 @@ class TaskService:
             image_bytes = _shrink_image_half_pad_black(image_bytes)
             meg_shrink_applied = True
         warning = err
+
+        model_name, model_warning = get_model_by_dpi(
+            int(dpi),
+            smear_type=smear_type,
+            algorithm_types=target_cell_types or "",
+            return_warning=True,
+        )
+        warmup_model(model_name)
+        warning = warning or model_warning
 
         try:
             result = infer(

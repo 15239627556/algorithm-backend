@@ -1,6 +1,6 @@
 # triton_client.py
 """multipart 对齐 project.multi_pipeline_server：POST /{147246|357378|714756}/infer；
-Image_enhance 等仍走 Triton gRPC。按 DPI 选 target 与结果解析。"""
+滤镜走 multi_pipeline POST /{image_enhance|opencv_enhance}/infer（裸流）。按 DPI 选 target 与结果解析。"""
 from __future__ import annotations
 
 import os
@@ -26,9 +26,8 @@ from urllib3.util.retry import Retry
 from datetime import datetime
 
 from project.cells import Cell
-from backend.tools.model_control import ensure_model_loaded
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
-from config import TRITON_URL, TRITON_IP, TRITON_HTTP_URL
+from config import next_triton_endpoint, get_triton_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +48,10 @@ MODEL_714756_CF = "DPI714756_CF_WBC_pipeline" #  预估显存占用7.5G
 MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline" # 预估显存占用3G
 
 # 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756}/infer（multipart）。
-# - PIPELINE_SERVER_BASE_URL：推荐，例如 http://192.168.1.10:9000（勿带 /infer）
-# - MULTI_PIPELINE_PORT：未设 BASE 时，与 TRITON_IP 拼成 http://TRITON_IP:port
-# - PIPELINE_147246_INFER_URL：可写完整 147246 地址；若仅为 http://host:port/infer 会自动补上 /147246/infer，
-#   并向 357378/714756 派生同主机的 /{target}/infer
+# 双容器轮询：见 config.next_triton_endpoint（gpu0:9000 / gpu1:9010）。
+# PIPELINE_147246_INFER_URL 仅作单点覆盖（会禁用该次请求的端点派生，仍走轮询到的 host 时请勿设置）。
 _MULTI_PIPELINE_TARGETS = frozenset({"147246", "357378", "714756"})
-_DEFAULT_MULTI_PIPELINE_PORT = int(os.environ.get("MULTI_PIPELINE_PORT", "9000"))
-_PIPELINE_SERVER_BASE_URL_RAW = os.environ.get("PIPELINE_SERVER_BASE_URL", "").strip().rstrip("/")
+_FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 _PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
 
 PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
@@ -66,45 +62,69 @@ PIPELINE_HTTP_CONNECT_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_CONNECT_TI
 _PIPELINE_HTTP_CONNECT_RETRIES = int(os.environ.get("PIPELINE_HTTP_CONNECT_RETRIES", "2"))
 # pipeline 裸流 POST 连接层失败时的应用层重试次数（含首次，默认最多 3 次）。
 _PIPELINE_HTTP_POST_MAX_ATTEMPTS = int(os.environ.get("PIPELINE_HTTP_POST_MAX_ATTEMPTS", "3"))
+# 连接池：按 host 复用；需 ≥ Web 侧并发（双端点轮询时每端各占一半）。
+# 默认与 THREAD_POOL_SIZE 同量级，否则线程多了也只会在 urllib3 池里排队。
+_PIPELINE_HTTP_POOL_CONNECTIONS = int(os.environ.get("PIPELINE_HTTP_POOL_CONNECTIONS", "32"))
+_PIPELINE_HTTP_POOL_MAXSIZE = int(os.environ.get("PIPELINE_HTTP_POOL_MAXSIZE", "64"))
 
-_pipeline_session: requests.Session | None = None
-_pipeline_session_lock = threading.Lock()
+# 注意：requests.Session 不是线程安全的。进程内共享一个 Session 在高并发下会
+# 把连接池打坏，表现为「一开始并发高，随后掉到几十」。改为 thread-local。
+_thread_local = threading.local()
+_pool_config_logged = False
+_pool_config_log_lock = threading.Lock()
+_filter_model_ready_lock = threading.Lock()
+_filter_model_ready: set[tuple[int, str]] = set()
+
+
+def _new_pipeline_session() -> requests.Session:
+    session = requests.Session()
+    retry = Retry(
+        total=_PIPELINE_HTTP_CONNECT_RETRIES,
+        connect=_PIPELINE_HTTP_CONNECT_RETRIES,
+        read=0,
+        status=0,
+        redirect=0,
+        backoff_factor=0.5,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(
+        pool_connections=_PIPELINE_HTTP_POOL_CONNECTIONS,
+        pool_maxsize=_PIPELINE_HTTP_POOL_MAXSIZE,
+        max_retries=retry,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def _get_pipeline_session() -> requests.Session:
-    """进程内共享的 requests.Session（连接池复用 + 有限的连接重试），线程安全懒加载。"""
-    global _pipeline_session
-    if _pipeline_session is not None:
-        return _pipeline_session
-    with _pipeline_session_lock:
-        if _pipeline_session is None:
-            session = requests.Session()
-            retry = Retry(
-                total=_PIPELINE_HTTP_CONNECT_RETRIES,
-                connect=_PIPELINE_HTTP_CONNECT_RETRIES,
-                read=0,
-                status=0,
-                redirect=0,
-                backoff_factor=0.5,
-                raise_on_status=False,
-            )
-            adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=retry)
-            session.mount("http://", adapter)
-            session.mount("https://", adapter)
-            _pipeline_session = session
-    return _pipeline_session
+    """每线程独立 Session（连接池复用且线程安全）。"""
+    global _pool_config_logged
+    session = getattr(_thread_local, "pipeline_session", None)
+    if session is None:
+        session = _new_pipeline_session()
+        _thread_local.pipeline_session = session
+        if not _pool_config_logged:
+            with _pool_config_log_lock:
+                if not _pool_config_logged:
+                    logger.info(
+                        "pipeline HTTP pool: connections=%s maxsize=%s (thread-local sessions)",
+                        _PIPELINE_HTTP_POOL_CONNECTIONS,
+                        _PIPELINE_HTTP_POOL_MAXSIZE,
+                    )
+                    _pool_config_logged = True
+    return session
 
 
 def _reset_pipeline_session() -> None:
-    """丢弃当前 Session 与连接池，避免重试时复用已断开的脏连接。"""
-    global _pipeline_session
-    with _pipeline_session_lock:
-        if _pipeline_session is not None:
-            try:
-                _pipeline_session.close()
-            except Exception:
-                pass
-            _pipeline_session = None
+    """丢弃当前线程的 Session，避免重试时复用已断开的脏连接。"""
+    session = getattr(_thread_local, "pipeline_session", None)
+    if session is not None:
+        try:
+            session.close()
+        except Exception:
+            pass
+        _thread_local.pipeline_session = None
 
 
 def _normalize_http_url(url_or_hostport: str) -> str:
@@ -114,10 +134,6 @@ def _normalize_http_url(url_or_hostport: str) -> str:
     if not s.lower().startswith(("http://", "https://")):
         s = f"http://{s}"
     return s
-
-
-def _default_multi_pipeline_base() -> str:
-    return _normalize_http_url(f"{TRITON_IP}:{_DEFAULT_MULTI_PIPELINE_PORT}")
 
 
 def _strip_plain_infer_suffix(url: str) -> str | None:
@@ -132,13 +148,17 @@ def _strip_plain_infer_suffix(url: str) -> str | None:
     return f"{p.scheme}://{p.netloc}"
 
 
-def _multi_pipeline_infer_url(target: str) -> str:
+def _multi_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
     """与 multi_pipeline_server 一致的路径：/{target}/infer（multipart）。"""
     if target not in _MULTI_PIPELINE_TARGETS:
         raise ValueError(f"invalid multi pipeline target: {target!r}")
 
-    bs_raw = _PIPELINE_SERVER_BASE_URL_RAW
     ov_raw = _PIPELINE_147246_INFER_URL_RAW
+    # 轮询场景：优先用本次选中端点的 pipeline_base_url
+    if endpoint is not None and not ov_raw:
+        bs = _normalize_http_url(endpoint.get("pipeline_base_url") or "")
+        if bs:
+            return f"{bs.rstrip('/')}/{target}/infer"
 
     if target == "147246" and ov_raw:
         ov = _normalize_http_url(ov_raw)
@@ -146,10 +166,6 @@ def _multi_pipeline_infer_url(target: str) -> str:
         if root is not None:
             return f"{root}/{target}/infer"
         return ov
-
-    if bs_raw:
-        bs = _normalize_http_url(bs_raw)
-        return f"{bs.rstrip('/')}/{target}/infer"
 
     if ov_raw:
         ov = _normalize_http_url(ov_raw)
@@ -159,8 +175,121 @@ def _multi_pipeline_infer_url(target: str) -> str:
         if "147246" in ov:
             return ov.replace("147246", target, 1)
 
-    db = _default_multi_pipeline_base()
-    return f"{db.rstrip('/')}/{target}/infer"
+    ep = endpoint or get_triton_endpoint()
+    bs = _normalize_http_url(ep.get("pipeline_base_url") or "")
+    return f"{bs.rstrip('/')}/{target}/infer"
+
+
+def _filter_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
+    """滤镜接口：POST /{image_enhance|opencv_enhance}/infer（裸流，响应为图片字节）。"""
+    if target not in _FILTER_PIPELINE_TARGETS:
+        raise ValueError(f"invalid filter pipeline target: {target!r}")
+    ep = endpoint or get_triton_endpoint()
+    bs = _normalize_http_url(ep.get("pipeline_base_url") or "")
+    return f"{bs.rstrip('/')}/{target}/infer"
+
+
+def _post_filter_pipeline_infer(
+    url: str,
+    image_bytes: bytes,
+    timeout_s: float,
+) -> tuple[bytes, str]:
+    """滤镜推理：发送裸流，响应为 image/jpeg 或 image/png 字节。"""
+    if not url.lower().startswith("http"):
+        url = f"http://{url}"
+
+    last_error: requests.exceptions.RequestException | None = None
+    resp: requests.Response | None = None
+    for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
+        try:
+            resp = _get_pipeline_session().post(
+                url,
+                data=image_bytes,
+                headers={"Content-Type": "application/octet-stream"},
+                timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+            )
+            last_error = None
+            break
+        except requests.exceptions.ConnectionError as e:
+            last_error = e
+            logger.warning(
+                "filter pipeline 连接失败 (attempt %d/%d): %s",
+                attempt,
+                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
+                e,
+            )
+            _reset_pipeline_session()
+            if attempt < _PIPELINE_HTTP_POST_MAX_ATTEMPTS:
+                time.sleep(0.5 * attempt)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"filter pipeline 请求失败: {e}") from e
+
+    if last_error is not None:
+        raise RuntimeError(
+            f"filter pipeline 请求失败（已重试 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次）: {last_error}"
+        ) from last_error
+
+    assert resp is not None
+    if resp.status_code >= 400:
+        try:
+            err_json = resp.json()
+            error = err_json.get("error", err_json)
+        except ValueError:
+            error = resp.text[:500]
+        raise RuntimeError(f"filter pipeline HTTP {resp.status_code}: {error}")
+
+    if not resp.content:
+        raise RuntimeError("滤镜接口返回了空图片")
+
+    content_type = resp.headers.get("content-type", "").split(";", 1)[0].lower()
+    if content_type not in {"image/jpeg", "image/png"}:
+        raise RuntimeError(f"滤镜接口返回类型异常: {content_type or '(empty)'}")
+    return resp.content, content_type
+
+
+def _ensure_filter_model_loaded(endpoint: dict, gpu_id: int, target: str) -> None:
+    """
+    推理前在 multi_pipeline 所连 Triton 上加载滤镜模型。
+    对齐 multi_pipeline_server POST /models/load（target=image_enhance → Image_enhance）。
+    opencv_enhance 纯 CPU，无需加载 Triton 模型。
+    """
+    if target != "image_enhance":
+        return
+
+    cache_key = (gpu_id, target)
+    with _filter_model_ready_lock:
+        if cache_key in _filter_model_ready:
+            return
+
+    base = _normalize_http_url(endpoint.get("pipeline_base_url") or "")
+    url = f"{base.rstrip('/')}/models/load"
+    load_timeout = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
+    resp = _get_pipeline_session().post(
+        url,
+        json={"target": target, "timeout": load_timeout},
+        timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, float(load_timeout) + 30.0),
+    )
+    if resp.status_code >= 400:
+        try:
+            err = resp.json()
+        except ValueError:
+            err = resp.text[:500]
+        raise RuntimeError(f"filter model load HTTP {resp.status_code}: {err}")
+
+    data = resp.json()
+    results = data.get("results") or []
+    failed = [r for r in results if not r.get("ok")]
+    if failed:
+        raise RuntimeError(f"filter model load failed: {failed}")
+
+    with _filter_model_ready_lock:
+        _filter_model_ready.add(cache_key)
+    logger.info(
+        "filter model loaded via pipeline gpu_id=%s target=%s endpoint=%s",
+        gpu_id,
+        target,
+        base,
+    )
 
 
 # X50 14 类 → 200000-200013, CSF 12 类 → 300000+, BM 100x 35 类 → 200000-200034
@@ -235,7 +364,8 @@ RED_COLOR_INV = _red_inv_from_map(RED_COLOR_MAP)
 RED_MORPH_INV = _red_inv_from_map(RED_MORPH_MAP)
 RED_AGG_INV = _red_inv_from_map(RED_AGG_MAP)
 
-_triton_client = None
+# 按 gpu_id 缓存 gRPC 客户端（双容器各一个）
+_triton_clients: dict[int, Any] = {}
 _triton_client_lock = threading.Lock()
 
 
@@ -315,9 +445,15 @@ def _post_raw_pipeline_infer(
 
     last_error: requests.exceptions.RequestException | None = None
     resp: requests.Response | None = None
-
+    # logger.info(f"url: {url}")
     for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
-        # logger.info("file_name=%s, 发送请求的时间：%s (attempt %d/%d)",filename,datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),attempt,_PIPELINE_HTTP_POST_MAX_ATTEMPTS)
+        # logger.info(
+        #     "file_name=%s, 发送请求的时间：%s (attempt %d/%d)",
+        #     filename,
+        #     datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+        #     attempt,
+        #     _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
+        # )
         try:
             resp = _get_pipeline_session().post(
                 url,
@@ -966,7 +1102,6 @@ def _cells_to_cell_list_single(cells: List[Cell], smear_type: str) -> list:
             "tops": [{
                 "cell_type": c.cell_type,
                 "count_type": get_counting_cell_type(c.cell_type, smear_type),
-                "cell_type_name": c.cell_type_name,
                 "class_confidence": float(c.class_confidence),
                 "bbox_confidence": float(c.bbox_confidence),
             }],
@@ -1011,14 +1146,8 @@ def _cells_to_cell_list_top5(
             cls_id = int(ids_row[j]) if j < len(ids_row) else 0
             prob = float(probs_row[j]) if j < len(probs_row) else 1.0
             cell_type = cell_type_base + cls_id
-            if type_map and cell_type in type_map:
-                t = type_map[cell_type]
-                type_name = t[1] if isinstance(t, (tuple, list)) else str(t)
-            else:
-                type_name = (class_names[cls_id] if class_names and cls_id < len(class_names) else '分类不明/无法分类巨核细胞')
             tops.append({
                 "cell_type": cell_type,
-                "cell_type_name": type_name,
                 "class_confidence": prob,
                 "bbox_confidence": float(c.bbox_confidence),
                 "count_type": get_counting_cell_type(c.cell_type, smear_type),
@@ -1033,14 +1162,19 @@ def _cells_to_cell_list_top5(
     return out
 
 
-def _get_client():
-    """获取或创建 Triton 客户端"""
-    global _triton_client
+def _get_client(gpu_id: int = 0):
+    """获取或创建指定 GPU 的 Triton gRPC 客户端。"""
     import tritonclient.grpc as grpcclient
+
+    gid = int(gpu_id)
     with _triton_client_lock:
-        if _triton_client is None:
-            _triton_client = grpcclient.InferenceServerClient(url=TRITON_URL)
-        return _triton_client
+        client = _triton_clients.get(gid)
+        if client is None:
+            ep = get_triton_endpoint(gid)
+            url = ep.get("url")
+            client = grpcclient.InferenceServerClient(url=url)
+            _triton_clients[gid] = client
+        return client
 
 
 def infer(
@@ -1056,8 +1190,7 @@ def infer(
     有效组合见 get_model_by_dpi。返回: {"cells": List[Cell], "scores": List[float] (如有)}
 
     144750 → target 147246；357378 → 357378；714756(BM) → 714756。
-    URL 与 multi_pipeline_server 一致，见 _multi_pipeline_infer_url；环境变量：
-    PIPELINE_SERVER_BASE_URL（推荐）、MULTI_PIPELINE_PORT、PIPELINE_147246_INFER_URL（仅覆盖 147246 或作兄弟路径推导）。
+    双容器轮询：每次请求经 next_triton_endpoint 交替发往 gpu0/gpu1 的 multi_pipeline。
     """
     model, warning = get_model_by_dpi(
         dpi,
@@ -1065,13 +1198,21 @@ def infer(
         algorithm_types=algorithm_types,
         return_warning=True,
     )
-    ok, err = ensure_model_loaded(model)
-    if not ok:
-        Error = f"Error: Model {model} load failed: {err}"
-        raise RuntimeError(Error)
+    gpu_id, endpoint = next_triton_endpoint()
+    # logger.debug(
+    #     "infer route gpu_id=%s name=%s pipeline=%s model=%s",
+    #     gpu_id,
+    #     endpoint.get("name"),
+    #     endpoint.get("pipeline_base_url"),
+    #     model,
+    # )
+    # ok, err = ensure_model_loaded(model, gpu_id=gpu_id)
+    # if not ok:
+    #     Error = f"Error: Model {model} load failed on gpu={gpu_id}: {err}"
+    #     raise RuntimeError(Error)
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
-        url = _multi_pipeline_infer_url("147246")
+        url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
         res_json = _post_raw_pipeline_infer(
             url,
             image_bytes,
@@ -1089,7 +1230,7 @@ def infer(
         return result
 
     if model == MODEL_357378:
-        url = _multi_pipeline_infer_url("357378")
+        url = _multi_pipeline_infer_url("357378", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
         )
@@ -1102,7 +1243,7 @@ def infer(
         tasks = ",".join(t.strip() for t in algorithm_types.lower().split(","))
         if "rbc" in tasks:
             tasks = tasks.replace("rbc", "red")
-        url = _multi_pipeline_infer_url("714756")
+        url = _multi_pipeline_infer_url("714756", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url,
             image_bytes,
@@ -1121,27 +1262,38 @@ def infer(
     return result
 
 
-def infer_image_enhance(image_bytes: bytes) -> bytes:
+def infer_image_enhance(image_bytes: bytes) -> tuple[bytes, str]:
     """
-    图片增强/滤镜推理（Triton Image_enhance_pipeline）。
-    输入: 原始图片字节（jpg/png）
-    输出: 增强后的图片字节（jpg 编码）
+    x40 深度学习滤镜：multi_pipeline_server POST /image_enhance/infer（裸流）。
+    推理前先经同实例 POST /models/load 确保 Image_enhance 已在 Triton READY。
     """
-    import tritonclient.grpc as grpcclient
+    gpu_id, endpoint = next_triton_endpoint()
+    _ensure_filter_model_loaded(endpoint, gpu_id, "image_enhance")
+    url = _filter_pipeline_infer_url("image_enhance", endpoint=endpoint)
+    logger.debug(
+        "infer_image_enhance route gpu_id=%s name=%s url=%s",
+        gpu_id,
+        endpoint.get("name"),
+        url,
+    )
+    return _post_filter_pipeline_infer(url, image_bytes, PIPELINE_HTTP_TIMEOUT_S)
 
-    ok, err = ensure_model_loaded(MODEL_IMAGE_ENHANCE)
-    if not ok:
-        raise RuntimeError(f"Model {MODEL_IMAGE_ENHANCE} load failed: {err}")
-    client = _get_client()
-    raw = np.frombuffer(image_bytes, dtype=np.uint8)
-    inp_raw = grpcclient.InferInput("RAW_IMAGE", [len(raw)], "UINT8")
-    inp_raw.set_data_from_numpy(raw)
-    outputs = [grpcclient.InferRequestedOutput("ENHANCED_IMAGE")]
-    result = client.infer(MODEL_IMAGE_ENHANCE, inputs=[inp_raw], outputs=outputs)
-    out = result.as_numpy("ENHANCED_IMAGE")
-    if out is None:
-        raise RuntimeError("模型未返回输出: ENHANCED_IMAGE")
-    return out.tobytes()
+
+def infer_opencv_enhance(image_bytes: bytes) -> tuple[bytes, str]:
+    """
+    x100 滤镜：multi_pipeline_server POST /opencv_enhance/infer（裸流）。
+    输入: 原始图片字节（jpg/png）
+    输出: (增强后的图片字节, content_type)
+    """
+    gpu_id, endpoint = next_triton_endpoint()
+    url = _filter_pipeline_infer_url("opencv_enhance", endpoint=endpoint)
+    logger.debug(
+        "infer_opencv_enhance route gpu_id=%s name=%s url=%s",
+        gpu_id,
+        endpoint.get("name"),
+        url,
+    )
+    return _post_filter_pipeline_infer(url, image_bytes, PIPELINE_HTTP_TIMEOUT_S)
 
 
 if __name__ == "__main__":

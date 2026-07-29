@@ -1,14 +1,26 @@
-from flask import make_response, jsonify, request
-from flask_restx import Namespace, Resource, reqparse, fields
-from werkzeug.datastructures import FileStorage
+from io import BytesIO
+from typing import Any, Optional
+
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 
 from backend.services.task_service import TaskService
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 
+_BINARY_CONTENT_TYPES = frozenset({
+    "application/octet-stream",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+})
+
 taskService = TaskService()
 
+task = APIRouter(prefix="/api/v1/smear_analysis", tags=["任务相关接口"])
 
-def _edge_cell_filter_form(value):
+
+def _edge_cell_filter_form(value: Optional[str]) -> bool:
     """form 中 edge_cell_filter 常为字符串，不能用 type=bool（bool('false') 为 True）。"""
     if value is None:
         return True
@@ -20,313 +32,349 @@ def _edge_cell_filter_form(value):
     return True
 
 
-task = Namespace('api/v1/smear_analysis', description='任务相关接口')
+class _UploadAdapter:
+    """兼容 TaskService 对 FileStorage 的 .read() / .filename 用法。"""
 
-get_create_task = reqparse.RequestParser()
-get_create_task.add_argument('task_id', type=str, required=True, help='任务ID')
+    __slots__ = ("filename", "_file")
 
-create_task_x40 = task.model('create_task_x40', {
-    'smear_type': fields.String(required=True, description="涂片类型:BM, PB, CF", default='BM'),
-    'dpi': fields.Integer(required=True, description="DPI，模型据此选择: 144750/357378/714756", default=144750),
-    'tile_width': fields.Integer(required=True, description="拼图块宽度", default=2448),
-    'tile_height': fields.Integer(required=True, description="拼图块高度", default=2048),
-    'target_cell_types': fields.String(required=False, description="目标细胞类型如 WBC,MEG / WBC,RBC，供任务模式使用", default=''),
-})
+    def __init__(self, upload: UploadFile) -> None:
+        self.filename = upload.filename
+        self._file = upload.file
+        try:
+            self._file.seek(0)
+        except Exception:
+            pass
 
-
-@task.route('/create_task')
-class CreateTask(Resource):
-    @task.doc(description='X40创建任务')
-    @task.expect(create_task_x40)
-    def post(self):
-        json_data = request.json
-        result = taskService.create_task(json_data)
-        return make_response(jsonify(result), 200)
+    def read(self, *args, **kwargs):
+        return self._file.read(*args, **kwargs)
 
 
-upload_tile = task.parser()
-upload_tile.add_argument('task_id', type=str, required=True, help='任务ID，由创建任务接口返回', location='form')
-upload_tile.add_argument('row_index', type=int, required=True, help='拼图块行索引', location='form')
-upload_tile.add_argument('col_index', type=int, required=True, help='拼图块列索引', location='form')
-upload_tile.add_argument('tile_image', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
+# ---------- OpenAPI / 请求体模型（extra=allow，兼容客户端多余字段）----------
+
+class CreateTaskBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    smear_type: str = Field(default="BM", description="涂片类型:BM, PB, CF")
+    dpi: int = Field(default=144750, description="DPI，模型据此选择: 144750/357378/714756")
+    tile_width: int = Field(default=2448, description="拼图块宽度")
+    tile_height: int = Field(default=2048, description="拼图块高度")
+    target_cell_types: str = Field(
+        default="",
+        description="目标细胞类型如 WBC,MEG / WBC,RBC，供任务模式使用",
+    )
 
 
-@task.route('/upload_tile')
-class UploadImage(Resource):
-    @task.doc(description='上传图片（任务模式）：task_id+row_index+col_index必填')
-    @task.expect(upload_tile)
-    def post(self):
-        args = upload_tile.parse_args()
-        task_id = args.get('task_id')
-        row_index = args.get('row_index')
-        col_index = args.get('col_index')
-        tile_image = args.get('tile_image')
-        result = taskService.upload_image(task_id, row_index, col_index, tile_image)
-        return make_response(jsonify(result), 200)
+class TileMsg(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    row_index: int
+    col_index: int
+    position_x: int
+    position_y: int
 
 
-tiles_msg_model = task.model('tiles_msg', {
-    'row_index': fields.Integer(required=True, description='拼图块行索引'),
-    'col_index': fields.Integer(required=True, description='拼图块列索引'),
-    'position_x': fields.Integer(required=True, description='拼图块在全图中的左上角x坐标'),
-    'position_y': fields.Integer(required=True, description='拼图块在全图中的左上角y坐标')
-})
-
-coordinates_model = task.model('update_coordinates', {
-    'task_id': fields.String(required=True, description='任务ID，由创建任务接口返回'),
-    'tiles_msg': fields.List(fields.Nested(tiles_msg_model), required=True, description='拼图块坐标信息列表')
-})
+class UpdateCoordinatesBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task_id: str
+    tiles_msg: list[TileMsg]
 
 
-@task.route('/update_coordinates')
-class UpdateCoordinates(Resource):
-    @task.doc(description='更新拼图块坐标信息')
-    @task.expect(coordinates_model)
-    def post(self):
-        json_data = request.json
-        task_id = json_data.get('task_id')
-        tiles_msg = json_data.get('tiles_msg')
-        result = taskService.update_coordinates(task_id, tiles_msg)
-        return make_response(jsonify(result), 200)
+class TaskIdBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task_id: str
 
 
-check_image = task.model('check_image', {
-    'task_id': fields.String(required=True, description='任务ID')
-})
+class GetTaskResultBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task_id: str
+    roi_xmin: int = 0
+    roi_ymin: int = 0
+    roi_xmax: Optional[int] = None
+    roi_ymax: Optional[int] = None
+    index_offset: int = 0
+    request_task_num: int = 100
 
 
-@task.route('/check_missing_tiles')
-class CheckImage(Resource):
-    @task.doc(description='检查图片是上传完毕')
-    @task.expect(check_image)
-    def post(self):
-        json_data = request.json
-        # 获取参数
-        task_id = json_data.get('task_id')
-        result = taskService.check_image(task_id)
-        return make_response(jsonify(result), 200)
+class UserChoiceArea(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    x_min: Optional[int] = None
+    y_min: Optional[int] = None
+    x_max: Optional[int] = None
+    y_max: Optional[int] = None
 
 
-@task.route('/check_task_status')
-class TaskStatus(Resource):
-    @task.doc(description='获取任务状态')
-    @task.expect(check_image)
-    def post(self):
-        args = request.json
-        task_id = args.get('task_id')
-        result = taskService.task_status(task_id)
-        return make_response(jsonify(result), 200)
+class WbcPoint(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    x: int
+    y: int
+    w: int
+    h: int
 
 
-get_task_result = task.model('get_task_result', {
-    'task_id': fields.String(required=True, description='任务ID'),
-    'roi_xmin': fields.Integer(required=False, description="结果区域左上角x坐标，默认为0"),
-    'roi_ymin': fields.Integer(required=False, description="结果区域左上角y坐标，默认为0"),
-    'roi_xmax': fields.Integer(required=False, description="结果区域右下角x坐标，默认为图像宽度"),
-    'roi_ymax': fields.Integer(required=False, description="结果区域右下角y坐标，默认为图像高度"),
-    'index_offset': fields.Integer(required=False, description="结果索引偏移，默认为0"),
-    'request_task_num': fields.Integer(required=False, description="请求结果数量，默认为100")
-})
+class RoiKwargs(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    index_offset: int = 0
+    request_task_num: int = 100
+    wbc_points: Optional[list[WbcPoint]] = None
 
 
-@task.route('/get_task_result')
-class GetResult(Resource):
-    @task.doc(description='获取任务结果')
-    @task.expect(get_task_result)
-    def post(self):
-        args = request.json
-        task_id = args.get('task_id')
-        roi_xmin = args.get('roi_xmin', 0)
-        roi_ymin = args.get('roi_ymin', 0)
-        roi_xmax = args.get('roi_xmax')
-        roi_ymax = args.get('roi_ymax')
-        index_offset = args.get('index_offset', 0)
-        request_task_num = args.get('request_task_num', 100)
-        result = taskService.get_result(task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num)
-        return make_response(jsonify(result), 200)
+class RequiredNum(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    WBC: Optional[int] = None
+    MEG: Optional[int] = None
+    RBC: Optional[int] = None
 
 
-user_choice_area_mod = task.model('user_choice_area', {
-    'x_min': fields.Integer(required=False, description='用户框选区域的x最小值'),
-    'y_min': fields.Integer(required=False, description='用户框选区域的y最小值'),
-    'x_max': fields.Integer(required=False, description='用户框选区域的x最大值'),
-    'y_max': fields.Integer(required=False, description='用户框选区域的y最大值'),
-})
-
-wbc_point_mod = task.model('wbc_point', {
-    'x': fields.Integer(required=True, description='x 坐标'),
-    'y': fields.Integer(required=True, description='y 坐标'),
-    'w': fields.Integer(required=True, description='宽度'),
-    'h': fields.Integer(required=True, description='高度'),
-})
-
-roi_kwargs_mod = task.model('roi_kwargs', {
-    'index_offset': fields.Integer(required=False, description='拍摄任务索引偏移，默认为0', default=0),
-    'request_task_num': fields.Integer(required=False, description='请求生成的拍摄任务数量，默认为100', default=100),
-    'wbc_points': fields.List(fields.Nested(wbc_point_mod), required=False, description='用户选择的有核细胞框列表'),
-})
-
-required_num_mod = task.model('required_num', {
-    'WBC': fields.Integer(required=False, description='当 task_type=WBC 且 smear_type=BM 时必填'),
-    'MEG': fields.Integer(required=False, description='当 task_type=MEG 或 WBC_MEG 且 smear_type=BM 时必填'),
-    'RBC': fields.Integer(required=False, description='当 task_type=RBC 且 smear_type=PB 时必填'),
-})
-
-roi_selection_model = task.model('roi_selection', {
-    'task_id': fields.String(required=True, description='任务ID'),
-    'task_type': fields.String(required=True, description='选区类型：WBC/MEG/WBC_MEG/RBC'),
-    'user_choice_area': fields.Nested(user_choice_area_mod, required=False, description='用户框选的扫描区域'),
-    'view_width': fields.Integer(required=True, description='拍摄视图宽度'),
-    'view_height': fields.Integer(required=True, description='拍摄视图高度'),
-    'kwargs': fields.Nested(roi_kwargs_mod, required=False, description='选区算法其他参数'),
-    'required_num': fields.Nested(required_num_mod, required=False, description='按 task_type 需要的目标数量'),
-})
+class RoiSelectionBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task_id: str
+    task_type: str
+    user_choice_area: Optional[UserChoiceArea] = None
+    view_width: int
+    view_height: int
+    kwargs: Optional[RoiKwargs] = None
+    required_num: Optional[RequiredNum] = None
 
 
-@task.route('/roi_selection')
-class GetTaskListX100(Resource):
-    @task.doc(description='获取X100任务列表')
-    @task.expect(roi_selection_model)
-    def post(self):
-        json_data = request.json
-        task_id = json_data.get('task_id')
-        task_type = json_data.get('task_type')
-        user_choice_area = json_data.get('user_choice_area')
-        view_width = json_data.get('view_width')
-        view_height = json_data.get('view_height')
-        kwargs = json_data.get('kwargs') or {}
-        required_num = json_data.get('required_num') or {}
-
-        result = taskService.get_task_list_x100(
-            task_id=task_id,
-            task_type=task_type,
-            user_choice_area=user_choice_area,
-            view_width=view_width,
-            view_height=view_height,
-            kwargs=kwargs,
-            required_num=required_num,
-        )
-        return make_response(jsonify(result), 200)
+class GenerateViewsBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    rects: list[list[float]]
+    view_width: int = 384
+    view_height: int = 283
+    pad: int = 100
 
 
-result_x100 = task.parser()
-result_x100.add_argument('task_id', type=str, required=False, help='任务ID，由创建任务接口返回，可不填', location='form')
-result_x100.add_argument('position_xmin', type=int, required=False, help='左上角在全图中的x坐标', location='form')
-result_x100.add_argument('position_ymin', type=int, required=False, help='左上角在全图中的y坐标', location='form')
-result_x100.add_argument('position_xmax', type=int, required=False, help='右下角在全图中的x坐标', location='form')
-result_x100.add_argument('position_ymax', type=int, required=False, help='右下角在全图中的y坐标', location='form')
-result_x100.add_argument('image_file', type=FileStorage, required=True, help='图像文件（.jpg格式）', location='files')
-result_x100.add_argument('dpi', type=int, required=True, help='DPI，模型据此选择: 144750/357378/714756', location='form')
-result_x100.add_argument('target_cell_types', type=str, required=True,
-                         help='目标细胞类型如 WBC,MEG / WBC,RBC,PLAT / MEG 等，见有效组合表', location='form')
-result_x100.add_argument('smear_type', type=str, required=False, help='涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取', location='form')
-result_x100.add_argument(
-    'edge_cell_filter',
-    type=_edge_cell_filter_form,
-    required=False,
-    help='是否过滤边缘细胞（与瓦片任务同款规则），默认 true；可传 false/0/closed',
-    location='form',
-    default=True,
+class AnalyzeSlideBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task_id: Optional[str] = None
+    analyze_names: list[Any] = Field(default_factory=list)
+
+
+ALLOWED_ANALYZE_NAMES = {"cellularity"}
+
+
+def _is_binary_tile_upload(request: Request) -> bool:
+    """判断是否为二进制流上传（兼容 multipart 原格式）。"""
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if "multipart/form-data" in content_type:
+        return False
+    if content_type in _BINARY_CONTENT_TYPES:
+        return True
+    # Content-Type 未声明时：有 query 参数且 content-length>0，视为裸流
+    return (
+        bool(request.query_params.get("task_id"))
+        and request.headers.get("content-length") not in (None, "0")
+    )
+
+
+@task.post("/create_task", summary="X40创建任务")
+def create_task(body: CreateTaskBody):
+    result = taskService.create_task(body.model_dump())
+    return result
+
+
+@task.post(
+    "/upload_tile",
+    summary="上传图片（任务模式）",
+    description=(
+        "task_id+row_index+col_index必填。支持两种格式："
+        "1) multipart/form-data：form 字段 + tile_image 文件；"
+        "2) 二进制流：Body 为图像字节，task_id/row_index/col_index 走 URL Query，"
+        "Content-Type: application/octet-stream"
+    ),
 )
+async def upload_tile(request: Request):
+    # 同一路由需兼容 multipart 与裸二进制，故手动解析，避免 Form 抢占 body
+    if _is_binary_tile_upload(request):
+        tid = request.query_params.get("task_id")
+        ridx_raw = request.query_params.get("row_index")
+        cidx_raw = request.query_params.get("col_index")
+        try:
+            ridx = int(ridx_raw) if ridx_raw is not None else None
+            cidx = int(cidx_raw) if cidx_raw is not None else None
+        except (TypeError, ValueError):
+            ridx, cidx = None, None
+        image_bytes = await request.body()
+        if not tid or ridx is None or cidx is None:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": "Binary upload requires query params: task_id, row_index, col_index",
+                "reason": "Binary upload requires query params: task_id, row_index, col_index",
+            }
+        if not image_bytes:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": "Empty image body",
+                "reason": "Empty image body",
+            }
+        file_obj: Any = BytesIO(image_bytes)
+    else:
+        form = await request.form()
+        tid = form.get("task_id")
+        ridx_raw = form.get("row_index")
+        cidx_raw = form.get("col_index")
+        tile_image = form.get("tile_image")
+        try:
+            ridx = int(ridx_raw) if ridx_raw is not None else None
+            cidx = int(cidx_raw) if cidx_raw is not None else None
+        except (TypeError, ValueError):
+            ridx, cidx = None, None
+        if not tid or ridx is None or cidx is None or tile_image is None:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": "multipart upload requires form: task_id, row_index, col_index, tile_image",
+                "reason": "multipart upload requires form: task_id, row_index, col_index, tile_image",
+            }
+        # form 文件字段可能是 starlette UploadFile（勿仅用 isinstance，跨包时会失败）
+        if hasattr(tile_image, "file") and hasattr(tile_image, "filename"):
+            file_obj = _UploadAdapter(tile_image)
+        elif isinstance(tile_image, (bytes, bytearray)):
+            file_obj = BytesIO(tile_image)
+        elif hasattr(tile_image, "read"):
+            file_obj = tile_image
+        else:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": "Invalid tile_image",
+                "reason": "Invalid tile_image",
+            }
+    # 同步推理/写盘放到线程池，避免阻塞事件循环
+    return await run_in_threadpool(taskService.upload_image, tid, ridx, cidx, file_obj)
+
+@task.post("/update_coordinates", summary="更新拼图块坐标信息")
+def update_coordinates(body: UpdateCoordinatesBody):
+    result = taskService.update_coordinates(
+        body.task_id,
+        [m.model_dump() for m in body.tiles_msg],
+    )
+    return result
 
 
-analyze_slide_model = task.model('analyze_slide', {
-    'task_id': fields.String(required=True, description="任务ID，用于获取 info 中的 red_pixel_count/wbc_pixel_count"),
-    'analyze_names': fields.List(
-        fields.String,
-        required=True,
-        description="分析项列表，目前可选项只有「增生程度」(cellularity)",
-        example=['cellularity']
+@task.post("/check_missing_tiles", summary="检查图片是否上传完毕")
+def check_missing_tiles(body: TaskIdBody):
+    result = taskService.check_image(body.task_id)
+    return result
+
+
+@task.post("/check_task_status", summary="获取任务状态")
+def check_task_status(body: TaskIdBody):
+    result = taskService.task_status(body.task_id)
+    return result
+
+
+@task.post("/get_task_result", summary="获取任务结果")
+def get_task_result(body: GetTaskResultBody):
+    result = taskService.get_result(
+        body.task_id,
+        body.roi_xmin,
+        body.roi_ymin,
+        body.roi_xmax,
+        body.roi_ymax,
+        body.index_offset,
+        body.request_task_num,
+    )
+    return result
+
+
+@task.post("/roi_selection", summary="获取X100任务列表")
+def roi_selection(body: RoiSelectionBody):
+    kwargs = body.kwargs.model_dump() if body.kwargs else {}
+    required_num = body.required_num.model_dump(exclude_none=True) if body.required_num else {}
+    user_choice_area = body.user_choice_area.model_dump() if body.user_choice_area else None
+    result = taskService.get_task_list_x100(
+        task_id=body.task_id,
+        task_type=body.task_type,
+        user_choice_area=user_choice_area,
+        view_width=body.view_width,
+        view_height=body.view_height,
+        kwargs=kwargs,
+        required_num=required_num,
+    )
+    return result
+
+
+@task.post(
+    "/generate_views",
+    summary="Generate view boxes to cover rects",
+    description="Generate minimum number of view boxes to cover all rects (set cover).",
+)
+def generate_views(body: GenerateViewsBody):
+    result = taskService.generate_views(
+        rects=body.rects,
+        view_width=body.view_width,
+        view_height=body.view_height,
+        pad=body.pad,
+    )
+    return result
+
+
+@task.post("/analyze_slide", summary="玻片分析")
+def analyze_slide(body: AnalyzeSlideBody):
+    task_id = body.task_id
+    analyze_names = body.analyze_names
+    if not task_id:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": "task_id cannot be empty",
+            "result": {},
+        }
+    if not isinstance(analyze_names, list):
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": RetDesc.CLIENT_ERROR.value,
+            "result": {},
+        }
+    if not analyze_names:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": "analyze_names cannot be empty",
+            "result": {},
+        }
+    invalid = [n for n in analyze_names if n not in ALLOWED_ANALYZE_NAMES]
+    if invalid:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": f"Unsupported analyze item: {invalid}, only supported: {list(ALLOWED_ANALYZE_NAMES)}",
+            "result": {},
+        }
+    result = taskService.analyze_slide(task_id, analyze_names)
+    return result
+
+
+@task.post(
+    "/analyze_cell_image",
+    summary="细胞图像分析",
+    description="任务模式：task_id+position；单张识别：dpi+algorithm_types必填",
+)
+def analyze_cell_image(
+    image_file: UploadFile = File(..., description="图像文件（.jpg格式）"),
+    task_id: Optional[str] = Form(None),
+    position_xmin: Optional[int] = Form(None),
+    position_ymin: Optional[int] = Form(None),
+    position_xmax: Optional[int] = Form(None),
+    position_ymax: Optional[int] = Form(None),
+    dpi: int = Form(..., description="DPI，模型据此选择: 144750/357378/714756"),
+    target_cell_types: str = Form(
+        ...,
+        description="目标细胞类型如 WBC,MEG / WBC,RBC,PLAT / MEG 等",
     ),
-})
-
-ALLOWED_ANALYZE_NAMES = {'cellularity'}
-
-generate_views_model = task.model('generate_views', {
-    'rects': fields.List(
-        fields.List(fields.Float),
-        required=True,
-        description='Rectangles to cover [[x,y,w,h], [x,y,w,h], ...]'
+    smear_type: Optional[str] = Form(
+        None,
+        description="涂片类型BM/PB/CF，单张识别时使用，有task_id时从任务取",
     ),
-    'view_width': fields.Integer(required=False, description='View box width', default=384),
-    'view_height': fields.Integer(required=False, description='View box height', default=283),
-    'pad': fields.Integer(required=False, description='Padding around rects', default=100),
-})
-
-
-@task.route('/generate_views')
-class GenerateViews(Resource):
-    @task.doc(description='Generate minimum number of view boxes to cover all rects (set cover). Uses generate_wbc_view_tasks.')
-    @task.expect(generate_views_model)
-    def post(self):
-        json_data = request.json or {}
-        rects = json_data.get('rects')
-        view_width = json_data.get('view_width', 384)
-        view_height = json_data.get('view_height', 283)
-        pad = json_data.get('pad', 100)
-        result = taskService.generate_views(
-            rects=rects,
-            view_width=view_width, view_height=view_height, pad=pad
-        )
-        return make_response(jsonify(result), 200)
-
-
-@task.route('/analyze_slide')
-class AnalyzeSlide(Resource):
-    @task.doc(description='玻片分析。实际业务：骨髓玻片增生分析；增生程度=red_pixel_count/wbc_pixel_count')
-    @task.expect(analyze_slide_model)
-    def post(self):
-        json_data = request.json or {}
-        task_id = json_data.get('task_id')
-        analyze_names = json_data.get('analyze_names', [])
-        if not task_id:
-            return make_response(jsonify({
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'task_id cannot be empty',
-                'result': {},
-            }), 200)
-        if not isinstance(analyze_names, list):
-            return make_response(jsonify({
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': RetDesc.CLIENT_ERROR.value,
-                'result': {},
-            }), 200)
-        if not analyze_names:
-            return make_response(jsonify({
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'analyze_names cannot be empty',
-                'result': {},
-            }), 200)
-        invalid = [n for n in analyze_names if n not in ALLOWED_ANALYZE_NAMES]
-        if invalid:
-            return make_response(jsonify({
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': f'Unsupported analyze item: {invalid}, only supported: {list(ALLOWED_ANALYZE_NAMES)}',
-                'result': {},
-            }), 200)
-        result = taskService.analyze_slide(task_id, analyze_names)
-        return make_response(jsonify(result), 200)
-
-
-@task.route('/analyze_cell_image')
-class GetTaskResultX100(Resource):
-    @task.doc(description='细胞图像分析。任务模式：task_id+position；单张识别：dpi+algorithm_types必填')
-    @task.expect(result_x100)
-    def post(self):
-        args = result_x100.parse_args()
-        task_id = args.get('task_id')
-        image_file = args.get('image_file')
-        dpi = args.get('dpi')
-        target_cell_types = args.get('target_cell_types')
-        smear_type = args.get('smear_type')
-        edge_cell_filter = args.get('edge_cell_filter')
-        if edge_cell_filter is None:
-            edge_cell_filter = True
-        position_xmin = args.get('position_xmin', None)
-        position_ymin = args.get('position_ymin', None)
-        position_xmax = args.get('position_xmax', None)
-        position_ymax = args.get('position_ymax', None)
-        result = taskService.get_task_result_x100(task_id, image_file, target_cell_types, dpi,
-                                                  edge_cell_filter, smear_type,
-                                                  position_xmin, position_ymin, position_xmax, position_ymax)
-        return make_response(jsonify(result), 200)
+    edge_cell_filter: Optional[str] = Form(
+        "true",
+        description="是否过滤边缘细胞，默认 true；可传 false/0/off",
+    ),
+):
+    result = taskService.get_task_result_x100(
+        task_id,
+        _UploadAdapter(image_file),
+        target_cell_types,
+        dpi,
+        _edge_cell_filter_form(edge_cell_filter),
+        smear_type,
+        position_xmin,
+        position_ymin,
+        position_xmax,
+        position_ymax,
+    )
+    return result
