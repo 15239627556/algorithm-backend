@@ -8,6 +8,9 @@
 2. 任一边到 tile 边界距离 <= edge_margin_px 且框为细长矩形（长边/短边 >= min_aspect_ratio）→ 删除
    （靠边细长框多为截断目标）。
 
+714756 ±10% 专用（filter_cell_dicts_edge_elongated_1pct）：
+仅对有核(200000-200034)与成熟红(100005)：靠边 1% 且 max(w/h,h/w)>=2 → 删除。
+
 坐标约定与 dedup_cells_across_tiles 一致：cell 为 tile 内局部 xyxy；图像宽 tw、高 th，对应列 0..tw-1、行 0..th-1。
 """
 from __future__ import annotations
@@ -112,6 +115,115 @@ def filter_cell_dicts_edge_incomplete(
             th,
             touch_tolerance_px=touch_tolerance_px,
             edge_margin_px=edge_margin_px,
+            min_aspect_ratio=min_aspect_ratio,
+        ):
+            out.append(d)
+    return out
+
+
+# 714756 ±10%：有核(200000-200034)与成熟红(100005)的靠边细长框过滤
+_TYPES_714756_EDGE_ELONGATED = frozenset(range(200000, 200035)) | {100005}
+DEFAULT_EDGE_RATIO_1PCT = 0.01
+
+
+def _primary_cell_type_from_dict(d: Dict[str, Any]) -> int | None:
+    tops = d.get("tops")
+    if isinstance(tops, list) and tops:
+        first = tops[0]
+        if isinstance(first, dict):
+            try:
+                return int(first["cell_type"])
+            except (KeyError, TypeError, ValueError):
+                pass
+    try:
+        return int(d["cell_type"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def cell_should_drop_edge_elongated_1pct(
+    xmin: int,
+    ymin: int,
+    xmax: int,
+    ymax: int,
+    image_w: int,
+    image_h: int,
+    *,
+    edge_ratio: float = DEFAULT_EDGE_RATIO_1PCT,
+    min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
+) -> bool:
+    """
+    靠边 1% 且细胞框 max(box_w/box_h, box_h/box_w) >= min_aspect_ratio 则丢弃。
+    靠边（相对图片）：
+      x <= image_w*r 或 x+box_w >= image_w*(1-r)
+      或 y <= image_h*r 或 y+box_h >= image_h*(1-r)。
+    """
+    box_w = int(xmax) - int(xmin)
+    box_h = int(ymax) - int(ymin)
+    if box_w <= 0 or box_h <= 0:
+        return True
+    iw = int(image_w)
+    ih = int(image_h)
+    if iw <= 0 or ih <= 0:
+        return False
+
+    x = float(xmin)
+    y = float(ymin)
+    margin_w = float(iw) * float(edge_ratio)
+    margin_h = float(ih) * float(edge_ratio)
+    near_edge = (
+        x <= margin_w
+        or x + box_w >= float(iw) - margin_w
+        or y <= margin_h
+        or y + box_h >= float(ih) - margin_h
+    )
+    if not near_edge:
+        return False
+
+    aspect = max(float(box_w) / float(box_h), float(box_h) / float(box_w))
+    return aspect >= float(min_aspect_ratio)
+
+
+def filter_cell_dicts_edge_elongated_1pct(
+    cell_list: List[Dict[str, Any]],
+    image_w: int,
+    image_h: int,
+    *,
+    target_types: frozenset = _TYPES_714756_EDGE_ELONGATED,
+    edge_ratio: float = DEFAULT_EDGE_RATIO_1PCT,
+    min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
+) -> List[Dict[str, Any]]:
+    """
+    仅对 target_types（默认有核 200000-200034、成熟红 100005）做靠边 1% 细长框过滤。
+    其它类型原样保留；无法解析 bbox 的项原样保留。
+    """
+    out: List[Dict[str, Any]] = []
+    iw = int(image_w)
+    ih = int(image_h)
+    for d in cell_list:
+        if not isinstance(d, dict):
+            out.append(d)
+            continue
+        ct = _primary_cell_type_from_dict(d)
+        if ct is None or ct not in target_types:
+            out.append(d)
+            continue
+        try:
+            xmin = int(d["cell_xmin"])
+            ymin = int(d["cell_ymin"])
+            xmax = int(d["cell_xmax"])
+            ymax = int(d["cell_ymax"])
+        except (KeyError, TypeError, ValueError):
+            out.append(d)
+            continue
+        if not cell_should_drop_edge_elongated_1pct(
+            xmin,
+            ymin,
+            xmax,
+            ymax,
+            iw,
+            ih,
+            edge_ratio=edge_ratio,
             min_aspect_ratio=min_aspect_ratio,
         ):
             out.append(d)

@@ -17,6 +17,7 @@ from backend.tools.combo_validator import validate_combo, _get_dpi_bucket, _pars
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_incomplete,
+    filter_cell_dicts_edge_elongated_1pct,
     filter_edge_incomplete_cells,
 )
 from PIL import Image
@@ -1069,9 +1070,25 @@ class TaskService:
                 'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
-        # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能
+        # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能；
+        # 但对有核(200000-200034)/成熟红(100005)：靠边1%且 max(w/h,h/w)>=2 则删除
         if dpi_bucket == 714756:
             edge_cell_filter = False
+            if cell_list:
+                try:
+                    if meg_shrink_applied and orig_w > 0 and orig_h > 0:
+                        tw_img, th_img = orig_w, orig_h
+                    else:
+                        with Image.open(BytesIO(image_bytes)) as im:
+                            tw_img, th_img = im.size
+                    cell_list = filter_cell_dicts_edge_elongated_1pct(
+                        cell_list, tw_img, th_img
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "get_task_result_x100: edge_elongated_1pct filter skipped: %s",
+                        e,
+                    )
         if edge_cell_filter and cell_list:
             try:
                 with Image.open(BytesIO(image_bytes)) as im:
