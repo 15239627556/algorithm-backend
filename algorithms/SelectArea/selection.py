@@ -13,7 +13,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
 
-from .heatmaps import HeatmapGrid
+from .heatmaps import HeatmapGrid, centered_box_sum_map
 from .config import BM40Config
 from .data_structure import SelectionResult, Rect
 
@@ -33,6 +33,8 @@ def _search_one_window_angle(
         int,
         int,
         float,
+        Optional[dict],
+        Optional[dict],
     ]
 ) -> Optional[Tuple[int, bool, SelectionResult]]:
     (
@@ -49,35 +51,24 @@ def _search_one_window_angle(
         kernel_margin,
         rows,
         cols,
+        box_score_cache,
+        box_cell_cache,
     ) = args
 
     area_pixels = float(w * h)
 
     if angle == 0:
-        # 轴对齐矩形等价于 boxFilter，OpenCV 对该路径有积分图级别优化。
-        rect_pad_x, rect_pad_y = w // 2, h // 2
-        rect_padded_scores = cv2.copyMakeBorder(
-            adjusted_score_map,
-            rect_pad_y,
-            rect_pad_y,
-            rect_pad_x,
-            rect_pad_x,
-            cv2.BORDER_CONSTANT,
-            value=float(heatmap_penalty_value),
-        )
-        rect_padded_cells = cv2.copyMakeBorder(
-            cell_matrix,
-            rect_pad_y,
-            rect_pad_y,
-            rect_pad_x,
-            rect_pad_x,
-            cv2.BORDER_CONSTANT,
-            value=0.0,
-        )
-        sum_scores_full = cv2.boxFilter(rect_padded_scores, -1, (w, h), normalize=False)
-        sum_cells_full = cv2.boxFilter(rect_padded_cells, -1, (w, h), normalize=False)
-        sum_scores = sum_scores_full[rect_pad_y : rect_pad_y + rows, rect_pad_x : rect_pad_x + cols]
-        sum_cells = sum_cells_full[rect_pad_y : rect_pad_y + rows, rect_pad_x : rect_pad_x + cols]
+        cache_key = (w, h)
+        if box_score_cache is not None and cache_key in box_score_cache:
+            sum_scores = box_score_cache[cache_key]
+            sum_cells = box_cell_cache[cache_key]
+        else:
+            sum_scores = centered_box_sum_map(
+                adjusted_score_map, w, h, border_value=heatmap_penalty_value,
+            )
+            sum_cells = centered_box_sum_map(
+                cell_matrix.astype(np.float32, copy=False), w, h, border_value=0.0,
+            )
     else:
         kernel_size = int(np.sqrt(w**2 + h**2)) + kernel_margin
         if kernel_size % 2 == 0:
@@ -144,6 +135,50 @@ def _search_one_window_angle(
     )
     return order_idx, in_head, res
 
+
+def _pick_best_from_sum_maps(
+    order_idx: int,
+    w: int,
+    h: int,
+    angle: int,
+    sum_scores: np.ndarray,
+    sum_cells: np.ndarray,
+    user_search_mask: Optional[np.ndarray],
+    head_crop_rect: Rect,
+    orientation: int,
+    rows: int,
+    cols: int,
+) -> Optional[Tuple[int, bool, SelectionResult]]:
+    area_pixels = float(w * h)
+    scores = sum_scores
+    if user_search_mask is not None:
+        scores = sum_scores.copy()
+        scores[user_search_mask == 0] = -1e12
+
+    _, max_val, _, max_loc = cv2.minMaxLoc(scores)
+    cx, cy = int(max_loc[0]), int(max_loc[1])
+    rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
+
+    if user_search_mask is not None:
+        pts_idx = rect_points.astype(np.int32)
+        for px, py in pts_idx:
+            if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
+                return None
+
+    cls_x = np.clip(rect_points[:, 0], 0, cols - 1)
+    extreme_x = float(np.max(cls_x) if orientation == 0 else np.min(cls_x))
+    in_head = head_crop_rect.x <= extreme_x <= head_crop_rect.x2
+
+    res = SelectionResult(
+        area_score=max_val / area_pixels,
+        cell_count=int(sum_cells[cy, cx]),
+        angle=-angle,
+        center_grid=(cx, cy),
+        rect_size_grid=(w, h),
+        vertices_grid=rect_points,
+    )
+    return order_idx, in_head, res
+
 def find_candidate_regions(
     grid: HeatmapGrid,
     cell_matrix: np.ndarray,
@@ -175,12 +210,42 @@ def find_candidate_regions(
     if user_search_mask is not None:
         adjusted_score_map[user_search_mask == 0] = config.heatmap_penalty_value * 100
 
+    # angle=0 窗口求和图预计算（每种 (w,h) 仅 boxFilter 一次）
+    unique_sizes = set(search_rects)
+    box_score_cache: dict[tuple[int, int], np.ndarray] = {}
+    box_cell_cache: dict[tuple[int, int], np.ndarray] = {}
+    cell_f32 = cell_matrix.astype(np.float32, copy=False)
+    for w, h in unique_sizes:
+        box_score_cache[(w, h)] = centered_box_sum_map(
+            adjusted_score_map, w, h, border_value=config.heatmap_penalty_value,
+        )
+        box_cell_cache[(w, h)] = centered_box_sum_map(cell_f32, w, h, border_value=0.0)
+
     head_results: List[SelectionResult] = []
     tail_results: List[SelectionResult] = []
+    angles = config.get_angles()
+    order_idx = 0
 
-    tasks = [
+    # angle=0：同步 + 复用求和图，避免线程池调度开销
+    if 0 in angles:
+        for w, h in search_rects:
+            item = _pick_best_from_sum_maps(
+                order_idx, w, h, 0,
+                box_score_cache[(w, h)], box_cell_cache[(w, h)],
+                user_search_mask, head_crop_rect, orientation, rows, cols,
+            )
+            order_idx += 1
+            if item is None:
+                continue
+            _, in_head, res = item
+            if in_head:
+                head_results.append(res)
+            else:
+                tail_results.append(res)
+
+    rotated_tasks = [
         (
-            order_idx,
+            order_idx + i,
             w,
             h,
             angle,
@@ -193,25 +258,31 @@ def find_candidate_regions(
             config.kernel_margin,
             rows,
             cols,
+            box_score_cache,
+            box_cell_cache,
         )
-        for order_idx, (w, h, angle) in enumerate(
-            (w, h, angle) for (w, h) in search_rects for angle in config.get_angles()
+        for i, (w, h, angle) in enumerate(
+            (w, h, angle)
+            for (w, h) in search_rects
+            for angle in angles
+            if angle != 0
         )
     ]
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(len(tasks), max(1, min(8, cpu_count)))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        ordered_results = list(executor.map(_search_one_window_angle, tasks))
+    if rotated_tasks:
+        cpu_count = os.cpu_count() or 1
+        max_workers = min(len(rotated_tasks), max(1, min(8, cpu_count)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            ordered_results = list(executor.map(_search_one_window_angle, rotated_tasks))
 
-    for item in ordered_results:
-        if item is None:
-            continue
-        _, in_head, res = item
-        if in_head:
-            head_results.append(res)
-        else:
-            tail_results.append(res)
+        for item in ordered_results:
+            if item is None:
+                continue
+            _, in_head, res = item
+            if in_head:
+                head_results.append(res)
+            else:
+                tail_results.append(res)
 
     return {"head_results": head_results, "tail_results": tail_results}
 

@@ -12,7 +12,12 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput
-from .heatmaps import build_score_heatmap
+from .heatmaps import (
+    build_score_heatmap,
+    bounds_from_user_choice_area,
+    filter_tiles_by_bounds,
+    filter_cells_xyxy_by_bounds,
+)
 from .geometry import compute_head_crop, generate_search_window_sizes
 from .selection import (
     find_candidate_regions,
@@ -96,8 +101,17 @@ class RBCSamplingPipeline:
             print(f"[WARNING][RBC] target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，将返回空任务。")
             return []
 
-        self.grid = build_score_heatmap(tiles, config=self.cfg)
+        heatmap_bounds = bounds_from_user_choice_area(self.cfg)
+        if heatmap_bounds is not None:
+            tiles = filter_tiles_by_bounds(tiles, heatmap_bounds)
+            if not tiles:
+                print("[ERROR][RBC] user_choice_area 范围内无有效 Tile")
+                return []
+
+        self.grid = build_score_heatmap(tiles, config=self.cfg, bounds=heatmap_bounds)
         all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        if heatmap_bounds is not None and all_cells_array.size > 0:
+            all_cells_array = filter_cells_xyxy_by_bounds(all_cells_array, heatmap_bounds)
         if all_cells_array.size == 0:
             print("[INFO][RBC] 未在 40x tiles 中找到任何有核细胞。")
             return []

@@ -305,14 +305,15 @@ def generate_initial_and_extra_tasks(
     grid: HeatmapGrid,
     cell_matrix: np.ndarray,
     tiles: List[Tile],
-    config: BM40Config
+    config: BM40Config,
+    forbidden_mask: Optional[np.ndarray] = None,
 ) -> List[Tuple[int, int, int, int]]:
     """
     生成一个初始拍摄框，随后通过行/列扩张覆盖整个大选区。
     """
-    # 1. 含骨髓小粒的网格
     rows, cols = grid.values.shape
-    forbidden_mask = build_forbidden_mask(grid, config, tiles=tiles)
+    if forbidden_mask is None:
+        forbidden_mask = build_forbidden_mask(grid, config, tiles=tiles)
     
     # 选区掩码（大框范围）
     selection_mask = np.zeros((rows, cols), dtype=np.uint8)

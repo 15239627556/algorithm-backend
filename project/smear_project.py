@@ -1,14 +1,21 @@
 # project.py
 from __future__ import annotations
 
-import os
+import sys
 from pathlib import Path
+
+# 允许 `python project/smear_project.py` 直接运行（相对导入需要包上下文）
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+import os
 import pickle
 from typing import List, Optional
 
 import orjson
 
-from .layers import Layer
+from project.layers import Layer
 
 
 # =========================
@@ -127,8 +134,15 @@ class SmearProject:
 
 
 if __name__ == '__main__':
-    project = SmearProject.load_json('../backend/uploads/b2364dafea904bea8fb978bfd218e1b9.json')
-    print(project.list_layers())
+    import time
+
+    # 以脚本运行时类名为 __main__.SmearProject，pickle 里是 project.smear_project.SmearProject
+    from project.smear_project import SmearProject as _SmearProject
+
+    t1 = time.time()
+    project = _SmearProject.load_pickle(r'D:\f00a5a56a9a44250880c9014b07ae843.roi.pkl')
+    t2 = time.time()
+    print(f"load pickle time: {t2 - t1} seconds")
     # layer = project.get_layer(dpi)
     # for tile in layer.iter_tiles():
     #     print(tile.image_uid)

@@ -23,6 +23,7 @@ from backend.tools.filter_edge_incomplete_cells import (
 from PIL import Image
 
 from project.smear_project import SmearProject
+from project.roi_store import RoiDataset
 from project.cells import Cell
 from backend.tools.triton_client import infer, get_model_by_dpi
 from backend.tools.model_control import warmup_model
@@ -37,6 +38,52 @@ logger = logging.getLogger(__name__)
 # 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
 _task_info_cache: dict[str, dict] = {}
 _task_info_cache_lock = threading.Lock()
+
+# 进程内 ROI 数据集缓存：/roi_selection 热路径，每个 uvicorn worker 独立一份
+_roi_dataset_cache: dict[str, tuple[RoiDataset, float]] = {}
+_roi_dataset_cache_lock = threading.Lock()
+_ROI_DATASET_CACHE_TTL_SEC = 30 * 60  # 30 min
+
+
+def _roi_dataset_cache_ttl_sec() -> float:
+    raw = os.environ.get("ROI_DATASET_CACHE_TTL_SEC", str(_ROI_DATASET_CACHE_TTL_SEC)).strip()
+    try:
+        ttl = float(raw)
+    except ValueError:
+        ttl = float(_ROI_DATASET_CACHE_TTL_SEC)
+    return max(0.0, ttl)
+
+
+def _roi_cache_get(task_id: str) -> RoiDataset | None:
+    """读取本进程 ROI 缓存；过期则淘汰；命中则滑动续期 TTL。"""
+    now = time.monotonic()
+    ttl = _roi_dataset_cache_ttl_sec()
+    with _roi_dataset_cache_lock:
+        entry = _roi_dataset_cache.get(task_id)
+        if entry is None:
+            return None
+        roi, expires_at = entry
+        if now >= expires_at:
+            del _roi_dataset_cache[task_id]
+            return None
+        _roi_dataset_cache[task_id] = (roi, now + ttl)
+        return roi
+
+
+def _roi_cache_set(task_id: str, roi: RoiDataset) -> None:
+    """写入本进程 ROI 缓存（TTL 默认 30min，可用 ROI_DATASET_CACHE_TTL_SEC 覆盖）。"""
+    ttl = _roi_dataset_cache_ttl_sec()
+    expires_at = time.monotonic() + ttl
+    with _roi_dataset_cache_lock:
+        _roi_dataset_cache[task_id] = (roi, expires_at)
+    logger.info(
+        "roi cache_set pid=%s task_id=%s ttl_sec=%.0f cells=%d tiles=%d",
+        os.getpid(),
+        task_id[:8],
+        ttl,
+        roi.cells.size,
+        len(roi.tiles),
+    )
 
 
 def _async_finish_after_update_coordinates() -> bool:
@@ -240,8 +287,13 @@ def _task_project_path(task_id: str) -> str:
 
 
 def _task_project_pickle_path(task_id: str) -> str:
-    """选区专用快路径（仅 get_task_list_x100 使用）。"""
+    """选区旧版 pickle 路径（兼容回退）。"""
     return os.path.join(upload_folder, f"{task_id}.roi.pkl")
+
+
+def _task_roi_npz_path(task_id: str) -> str:
+    """选区 numpy 快路径（/roi_selection 优先使用）。"""
+    return os.path.join(upload_folder, f"{task_id}.roi.npz")
 
 
 def _task_not_found_error(**extra) -> dict:
@@ -285,24 +337,60 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
     return SmearProject.load_json(path), info, None
 
 
-def _require_project_for_roi(task_id: str) -> tuple[SmearProject | None, dict | None, dict | None]:
+def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, dict | None]:
     """
-    选区专用：优先读 {task_id}.roi.pkl，失败或不存在则回退 JSON。
+    ROI 热路径：本 worker 进程缓存（TTL 30min）→ roi.npz → roi.pkl → 大 JSON。
+    用于 /roi_selection、/get_task_result 等；多 worker 下各进程独立加载并缓存。
+    返回 (RoiDataset, info, error_response)。
     """
     info, err = _require_task_info(task_id)
     if err:
         return None, None, err
+
+    cached = _roi_cache_get(task_id)
+    if cached is not None:
+        logger.debug("roi cache_hit pid=%s task_id=%s", os.getpid(), task_id[:8])
+        return cached, info, None
+
+    dpi = info.get("dpi", 144750)
+
+    npz_path = _task_roi_npz_path(task_id)
+    if os.path.exists(npz_path):
+        try:
+            t0 = time.time()
+            roi = RoiDataset.load(npz_path)
+            logger.info(
+                "roi load_npz pid=%s task_id=%s ms=%.2f cells=%d tiles=%d",
+                os.getpid(),
+                task_id[:8],
+                (time.time() - t0) * 1000,
+                roi.cells.size,
+                len(roi.tiles),
+            )
+            _roi_cache_set(task_id, roi)
+            return roi, info, None
+        except Exception as e:
+            logger.warning(
+                "roi npz load failed task_id=%s path=%s err=%s; fallback",
+                task_id[:8],
+                npz_path,
+                e,
+            )
+
     pkl_path = _task_project_pickle_path(task_id)
     if os.path.exists(pkl_path):
         try:
             t0 = time.time()
             project = SmearProject.load_pickle(pkl_path)
+            roi = RoiDataset.from_project(project, dpi)
             logger.info(
-                "roi load_pickle task_id=%s ms=%.2f",
+                "roi load_pickle+convert pid=%s task_id=%s ms=%.2f",
+                os.getpid(),
                 task_id[:8],
                 (time.time() - t0) * 1000,
             )
-            return project, info, None
+            _roi_cache_set(task_id, roi)
+            return roi, info, None
         except Exception as e:
             logger.warning(
                 "roi pickle load failed task_id=%s path=%s err=%s; fallback json",
@@ -310,7 +398,28 @@ def _require_project_for_roi(task_id: str) -> tuple[SmearProject | None, dict | 
                 pkl_path,
                 e,
             )
-    return _require_project(task_id)
+
+    project, info, err = _require_project(task_id)
+    if err:
+        return None, info, err
+    try:
+        t0 = time.time()
+        roi = RoiDataset.from_project(project, dpi)
+        logger.info(
+            "roi load_json+convert pid=%s task_id=%s ms=%.2f",
+            os.getpid(),
+            task_id[:8],
+            (time.time() - t0) * 1000,
+        )
+        _roi_cache_set(task_id, roi)
+        return roi, info, None
+    except Exception as e:
+        logger.exception("roi json convert failed task_id=%s: %s", task_id[:8], e)
+        return None, info, {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": f"Failed to load ROI dataset: {e}",
+            "reason": str(e),
+        }
 
 
 class TaskService:
@@ -559,15 +668,16 @@ class TaskService:
                 (t7 - t9) * 1000,
             )
             try:
-                project.save_pickle(_task_project_pickle_path(task_id))
+                dpi = info.get("dpi", 144750)
+                RoiDataset.from_project(project, dpi).save(_task_roi_npz_path(task_id))
                 logger.info(
-                    "save_roi_pickle task_id=%s ms=%.2f",
+                    "save_roi_npz task_id=%s ms=%.2f",
                     task_id[:8],
                     (time.time() - t7) * 1000,
                 )
             except Exception as e:
                 logger.warning(
-                    "save_roi_pickle failed task_id=%s (roi will fallback to json): %s",
+                    "save_roi_npz failed task_id=%s (roi will fallback to json/pkl): %s",
                     task_id[:8],
                     e,
                 )
@@ -658,11 +768,15 @@ class TaskService:
         }
 
     def get_result(self, task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num):
-        project, info, err = _require_project(task_id)
+        roi, info, err = _require_roi_dataset(task_id)
         if err:
             return err
-        dpi = info.get('dpi', 144750)
-        layer = project.get_layer(dpi)
+        if not info.get('finished', False):
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'Task not completed',
+                'reason': 'Task not completed',
+            }
 
         roi_xmin = 0 if roi_xmin is None else int(roi_xmin)
         roi_ymin = 0 if roi_ymin is None else int(roi_ymin)
@@ -671,10 +785,18 @@ class TaskService:
         offset = max(0, int(index_offset or 0))
         limit = max(0, int(request_task_num or 0))
 
-        cells_all = layer.iter_cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax, is_Cell=True)
-        total = len(cells_all)
-        page_cells = cells_all[offset: offset + limit]
-        page_dicts = [c.to_dict() for c in page_cells]
+        t0 = time.time()
+        matched = roi.cells_in_roi(roi_xmin, roi_ymin, roi_xmax, roi_ymax)
+        total = int(matched.size)
+        page_records = matched[offset: offset + limit] if limit > 0 else matched[offset:offset]
+        page_dicts = roi.cell_records_to_dicts(page_records)
+        logger.info(
+            "get_result task_id=%s total=%d page=%d ms=%.2f",
+            task_id[:8],
+            total,
+            len(page_dicts),
+            (time.time() - t0) * 1000,
+        )
 
         return {
             "ret_code": RetCode.API_SUCCESS.value,
@@ -695,7 +817,7 @@ class TaskService:
         required_num: dict | None,
     ):
         logger.info("roi_selection task_id=%s, task_type=%s, user_choice_area=%s, view_width=%s, view_height=%s, kwargs=%s, required_num=%s", task_id, task_type, user_choice_area, view_width, view_height, kwargs, required_num)
-        project, info, err = _require_project_for_roi(task_id)
+        roi, info, err = _require_roi_dataset(task_id)
         if err:
             err = dict(err)
             err.setdefault('result', {})
@@ -816,7 +938,7 @@ class TaskService:
                 Smear_type=smear_type,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(project)
+            wbc_tasks = pipeline.run(roi=roi)
             wbc_task_rects = [task.to_dict() for task in wbc_tasks]
 
             if normalized_task_type == "WBC":
@@ -844,7 +966,7 @@ class TaskService:
                     try:
                         meg_pipeline = MegSamplingPipeline(bm_cfg)
                         meg_tasks = meg_pipeline.run_meg(
-                            project=project, wbc_rects=wbc_rects_meg
+                            roi=roi, wbc_rects=wbc_rects_meg
                         )
                         meg_task_rects = [task.to_dict() for task in meg_tasks]
                     except Exception as e:
@@ -893,7 +1015,7 @@ class TaskService:
                 }
             try:
                 meg_pipeline = MegSamplingPipeline(bm_cfg)
-                meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
+                meg_tasks = meg_pipeline.run_meg(roi=roi, wbc_rects=wbc_rects)
                 final_task_list = [task.to_dict() for task in meg_tasks]
             except Exception as e:
                 logger.exception("MEG roi_selection failed: %s", e)
@@ -915,7 +1037,7 @@ class TaskService:
                 Smear_type="PB",
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(project)
+            wbc_tasks = pipeline.run(roi=roi)
             final_task_list = [task.to_dict() for task in wbc_tasks]
         else:
             return {
