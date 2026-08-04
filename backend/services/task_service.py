@@ -340,7 +340,7 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
 def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, dict | None]:
     """
     ROI 热路径：本 worker 进程缓存（TTL 30min）→ roi.npz → roi.pkl → 大 JSON。
-    用于 /roi_selection、/get_task_result 等；多 worker 下各进程独立加载并缓存。
+    用于 /get_task_result；多 worker 下各进程独立加载并缓存。
     返回 (RoiDataset, info, error_response)。
     """
     info, err = _require_task_info(task_id)
@@ -817,7 +817,7 @@ class TaskService:
         required_num: dict | None,
     ):
         logger.info("roi_selection task_id=%s, task_type=%s, user_choice_area=%s, view_width=%s, view_height=%s, kwargs=%s, required_num=%s", task_id, task_type, user_choice_area, view_width, view_height, kwargs, required_num)
-        roi, info, err = _require_roi_dataset(task_id)
+        project, info, err = _require_project(task_id)
         if err:
             err = dict(err)
             err.setdefault('result', {})
@@ -938,7 +938,7 @@ class TaskService:
                 Smear_type=smear_type,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(roi=roi)
+            wbc_tasks = pipeline.run(project)
             wbc_task_rects = [task.to_dict() for task in wbc_tasks]
 
             if normalized_task_type == "WBC":
@@ -966,7 +966,7 @@ class TaskService:
                     try:
                         meg_pipeline = MegSamplingPipeline(bm_cfg)
                         meg_tasks = meg_pipeline.run_meg(
-                            roi=roi, wbc_rects=wbc_rects_meg
+                            project=project, wbc_rects=wbc_rects_meg
                         )
                         meg_task_rects = [task.to_dict() for task in meg_tasks]
                     except Exception as e:
@@ -1015,7 +1015,7 @@ class TaskService:
                 }
             try:
                 meg_pipeline = MegSamplingPipeline(bm_cfg)
-                meg_tasks = meg_pipeline.run_meg(roi=roi, wbc_rects=wbc_rects)
+                meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
                 final_task_list = [task.to_dict() for task in meg_tasks]
             except Exception as e:
                 logger.exception("MEG roi_selection failed: %s", e)
@@ -1037,7 +1037,7 @@ class TaskService:
                 Smear_type="PB",
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(roi=roi)
+            wbc_tasks = pipeline.run(project)
             final_task_list = [task.to_dict() for task in wbc_tasks]
         else:
             return {

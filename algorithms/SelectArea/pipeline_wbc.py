@@ -1,10 +1,7 @@
 # pipeline.py
 import os
 import numpy as np
-from typing import List, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from project.roi_store import RoiDataset
+from typing import List, Optional
 
 # 导入自定义模块与数据结构
 import sys
@@ -15,12 +12,7 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput
-from .heatmaps import (
-    build_score_heatmap,
-    bounds_from_user_choice_area,
-    filter_tiles_by_bounds,
-    filter_cells_xyxy_by_bounds,
-)
+from .heatmaps import build_score_heatmap
 from .geometry import compute_head_crop, generate_search_window_sizes
 from .selection import (
     find_candidate_regions, 
@@ -88,28 +80,23 @@ class WBCSamplingPipeline:
         self.user_search_mask = None # 存储用户选区掩码
 
 
-    def run(
-        self,
-        project: SmearProject | None = None,
-        *,
-        roi: Optional["RoiDataset"] = None,
-    ) -> List[TaskOutput]:
+    def run(self, project: SmearProject) -> List[TaskOutput]:
         """
         执行有核细胞采样任务。
-        优先使用 roi（numpy 预计算全局坐标）；否则从 SmearProject 扫描 tiles。
+        输入改为 SmearProject 对象。
         """
-        if roi is not None:
-            tiles = roi.tiles
-        else:
-            if project is None:
-                raise ValueError("run() 需要 project 或 roi 之一")
-            dpi = self.cfg.dpi
-            layer_40x = project.get_layer(dpi)
-            if not layer_40x:
-                print("[ERROR] 项目中缺少 40x 扫描层数据")
-                return []
-            tiles = list(layer_40x.tiles.values())
+        # 1. 从项目中提取 40x 扫描层
+        # layer_40x_id = 0
+        # layer_40x = project.layers[layer_40x_id]
+        dpi = self.cfg.dpi
+        layer_40x = project.get_layer(dpi)
+        if not layer_40x:
+            print("[ERROR] 项目中缺少 40x 扫描层数据")
+            return []
 
+        # 获取该层所有的 tiles
+        # layer.tiles 是一个 Dict[str, Tile] 或提供迭代器
+        tiles = list(layer_40x.tiles.values()) 
         if not tiles:
             print("[ERROR] 40x 层中没有找到有效的 Tile 数据")
             return []
@@ -118,38 +105,13 @@ class WBCSamplingPipeline:
             print(f"target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，将返回空的 wbc_tasks。")
             return []
 
-        heatmap_bounds = bounds_from_user_choice_area(self.cfg)
-        if heatmap_bounds is not None:
-            tiles = filter_tiles_by_bounds(tiles, heatmap_bounds)
-            if not tiles:
-                print("[ERROR] user_choice_area 范围内无有效 Tile")
-                return []
-            print(
-                f"[INFO] user_choice_area 局部热力图: tiles={len(tiles)} "
-                f"grid_bounds=({heatmap_bounds[0]:.0f},{heatmap_bounds[1]:.0f})-"
-                f"({heatmap_bounds[2]:.0f},{heatmap_bounds[3]:.0f})"
-            )
-
         # 1. 基础数据准备
-        if roi is not None and roi.has_precomputed_heatmap(self.cfg.cell_size):
-            self.grid = roi.build_heatmap_grid(self.cfg, bounds=heatmap_bounds)
-        else:
-            self.grid = build_score_heatmap(tiles, config=self.cfg, bounds=heatmap_bounds)
-        if roi is not None:
-            all_cells_array = roi.cells_xyxy_by_type(self.cfg.WBC_cell_type)
-        else:
-            all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
-        if heatmap_bounds is not None and all_cells_array.size > 0:
-            all_cells_array = filter_cells_xyxy_by_bounds(all_cells_array, heatmap_bounds)
+        self.grid = build_score_heatmap(tiles, config=self.cfg)
+        all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
         if all_cells_array.size == 0:
             print("[INFO] 未在 40x tiles 中找到任何有核细胞。")
             return []
-        if roi is not None:
-            self.cell_matrix = roi.build_cell_matrix(
-                self.cfg, bounds=heatmap_bounds, all_cells_array=all_cells_array,
-            )
-        else:
-            self.cell_matrix = _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
+        self.cell_matrix = _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
 
         rows, cols = self.cell_matrix.shape
 
@@ -252,15 +214,15 @@ class WBCSamplingPipeline:
             )
 
         # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）
-        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
             grid=self.grid,
             cell_matrix=self.cell_matrix,
             tiles=tiles,
-            config=self.cfg,
-            forbidden_mask=self.forbidden_mask,
+            config=self.cfg
         )
+        # 10. 构建禁区掩码并提取有效细胞
+        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles) 
         valid_cells = collect_valid_cells_vectorized(
             all_cells_array=all_cells_array, 
             best_selection=self.best_res, 

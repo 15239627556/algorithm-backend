@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import math
-import cv2
 import numpy as np
 
 from .adapters import TileAdapter, DefaultScoresAdapter
@@ -124,116 +123,6 @@ def compute_global_bounds_from_tiles(tiles: List[Tile]) -> Tuple[float, float, f
     return min(xs), min(ys), max(xe), max(ye)
 
 
-def compute_search_window_pad_px(config: BM40Config) -> float:
-    """最大搜索窗半对角线（像素）+ setcover_pad，用于 user_choice_area 热力图外扩。"""
-    one_tile_grid_area = (config.tile_w * config.tile_h) / (config.cell_size ** 2)
-    max_scale = max(config.get_search_area_scales())
-    max_grid_area = max_scale * one_tile_grid_area
-    max_aspect = max(
-        max(rw / rh, rh / rw)
-        for rw, rh in config.window_aspect_ratios
-    )
-    side_px = math.sqrt(max_grid_area * max_aspect) * config.cell_size
-    return float(side_px) + float(config.setcover_pad)
-
-
-def bounds_from_user_choice_area(config: BM40Config) -> Optional[Tuple[float, float, float, float]]:
-    """由 user_choice_area 推导热力图 bounds；无选区则返回 None（全图）。"""
-    area = config.user_choice_area
-    if not area:
-        return None
-    try:
-        x_min = float(area["x_min"])
-        y_min = float(area["y_min"])
-        x_max = float(area["x_max"])
-        y_max = float(area["y_max"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    if x_max <= x_min or y_max <= y_min:
-        return None
-
-    ua_w = x_max - x_min
-    ua_h = y_max - y_min
-    max_pad = compute_search_window_pad_px(config)
-    tile_diag = math.hypot(config.tile_w, config.tile_h)
-    # 外扩不超过选区一半、一个 tile 对角线，避免 padding 把局部选区撑成近全图
-    pad = min(max_pad, ua_w * 0.5, ua_h * 0.5, tile_diag)
-    pad = max(pad, config.cell_size)
-    return x_min - pad, y_min - pad, x_max + pad, y_max + pad
-
-
-def filter_tiles_by_bounds(
-    tiles: List[Tile],
-    bounds: Tuple[float, float, float, float],
-) -> List[Tile]:
-    """保留与 bounds 相交的 tile。"""
-    min_x, min_y, max_x, max_y = bounds
-    out: List[Tile] = []
-    for t in tiles:
-        if t.x is None or t.y is None:
-            continue
-        tx1, ty1 = float(t.x), float(t.y)
-        tx2, ty2 = tx1 + float(t.w), ty1 + float(t.h)
-        if tx2 < min_x or tx1 > max_x or ty2 < min_y or ty1 > max_y:
-            continue
-        out.append(t)
-    return out
-
-
-def filter_cells_xyxy_by_bounds(
-    cells_xyxy: np.ndarray,
-    bounds: Tuple[float, float, float, float],
-) -> np.ndarray:
-    """保留中心落在 bounds 内的细胞 (N,4)。"""
-    if cells_xyxy.size == 0:
-        return cells_xyxy
-    min_x, min_y, max_x, max_y = bounds
-    cx = 0.5 * (cells_xyxy[:, 0] + cells_xyxy[:, 2])
-    cy = 0.5 * (cells_xyxy[:, 1] + cells_xyxy[:, 3])
-    mask = (cx >= min_x) & (cx <= max_x) & (cy >= min_y) & (cy <= max_y)
-    return cells_xyxy[mask]
-
-
-def centered_box_sum_map(
-    arr: np.ndarray,
-    w: int,
-    h: int,
-    border_value: float = 0.0,
-) -> np.ndarray:
-    """居中 w×h 窗口求和图（与 selection 中 angle=0 的 boxFilter 对齐）。"""
-    rows, cols = arr.shape
-    py, px = h // 2, w // 2
-    padded = cv2.copyMakeBorder(
-        arr, py, py, px, px, cv2.BORDER_CONSTANT, value=float(border_value),
-    )
-    full = cv2.boxFilter(padded, -1, (w, h), normalize=False)
-    return full[py: py + rows, px: px + cols]
-
-
-def crop_heatmap_grid(
-    grid: HeatmapGrid,
-    bounds: Tuple[float, float, float, float],
-) -> HeatmapGrid:
-    """从全图热力图裁剪 bounds 对应子网格（用于 user_choice_area 复用预计算热力图）。"""
-    min_x, min_y, max_x, max_y = bounds
-    rows, cols = grid.values.shape
-    c0 = int(math.floor((min_x - grid.origin_x) / grid.cell_size))
-    r0 = int(math.floor((min_y - grid.origin_y) / grid.cell_size))
-    c1 = int(math.ceil((max_x - grid.origin_x) / grid.cell_size))
-    r1 = int(math.ceil((max_y - grid.origin_y) / grid.cell_size))
-    c0, r0 = max(0, c0), max(0, r0)
-    c1, r1 = min(cols, c1), min(rows, r1)
-    if c1 <= c0 or r1 <= r0:
-        raise ValueError(f"crop bounds empty: {bounds}")
-    return HeatmapGrid(
-        origin_x=grid.origin_x + c0 * grid.cell_size,
-        origin_y=grid.origin_y + r0 * grid.cell_size,
-        cell_size=grid.cell_size,
-        values=grid.values[r0:r1, c0:c1].copy(),
-        weights=grid.weights[r0:r1, c0:c1].copy(),
-    )
-
-
 def build_score_heatmap(
     tiles: List[Tile],
     *,
@@ -249,7 +138,7 @@ def build_score_heatmap(
         raise ValueError("cell_size must be > 0")
 
     if adapter is None:
-        adapter = DefaultScoresAdapter(validate=False)
+        adapter = DefaultScoresAdapter()
 
     if bounds is None:
         min_x, min_y, max_x, max_y = compute_global_bounds_from_tiles(tiles)

@@ -154,7 +154,7 @@ class RoiDataset:
         all_cells_array: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """优先使用预计算 WBC 密度矩阵；局部选区时裁剪。"""
-        from algorithms.SelectArea.heatmaps import HeatmapGrid, crop_heatmap_grid
+        from algorithms.SelectArea.heatmaps import HeatmapGrid
 
         if (
             self.wbc_cell_matrix is not None
@@ -174,7 +174,7 @@ class RoiDataset:
                 values=self.wbc_cell_matrix,
                 weights=np.ones_like(self.wbc_cell_matrix),
             )
-            sub = crop_heatmap_grid(grid, bounds)
+            sub = _crop_heatmap_grid(grid, bounds)
             return sub.values
 
         grid = self.build_heatmap_grid(config, bounds=bounds)
@@ -194,14 +194,13 @@ class RoiDataset:
         config: BM40Config,
         bounds: Optional[Tuple[float, float, float, float]] = None,
     ) -> HeatmapGrid:
-        """优先使用预计算热力图；user_choice_area 时裁剪子网格。"""
-        from algorithms.SelectArea.heatmaps import HeatmapGrid, build_score_heatmap, crop_heatmap_grid
+        """优先使用预计算热力图；有 bounds 时裁剪子网格。"""
+        from algorithms.SelectArea.heatmaps import HeatmapGrid, build_score_heatmap
 
         if not self.has_precomputed_heatmap(config.cell_size):
             tiles = self.tiles
             if bounds is not None:
-                from algorithms.SelectArea.heatmaps import filter_tiles_by_bounds
-                tiles = filter_tiles_by_bounds(tiles, bounds)
+                tiles = _filter_tiles_by_bounds(tiles, bounds)
             return build_score_heatmap(tiles, config=config, bounds=bounds)
 
         full = HeatmapGrid(
@@ -213,7 +212,7 @@ class RoiDataset:
         )
         if bounds is None:
             return full
-        return crop_heatmap_grid(full, bounds)
+        return _crop_heatmap_grid(full, bounds)
 
     def cells_xyxy_by_type(self, cell_type: int) -> np.ndarray:
         """返回指定 cell_type 的全局坐标 (N, 4) float32。"""
@@ -380,6 +379,45 @@ class RoiDataset:
             heatmap_cell_size=heatmap_cell_size,
             wbc_cell_matrix=wbc_cell_matrix,
         )
+
+
+def _filter_tiles_by_bounds(
+    tiles: list[Tile],
+    bounds: Tuple[float, float, float, float],
+) -> list[Tile]:
+    min_x, min_y, max_x, max_y = bounds
+    out: list[Tile] = []
+    for t in tiles:
+        if t.x is None or t.y is None:
+            continue
+        tx1, ty1 = float(t.x), float(t.y)
+        tx2, ty2 = tx1 + float(t.w), ty1 + float(t.h)
+        if tx2 < min_x or tx1 > max_x or ty2 < min_y or ty1 > max_y:
+            continue
+        out.append(t)
+    return out
+
+
+def _crop_heatmap_grid(grid, bounds: Tuple[float, float, float, float]):
+    from algorithms.SelectArea.heatmaps import HeatmapGrid
+
+    min_x, min_y, max_x, max_y = bounds
+    rows, cols = grid.values.shape
+    c0 = int(math.floor((min_x - grid.origin_x) / grid.cell_size))
+    r0 = int(math.floor((min_y - grid.origin_y) / grid.cell_size))
+    c1 = int(math.ceil((max_x - grid.origin_x) / grid.cell_size))
+    r1 = int(math.ceil((max_y - grid.origin_y) / grid.cell_size))
+    c0, r0 = max(0, c0), max(0, r0)
+    c1, r1 = min(cols, c1), min(rows, r1)
+    if c1 <= c0 or r1 <= r0:
+        raise ValueError(f"crop bounds empty: {bounds}")
+    return HeatmapGrid(
+        origin_x=grid.origin_x + c0 * grid.cell_size,
+        origin_y=grid.origin_y + r0 * grid.cell_size,
+        cell_size=grid.cell_size,
+        values=grid.values[r0:r1, c0:c1].copy(),
+        weights=grid.weights[r0:r1, c0:c1].copy(),
+    )
 
 
 def _build_type_index(cells: np.ndarray) -> dict[int, tuple[int, int]]:
