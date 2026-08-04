@@ -25,7 +25,7 @@ DEFAULT_EDGE_TOUCH_TOLERANCE_PX = 1
 # 默认：距边 ≤5px 且长宽比判定为长方形时过滤
 DEFAULT_EDGE_MARGIN_PX = 5
 # 长边/短边 ≥ 此值视为细长矩形（“长方形”）
-DEFAULT_MIN_ASPECT_RATIO = 2.0
+DEFAULT_MIN_ASPECT_RATIO = 1.5
 
 
 def cell_should_drop_edge_incomplete(
