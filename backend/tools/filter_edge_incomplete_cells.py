@@ -9,7 +9,7 @@
    （靠边细长框多为截断目标）。
 
 714756 ±10% 专用（filter_cell_dicts_edge_elongated_1pct）：
-仅对有核(200000-200034)与成熟红(100005)：靠边 1% 且 max(w/h,h/w)>=2 → 删除。
+仅对有核(200000-200034)、成熟红(100005)与巨核(100001)：靠边 1% 且 max(w/h,h/w)>=2 → 删除。
 
 坐标约定与 dedup_cells_across_tiles 一致：cell 为 tile 内局部 xyxy；图像宽 tw、高 th，对应列 0..tw-1、行 0..th-1。
 """
@@ -121,8 +121,8 @@ def filter_cell_dicts_edge_incomplete(
     return out
 
 
-# 714756 ±10%：有核(200000-200034)与成熟红(100005)的靠边细长框过滤
-_TYPES_714756_EDGE_ELONGATED = frozenset(range(200000, 200035)) | {100005}
+# 714756 ±10%：有核(200000-200034)、成熟红(100005)与巨核(100001)的靠边细长框过滤
+_TYPES_714756_EDGE_ELONGATED = frozenset(range(200000, 200035)) | {100005, 100001}
 DEFAULT_EDGE_RATIO_1PCT = 0.01
 
 
@@ -194,7 +194,7 @@ def filter_cell_dicts_edge_elongated_1pct(
     min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
 ) -> List[Dict[str, Any]]:
     """
-    仅对 target_types（默认有核 200000-200034、成熟红 100005）做靠边 1% 细长框过滤。
+    仅对 target_types（默认有核 200000-200034、成熟红 100005、巨核 100001）做靠边 1% 细长框过滤。
     其它类型原样保留；无法解析 bbox 的项原样保留。
     """
     out: List[Dict[str, Any]] = []

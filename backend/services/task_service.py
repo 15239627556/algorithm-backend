@@ -231,6 +231,15 @@ def _cells_to_dicts(cells) -> list[dict]:
     return out
 
 
+def _bbox_key(d: dict) -> tuple[int, int, int, int]:
+    return (
+        int(d["cell_xmin"]),
+        int(d["cell_ymin"]),
+        int(d["cell_xmax"]),
+        int(d["cell_ymax"]),
+    )
+
+
 def _parse_edge_cell_filter_flag(value) -> bool:
     """multipart/form 里布尔常为字符串，避免 bool('false') == True。"""
     if value is None:
@@ -727,10 +736,25 @@ class TaskService:
             cells = result.get("cells") or []
             scores = _ensure_json_serializable(result.get("scores", []))
             cell_list = result.get("cell_list") or []
+            if not cell_list and cells:
+                cell_list = [{
+                    'cell_xmin': c.cell_xmin, 'cell_ymin': c.cell_ymin,
+                    'cell_xmax': c.cell_xmax, 'cell_ymax': c.cell_ymax,
+                    'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
+                              'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
+                } for c in cells]
+            tile_w = int(info.get('tile_width', 2448))
+            tile_h = int(info.get('tile_height', 2048))
+            cell_list = filter_cell_dicts_edge_elongated_1pct(
+                cell_list, tile_w, tile_h
+            )
+            keep_bboxes = {_bbox_key(d) for d in cell_list}
+            cells_payload = [
+                d for d in _cells_to_dicts(cells) if _bbox_key(d) in keep_bboxes
+            ]
             payload = {
-                'cells': _cells_to_dicts(cells),
+                'cells': cells_payload,
                 'scores': scores,
-                'cell_list': cell_list,
                 'wbc_pixel_count': int(result.get("wbc_pixel_count") or 0),
                 'red_pixel_count': int(result.get("red_pixel_count") or 0),
             }
@@ -1148,7 +1172,7 @@ class TaskService:
                 "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
             }
-        logger.info("roi_selection task_id=%s, task_list=%s", task_id, str(final_task_list))
+        logger.info("roi_selection finished task_id=%s, ", task_id)
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
@@ -1296,7 +1320,7 @@ class TaskService:
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
         # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能；
-        # 但对有核(200000-200034)/成熟红(100005)：靠边1%且 max(w/h,h/w)>=2 则删除
+        # 但对有核(200000-200034)/成熟红(100005)/巨核(100001)：靠边1%且 max(w/h,h/w)>=2 则删除
         if dpi_bucket == 714756:
             edge_cell_filter = False
             if cell_list:
