@@ -15,6 +15,7 @@ class RetCode(Enum):
 
     API_SUCCESS = 200  # 接口调用成功
     CLIENT_ERROR = 201  # 参数错误、文件类型错误、相关条目不存在等客户端错误
+    ROI_ERROR = 202  # ROI选区错误
 
 
 class RetDesc(Enum):
@@ -30,6 +31,7 @@ class RetDesc(Enum):
 
     API_SUCCESS = "API success"
     CLIENT_ERROR = "Client error: invalid params, file type error, or entry not found"
+    ROI_ERROR = "ROI selection error"
 
 
 class TaskType(Enum):

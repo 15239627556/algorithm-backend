@@ -42,7 +42,11 @@ _task_info_cache_lock = threading.Lock()
 # 进程内 ROI 数据集缓存：/roi_selection 热路径，每个 uvicorn worker 独立一份
 _roi_dataset_cache: dict[str, tuple[RoiDataset, float]] = {}
 _roi_dataset_cache_lock = threading.Lock()
-_ROI_DATASET_CACHE_TTL_SEC = 30 * 60  # 30 min
+_ROI_DATASET_CACHE_TTL_SEC = 5 * 60  # 5 min
+
+# 进程内 SmearProject 缓存：/roi_selection 等选区 pipeline 热路径
+_project_cache: dict[str, tuple[SmearProject, float]] = {}
+_project_cache_lock = threading.Lock()
 
 
 def _roi_dataset_cache_ttl_sec() -> float:
@@ -71,7 +75,7 @@ def _roi_cache_get(task_id: str) -> RoiDataset | None:
 
 
 def _roi_cache_set(task_id: str, roi: RoiDataset) -> None:
-    """写入本进程 ROI 缓存（TTL 默认 30min，可用 ROI_DATASET_CACHE_TTL_SEC 覆盖）。"""
+    """写入本进程 ROI 缓存（TTL 默认 5min，可用 ROI_DATASET_CACHE_TTL_SEC 覆盖）。"""
     ttl = _roi_dataset_cache_ttl_sec()
     expires_at = time.monotonic() + ttl
     with _roi_dataset_cache_lock:
@@ -83,6 +87,37 @@ def _roi_cache_set(task_id: str, roi: RoiDataset) -> None:
         ttl,
         roi.cells.size,
         len(roi.tiles),
+    )
+
+
+def _project_cache_get(task_id: str) -> SmearProject | None:
+    """读取本进程 SmearProject 缓存；过期则淘汰；命中则滑动续期 TTL。"""
+    now = time.monotonic()
+    ttl = _roi_dataset_cache_ttl_sec()
+    with _project_cache_lock:
+        entry = _project_cache.get(task_id)
+        if entry is None:
+            return None
+        project, expires_at = entry
+        if now >= expires_at:
+            del _project_cache[task_id]
+            return None
+        _project_cache[task_id] = (project, now + ttl)
+        return project
+
+
+def _project_cache_set(task_id: str, project: SmearProject) -> None:
+    """写入本进程 SmearProject 缓存（TTL 与 ROI 缓存一致）。"""
+    ttl = _roi_dataset_cache_ttl_sec()
+    expires_at = time.monotonic() + ttl
+    with _project_cache_lock:
+        _project_cache[task_id] = (project, expires_at)
+    logger.info(
+        "project cache_set pid=%s task_id=%s ttl_sec=%.0f layers=%d",
+        os.getpid(),
+        task_id[:8],
+        ttl,
+        len(project.layers),
     )
 
 
@@ -323,10 +358,67 @@ def _require_task_info_for_upload(task_id: str) -> tuple[dict | None, dict | Non
 
 
 def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, dict | None]:
-    """从磁盘加载已完成的大 JSON project。返回 (project, info, error_response)。"""
+    """
+    选区 pipeline 热路径：进程缓存 → roi.npz → roi.pkl → 大 JSON。
+    返回 (project, info, error_response)。
+    """
     info, err = _require_task_info(task_id)
     if err:
         return None, None, err
+
+    cached = _project_cache_get(task_id)
+    if cached is not None:
+        logger.debug("project cache_hit pid=%s task_id=%s", os.getpid(), task_id[:8])
+        return cached, info, None
+
+    npz_path = _task_roi_npz_path(task_id)
+    if os.path.exists(npz_path):
+        try:
+            t0 = time.time()
+            roi = _roi_cache_get(task_id)
+            if roi is None:
+                roi = RoiDataset.load(npz_path)
+                _roi_cache_set(task_id, roi)
+            project = roi.to_project()
+            _project_cache_set(task_id, project)
+            logger.info(
+                "project load_npz pid=%s task_id=%s ms=%.2f cells=%d tiles=%d",
+                os.getpid(),
+                task_id[:8],
+                (time.time() - t0) * 1000,
+                roi.cells.size,
+                len(roi.tiles),
+            )
+            return project, info, None
+        except Exception as e:
+            logger.warning(
+                "project npz load failed task_id=%s path=%s err=%s; fallback",
+                task_id[:8],
+                npz_path,
+                e,
+            )
+
+    pkl_path = _task_project_pickle_path(task_id)
+    if os.path.exists(pkl_path):
+        try:
+            t0 = time.time()
+            project = SmearProject.load_pickle(pkl_path)
+            _project_cache_set(task_id, project)
+            logger.info(
+                "project load_pickle pid=%s task_id=%s ms=%.2f",
+                os.getpid(),
+                task_id[:8],
+                (time.time() - t0) * 1000,
+            )
+            return project, info, None
+        except Exception as e:
+            logger.warning(
+                "project pickle load failed task_id=%s path=%s err=%s; fallback json",
+                task_id[:8],
+                pkl_path,
+                e,
+            )
+
     path = _task_project_path(task_id)
     if not os.path.exists(path):
         return None, info, {
@@ -334,12 +426,29 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
             'ret_desc': 'Task project not found (not finished?)',
             'reason': 'Task project not found (not finished?)',
         }
-    return SmearProject.load_json(path), info, None
+    try:
+        t0 = time.time()
+        project = SmearProject.load_json(path)
+        _project_cache_set(task_id, project)
+        logger.info(
+            "project load_json pid=%s task_id=%s ms=%.2f",
+            os.getpid(),
+            task_id[:8],
+            (time.time() - t0) * 1000,
+        )
+        return project, info, None
+    except Exception as e:
+        logger.exception("project json load failed task_id=%s: %s", task_id[:8], e)
+        return None, info, {
+            'ret_code': RetCode.CLIENT_ERROR.value,
+            'ret_desc': f'Failed to load task project: {e}',
+            'reason': str(e),
+        }
 
 
 def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, dict | None]:
     """
-    ROI 热路径：本 worker 进程缓存（TTL 30min）→ roi.npz → roi.pkl → 大 JSON。
+    ROI 热路径：本 worker 进程缓存（TTL 5min）→ roi.npz → roi.pkl → 大 JSON。
     用于 /get_task_result；多 worker 下各进程独立加载并缓存。
     返回 (RoiDataset, info, error_response)。
     """
@@ -817,7 +926,7 @@ class TaskService:
         required_num: dict | None,
     ):
         logger.info("roi_selection task_id=%s, task_type=%s, user_choice_area=%s, view_width=%s, view_height=%s, kwargs=%s, required_num=%s", task_id, task_type, user_choice_area, view_width, view_height, kwargs, required_num)
-        project, info, err = _require_project(task_id)
+        roi, info, err = _require_roi_dataset(task_id)
         if err:
             err = dict(err)
             err.setdefault('result', {})
@@ -870,59 +979,53 @@ class TaskService:
             if normalized_task_type == "WBC":
                 if not required_wbc or required_wbc <= 0:
                     return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_code": RetCode.ROI_ERROR.value,
                         "ret_desc": "Missing required_num.WBC for BM WBC",
                         "reason": "Missing required_num.WBC for BM WBC",
                     }
             elif normalized_task_type == "MEG":
                 if not required_meg or required_meg <= 0:
                     return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_code": RetCode.ROI_ERROR.value,
                         "ret_desc": "Missing required_num.MEG for BM MEG",
                         "reason": "Missing required_num.MEG for BM MEG",
                     }
                 if not isinstance(kwargs.get("wbc_points"), list) or not kwargs.get("wbc_points"):
                     return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_code": RetCode.ROI_ERROR.value,
                         "ret_desc": "Missing kwargs.wbc_points for BM MEG",
                         "reason": "Missing kwargs.wbc_points for BM MEG",
                     }
             elif normalized_task_type == "WBC_MEG":
+                # 允许 MEG 为 0；仅 WBC 必填
                 if not required_wbc or required_wbc <= 0:
                     return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
+                        "ret_code": RetCode.ROI_ERROR.value,
                         "ret_desc": "Missing required_num.WBC or required_num.WBC is 0 for BM WBC_MEG",
                         "reason": "Missing required_num.WBC or required_num.WBC is 0 for BM WBC_MEG",
                     }
-                # 屏蔽这种情况,允许MGE为0
-                if required_meg is None:
-                    return {
-                        "ret_code": RetCode.CLIENT_ERROR.value,
-                        "ret_desc": "Missing required_num.MEG for BM WBC_MEG",
-                        "reason": "Missing required_num.MEG for BM WBC_MEG",
-                    }
             elif normalized_task_type == "RBC":
                 return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_code": RetCode.ROI_ERROR.value,
                     "ret_desc": "Invalid combo: BM does not support task_type=RBC",
                     "reason": "Invalid combo: BM does not support task_type=RBC",
                 }
         elif smear_type == "PB":
             if normalized_task_type != "WBC":
                 return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_code": RetCode.ROI_ERROR.value,
                     "ret_desc": f"Invalid combo: PB only supports task_type=WBC, got {task_type}",
                     "reason": f"Invalid combo: PB only supports task_type=WBC, got {task_type}",
                 }
-            if not required_wbc and required_wbc <= 0:
+            if not required_wbc or required_wbc <= 0:
                 return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_code": RetCode.ROI_ERROR.value,
                     "ret_desc": "Missing required_num.WBC for PB WBC",
                     "reason": "Missing required_num.WBC for PB WBC",
                 }
         else:
             return {
-                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_code": RetCode.ROI_ERROR.value,
                 "ret_desc": f"Unsupported smear_type: {smear_type}",
                 "reason": f"Unsupported smear_type: {smear_type}",
             }
@@ -938,7 +1041,7 @@ class TaskService:
                 Smear_type=smear_type,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(project)
+            wbc_tasks = pipeline.run(roi=roi)
             wbc_task_rects = [task.to_dict() for task in wbc_tasks]
 
             if normalized_task_type == "WBC":
@@ -957,7 +1060,7 @@ class TaskService:
                         wbc_rects_meg.append([x, y, w, h])
                     if not wbc_rects_meg:
                         return {
-                            "ret_code": RetCode.CLIENT_ERROR.value,
+                            "ret_code": RetCode.ROI_ERROR.value,
                             "ret_desc": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
                             "reason": "从 WBC 结果中未解析到任何 WBC 视野，无法计算 MEG 排序参考。",
                         }
@@ -966,13 +1069,13 @@ class TaskService:
                     try:
                         meg_pipeline = MegSamplingPipeline(bm_cfg)
                         meg_tasks = meg_pipeline.run_meg(
-                            project=project, wbc_rects=wbc_rects_meg
+                            roi=roi, wbc_rects=wbc_rects_meg
                         )
                         meg_task_rects = [task.to_dict() for task in meg_tasks]
                     except Exception as e:
                         logger.exception("MEG roi_selection failed: %s", e)
                         return {
-                            "ret_code": RetCode.CLIENT_ERROR.value,
+                            "ret_code": RetCode.ROI_ERROR.value,
                             "ret_desc": str(e),
                             "reason": str(e),
                         }
@@ -1009,18 +1112,18 @@ class TaskService:
 
             if not wbc_rects:
                 return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_code": RetCode.ROI_ERROR.value,
                     "ret_desc": "Invalid kwargs.wbc_points: empty or not parseable",
                     "reason": "Invalid kwargs.wbc_points: empty or not parseable",
                 }
             try:
                 meg_pipeline = MegSamplingPipeline(bm_cfg)
-                meg_tasks = meg_pipeline.run_meg(project=project, wbc_rects=wbc_rects)
+                meg_tasks = meg_pipeline.run_meg(roi=roi, wbc_rects=wbc_rects)
                 final_task_list = [task.to_dict() for task in meg_tasks]
             except Exception as e:
                 logger.exception("MEG roi_selection failed: %s", e)
                 return {
-                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_code": RetCode.ROI_ERROR.value,
                     "ret_desc": str(e),
                     "reason": str(e),
                 }
@@ -1037,7 +1140,7 @@ class TaskService:
                 Smear_type="PB",
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
-            wbc_tasks = pipeline.run(project)
+            wbc_tasks = pipeline.run(roi=roi)
             final_task_list = [task.to_dict() for task in wbc_tasks]
         else:
             return {

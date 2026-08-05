@@ -98,6 +98,84 @@ class RoiDataset:
         roi.ensure_precomputed_heatmap()
         return roi
 
+    def to_project(self) -> "SmearProject":
+        """RoiDataset → SmearProject（供选区 pipeline 使用，细胞坐标还原为 tile 局部坐标）。"""
+        from project.cells import Cell
+        from project.layers import Layer
+        from project.smear_project import SmearProject
+
+        project = SmearProject(smear_type=self.smear_type)
+        layer = Layer(dpi=self.dpi)
+
+        tile_by_uid: dict[str, Tile] = {}
+        for src in self.tiles:
+            tile = Tile(
+                image_uid=src.image_uid,
+                x=src.x,
+                y=src.y,
+                w=src.w,
+                h=src.h,
+                image_path=src.image_path,
+                meta=dict(src.meta) if src.meta else {},
+                cells=[],
+            )
+            layer.tiles[src.image_uid] = tile
+            tile_by_uid[src.image_uid] = tile
+
+        valid = [
+            (t.image_uid, int(t.x), int(t.y), int(t.w), int(t.h))
+            for t in self.tiles
+            if t.x is not None and t.y is not None
+        ]
+        cells = self.cells
+        if valid and cells.size > 0:
+            uids = [v[0] for v in valid]
+            tx = np.array([v[1] for v in valid], dtype=np.int32)
+            ty = np.array([v[2] for v in valid], dtype=np.int32)
+            tw = np.array([v[3] for v in valid], dtype=np.int32)
+            th = np.array([v[4] for v in valid], dtype=np.int32)
+
+            cx = ((cells["xmin"].astype(np.int64) + cells["xmax"]) // 2).astype(np.int32)
+            cy = ((cells["ymin"].astype(np.int64) + cells["ymax"]) // 2).astype(np.int32)
+            assigned = np.full(cells.shape[0], -1, dtype=np.int32)
+
+            for ti in range(len(valid)):
+                mask = (
+                    (assigned < 0)
+                    & (cx >= tx[ti])
+                    & (cx < tx[ti] + tw[ti])
+                    & (cy >= ty[ti])
+                    & (cy < ty[ti] + th[ti])
+                )
+                if not np.any(mask):
+                    continue
+                assigned[mask] = ti
+                idx = np.flatnonzero(mask)
+                recs = cells[idx]
+                local_xmin = recs["xmin"] - tx[ti]
+                local_ymin = recs["ymin"] - ty[ti]
+                local_xmax = recs["xmax"] - tx[ti]
+                local_ymax = recs["ymax"] - ty[ti]
+                tile = tile_by_uid[uids[ti]]
+                append = tile.cells.append
+                for j in range(recs.shape[0]):
+                    ct = int(recs["cell_type"][j])
+                    append(
+                        Cell(
+                            cell_xmin=int(local_xmin[j]),
+                            cell_ymin=int(local_ymin[j]),
+                            cell_xmax=int(local_xmax[j]),
+                            cell_ymax=int(local_ymax[j]),
+                            cell_type=ct,
+                            cell_type_name=_cell_type_name_zh(ct),
+                            class_confidence=float(recs["class_confidence"][j]),
+                            bbox_confidence=float(recs["bbox_confidence"][j]),
+                        )
+                    )
+
+        project.layers.append(layer)
+        return project
+
     def has_precomputed_heatmap(self, cell_size: float) -> bool:
         return (
             self.heatmap_values is not None
@@ -319,7 +397,8 @@ class RoiDataset:
         if self.wbc_cell_matrix is not None:
             payload["wbc_cell_matrix"] = self.wbc_cell_matrix
 
-        np.savez_compressed(tmp, **payload)
+        # 未压缩 npz：读取时可 mmap，选区热路径比 savez_compressed 快一个数量级
+        np.savez(tmp, **payload)
         os.replace(tmp, path_obj)
         return "save success"
 
@@ -329,7 +408,12 @@ class RoiDataset:
         if not path_obj.exists():
             raise FileNotFoundError(path)
 
-        with np.load(path_obj, allow_pickle=False) as data:
+        try:
+            loader = np.load(path_obj, allow_pickle=False, mmap_mode="r")
+        except ValueError:
+            loader = np.load(path_obj, allow_pickle=False)
+
+        with loader as data:
             version = int(data["version"][0])
             if version not in (1, ROI_NPZ_VERSION):
                 raise ValueError(f"unsupported roi npz version: {version}")

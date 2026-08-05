@@ -334,15 +334,13 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    workers = min(os.cpu_count(), 6)
-    # workers>1 时各进程独立 ROI 缓存（TTL 30min，见 task_service._roi_cache_*）
+    # workers>1 时各进程独立 ROI 缓存（TTL 5min，见 task_service._roi_cache_*）
     uvicorn.run(
         "app:app",
         host=APP_HOST,
         port=APP_PORT,
         reload=False,
-        workers=workers,
+        workers=2,
         timeout_keep_alive=50,
         limit_concurrency=None,
     )
