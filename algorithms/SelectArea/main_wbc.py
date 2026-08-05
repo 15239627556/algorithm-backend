@@ -1,6 +1,7 @@
 # main.py
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 from project.smear_project import SmearProject
+from project.roi_store import RoiDataset
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
@@ -29,7 +31,10 @@ class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/20260720003/3a341f76f9984792b656d84d952107a3.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.json"
+    roi_path: str | None = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.roi.npz"
+    # 默认优先使用 NPZ；可用 SELECT_AREA_INPUT_SOURCE=json 强制走旧 JSON 路径。
+    input_source: str = "roi"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
 
     def get_color(self, region_name: str) -> str:
@@ -200,28 +205,38 @@ def visualize_results(
 # main.py 修改后的主逻辑部分
 def main() -> None:
     viz_cfg = VizConfig()
-    json_path = Path(viz_cfg.json_path)
-
-
-    project = SmearProject.load_json(str(json_path))
-    print(f"[INFO] 成功加载项目: {project.smear_type}")
+    project = None
+    roi = None
+    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
+    if input_source == "roi":
+        if not viz_cfg.roi_path:
+            raise ValueError("input_source='roi' 时必须配置 roi_path")
+        roi = RoiDataset.load(viz_cfg.roi_path)
+        smear_type = roi.smear_type
+        print(f"[INFO] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
+    elif input_source == "json":
+        project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
+        smear_type = project.smear_type
+        print(f"[INFO] 成功加载项目: {smear_type}")
+    else:
+        raise ValueError(f"不支持的输入来源: {input_source!r}（仅支持 'json' 或 'roi'）")
 
 
     # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
     # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num_WBC=300)
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
-                        dpi=134912, 
+                        dpi=144750,
                         x100_rect_width=605,
                         x100_rect_height=445,
                         View_type="WBC", 
                         heatmap_orientation=1,
-                        Smear_type=project.smear_type)
+                        Smear_type=smear_type)
     # pipeline = WBCSamplingPipeline(bm_cfg)
     
     import time
     start_time = time.time()
     pipeline = WBCSamplingPipeline(bm_cfg)
-    final_task_list = pipeline.run(project) 
+    final_task_list = pipeline.run(project=project, roi=roi)
     end_time = time.time()
     print(f"[INFO] 算法执行时间: {end_time - start_time} 秒")
     print(f"[INFO] 算法执行完成，生成了 {len(final_task_list)} 个拍摄视野")

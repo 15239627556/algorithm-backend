@@ -1,7 +1,7 @@
 # pipeline.py
 import os
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 # 导入自定义模块与数据结构
 import sys
@@ -27,6 +27,9 @@ from .task_wbc import (
     collect_valid_cells_vectorized, 
     generate_wbc_view_tasks
 )
+
+if TYPE_CHECKING:
+    from project.roi_store import RoiDataset
 
 def _collect_cells_by_type(tiles, target_type: int) -> np.ndarray:
     """收集指定 cell_type 的全局坐标，预分配 ndarray 避免构造百万级 Python list。"""
@@ -80,23 +83,27 @@ class WBCSamplingPipeline:
         self.user_search_mask = None # 存储用户选区掩码
 
 
-    def run(self, project: SmearProject) -> List[TaskOutput]:
+    def run(
+        self,
+        project: SmearProject | None = None,
+        *,
+        roi: Optional["RoiDataset"] = None,
+    ) -> List[TaskOutput]:
         """
         执行有核细胞采样任务。
-        输入改为 SmearProject 对象。
+        支持 SmearProject 或 RoiDataset；两种输入均使用相同的全局坐标和选区逻辑。
         """
-        # 1. 从项目中提取 40x 扫描层
-        # layer_40x_id = 0
-        # layer_40x = project.layers[layer_40x_id]
-        dpi = self.cfg.dpi
-        layer_40x = project.get_layer(dpi)
-        if not layer_40x:
-            print("[ERROR] 项目中缺少 40x 扫描层数据")
-            return []
+        if roi is not None:
+            tiles = roi.tiles
+        else:
+            if project is None:
+                raise ValueError("run() 需要 project 或 roi 之一")
+            layer_40x = project.get_layer(self.cfg.dpi)
+            if not layer_40x:
+                print("[ERROR] 项目中缺少 40x 扫描层数据")
+                return []
+            tiles = list(layer_40x.tiles.values())
 
-        # 获取该层所有的 tiles
-        # layer.tiles 是一个 Dict[str, Tile] 或提供迭代器
-        tiles = list(layer_40x.tiles.values()) 
         if not tiles:
             print("[ERROR] 40x 层中没有找到有效的 Tile 数据")
             return []
@@ -106,12 +113,24 @@ class WBCSamplingPipeline:
             return []
 
         # 1. 基础数据准备
-        self.grid = build_score_heatmap(tiles, config=self.cfg)
-        all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        self.grid = (
+            roi.build_heatmap_grid(self.cfg)
+            if roi is not None
+            else build_score_heatmap(tiles, config=self.cfg)
+        )
+        all_cells_array = (
+            roi.cells_xyxy_by_type(self.cfg.WBC_cell_type)
+            if roi is not None
+            else _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        )
         if all_cells_array.size == 0:
             print("[INFO] 未在 40x tiles 中找到任何有核细胞。")
             return []
-        self.cell_matrix = _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
+        self.cell_matrix = (
+            roi.build_cell_matrix(self.cfg, all_cells_array=all_cells_array)
+            if roi is not None
+            else _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
+        )
 
         rows, cols = self.cell_matrix.shape
 

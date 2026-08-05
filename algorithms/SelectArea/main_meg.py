@@ -1,6 +1,7 @@
 # main_meg.py
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from project.smear_project import SmearProject
+from project.roi_store import RoiDataset
 
 from dataclasses import dataclass
 from typing import Any, List
@@ -28,7 +30,10 @@ from .pipeline_meg import MegSamplingPipeline
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/巨核拍摄顺序不正确/20260720003/3a341f76f9984792b656d84d952107a3.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.json"
+    roi_path: str | None = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.roi.npz"
+    # 默认优先使用 NPZ；可用 SELECT_AREA_INPUT_SOURCE=json 强制走旧 JSON 路径。
+    input_source: str = "roi"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -228,20 +233,32 @@ def visualize_meg_results(
 # ===================== 主逻辑 =====================
 def main() -> None:
     viz_cfg = VizConfigMeg()
-    json_path = Path(viz_cfg.json_path)
     out_dir = Path(viz_cfg.out_dir)
 
-    # 1. 加载 SmearProject（与 main_wbc 相同入口）
-    project = SmearProject.load_json(str(json_path))
-    print(f"[INFO][MEG] 成功加载项目: {project.smear_type}")
+    # 1. 优先加载预计算 ROI 数据；未配置时保持 JSON 输入方式。
+    project = None
+    roi = None
+    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
+    if input_source == "roi":
+        if not viz_cfg.roi_path:
+            raise ValueError("input_source='roi' 时必须配置 roi_path")
+        roi = RoiDataset.load(viz_cfg.roi_path)
+        smear_type = roi.smear_type
+        print(f"[INFO][MEG] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
+    elif input_source == "json":
+        project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
+        smear_type = project.smear_type
+        print(f"[INFO][MEG] 成功加载项目: {smear_type}")
+    else:
+        raise ValueError(f"不支持的输入来源: {input_source!r}（仅支持 'json' 或 'roi'）")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
     bm_cfg = BM40Config(target_cell_num_MEG=200*3, 
-                        dpi=134912, 
+                        dpi=144750,
                         x100_rect_width=605,
                         x100_rect_height=445,
                         View_type="MEG", 
-                        Smear_type=project.smear_type)
+                        Smear_type=smear_type)
 
     # 3. 从 WBC 选区结果读取视野边界，用于 MEG 排序参考
     wbc_results_path = out_dir / "results.json"
@@ -266,6 +283,7 @@ def main() -> None:
     meg_tasks: List[TaskOutput] = pipeline.run_meg(
         project=project,
         wbc_rects=wbc_rects,
+        roi=roi,
     )
     end_time = time.time()
     print(f"[INFO][MEG] 运行 MEG 采样时间: {end_time - start_time} 秒")

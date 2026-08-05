@@ -1,6 +1,6 @@
 # pipeline_meg.py
 import numpy as np
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 import math
 import sys
 from pathlib import Path
@@ -15,6 +15,9 @@ from .data_structure import TaskOutput
 from .heatmaps import HeatmapGrid, compute_global_bounds_from_tiles
 from .task_region_extraction import build_forbidden_mask
 from .task_meg import generate_meg_view_tasks
+
+if TYPE_CHECKING:
+    from project.roi_store import RoiDataset
 
 
 def _collect_meg_cells_fast(tiles, meg_type: int):
@@ -85,23 +88,27 @@ class MegSamplingPipeline:
 
     def run_meg(
         self,
-        project: SmearProject,
-        wbc_rects: List[List[int]],
+        project: SmearProject | None = None,
+        wbc_rects: List[List[int]] | None = None,
+        *,
+        roi: Optional["RoiDataset"] = None,
     ) -> List[TaskOutput]:
-        # 1. 从项目中提取 40x 扫描层
-        dpi = self.cfg.dpi
-        layer_40x = project.get_layer(dpi)
-        if not layer_40x:
-            print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
-            return []
+        if roi is not None:
+            tiles = roi.tiles
+        else:
+            if project is None:
+                raise ValueError("run_meg() 需要 project 或 roi 之一")
+            layer_40x = project.get_layer(self.cfg.dpi)
+            if not layer_40x:
+                print("[ERROR][MEG] 项目中缺少 40x 扫描层数据")
+                return []
+            tiles = list(layer_40x.tiles.values())
 
-        # 2. 获取该层所有 tiles
-        tiles = list(layer_40x.tiles.values())
         if not tiles:
             print("[ERROR][MEG] 40x 层中没有找到有效的 Tile 数据")
             return []
 
-        if len(wbc_rects) == 0:
+        if not wbc_rects:
             print(
                 "[ERROR][MEG] 未传入任何有核细胞，"
                 "无法计算 MEG 排序参考。"
@@ -115,15 +122,16 @@ class MegSamplingPipeline:
 
         if meg_type is None:
             print("[WARN][MEG] 配置中未设置 MEG_cell_type，将不会找到任何巨核细胞。")
-            all_meg_cells_list = []
+            all_meg_cells_array = np.empty((0, 4), dtype=np.float32)
+        elif roi is not None:
+            all_meg_cells_array = roi.cells_xyxy_by_type(meg_type)
         else:
             all_meg_cells_list = _collect_meg_cells_fast(tiles, meg_type)
+            all_meg_cells_array = np.asarray(all_meg_cells_list, dtype=np.float32)
 
-        if not all_meg_cells_list:
+        if all_meg_cells_array.size == 0:
             print("[INFO][MEG] 未在 40x tiles 中找到任何巨核细胞。")
             return []
-
-        all_meg_cells_array = np.array(all_meg_cells_list, dtype=np.float32)
 
         # 4. 构建 HeatmapGrid（仅依赖 scores，不涉及细胞类型）
         self.grid = _build_lightweight_grid_for_mask(tiles, self.cfg.cell_size)

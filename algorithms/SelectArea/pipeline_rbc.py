@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 
 import sys
 from pathlib import Path
@@ -27,6 +27,9 @@ from .task_wbc import (
     collect_valid_cells_vectorized,
     generate_wbc_view_tasks,
 )
+
+if TYPE_CHECKING:
+    from project.roi_store import RoiDataset
 
 
 def _collect_cells_by_type(tiles, target_type: int) -> np.ndarray:
@@ -80,14 +83,23 @@ class RBCSamplingPipeline:
         self.forbidden_mask = None
         self.user_search_mask = None
 
-    def run(self, project: SmearProject) -> List[TaskOutput]:
-        dpi = self.cfg.dpi
-        layer_40x = project.get_layer(dpi)
-        if not layer_40x:
-            print("[ERROR][RBC] 项目中缺少 40x 扫描层数据")
-            return []
+    def run(
+        self,
+        project: SmearProject | None = None,
+        *,
+        roi: Optional["RoiDataset"] = None,
+    ) -> List[TaskOutput]:
+        if roi is not None:
+            tiles = roi.tiles
+        else:
+            if project is None:
+                raise ValueError("run() 需要 project 或 roi 之一")
+            layer_40x = project.get_layer(self.cfg.dpi)
+            if not layer_40x:
+                print("[ERROR][RBC] 项目中缺少 40x 扫描层数据")
+                return []
+            tiles = list(layer_40x.tiles.values())
 
-        tiles = list(layer_40x.tiles.values())
         if not tiles:
             print("[ERROR][RBC] 40x 层中没有找到有效的 Tile 数据")
             return []
@@ -96,12 +108,24 @@ class RBCSamplingPipeline:
             print(f"[WARNING][RBC] target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，将返回空任务。")
             return []
 
-        self.grid = build_score_heatmap(tiles, config=self.cfg)
-        all_cells_array = _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        self.grid = (
+            roi.build_heatmap_grid(self.cfg)
+            if roi is not None
+            else build_score_heatmap(tiles, config=self.cfg)
+        )
+        all_cells_array = (
+            roi.cells_xyxy_by_type(self.cfg.WBC_cell_type)
+            if roi is not None
+            else _collect_cells_by_type(tiles, self.cfg.WBC_cell_type)
+        )
         if all_cells_array.size == 0:
             print("[INFO][RBC] 未在 40x tiles 中找到任何有核细胞。")
             return []
-        self.cell_matrix = _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
+        self.cell_matrix = (
+            roi.build_cell_matrix(self.cfg, all_cells_array=all_cells_array)
+            if roi is not None
+            else _build_cell_count_grid_from_bounds(all_cells_array, self.grid)
+        )
         rows, cols = self.cell_matrix.shape
 
         self.user_search_mask = None
