@@ -238,27 +238,40 @@ def main() -> None:
     # 1. 优先加载预计算 ROI 数据；未配置时保持 JSON 输入方式。
     project = None
     roi = None
+    input_dpi = 144750
     input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
     if input_source == "roi":
         if not viz_cfg.roi_path:
             raise ValueError("input_source='roi' 时必须配置 roi_path")
         roi = RoiDataset.load(viz_cfg.roi_path)
         smear_type = roi.smear_type
+        if not roi.tiles:
+            raise ValueError("ROI 数据集不含 Tile")
+        first_tile = roi.tiles[0]
+        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][MEG] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     elif input_source == "json":
         project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
         smear_type = project.smear_type
+        layer = project.get_layer(input_dpi)
+        if layer is None or not layer.tiles:
+            raise ValueError(f"项目中缺少 dpi={input_dpi} 的有效 Tile")
+        first_tile = next(iter(layer.tiles.values()))
+        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][MEG] 成功加载项目: {smear_type}")
     else:
         raise ValueError(f"不支持的输入来源: {input_source!r}（仅支持 'json' 或 'roi'）")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
     bm_cfg = BM40Config(target_cell_num_MEG=200*3, 
-                        dpi=144750,
+                        dpi=input_dpi,
                         x100_rect_width=605,
                         x100_rect_height=445,
                         View_type="MEG", 
-                        Smear_type=smear_type)
+                        Smear_type=smear_type,
+                        tile_w=tile_w,
+                        tile_h=tile_h)
+    print(f"[INFO][MEG] 当前 Tile 尺寸: {bm_cfg.tile_w} x {bm_cfg.tile_h}")
 
     # 3. 从 WBC 选区结果读取视野边界，用于 MEG 排序参考
     wbc_results_path = out_dir / "results.json"

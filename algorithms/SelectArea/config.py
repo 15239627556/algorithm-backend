@@ -19,14 +19,12 @@ class BM40Config:
     Smear_type: str = "BM"              # 涂片类型标识（写入 TaskOutput，建议与 project.smear_type 一致）
     view_path_order_mode: str = "band_snake"  # 组内拍摄顺序：band_snake | tsp | scanline
     view_path_band_height: int = 5000  # band_snake 的 Y 方向分带高度（像素）
+    tile_w: int = 2448
+    tile_h: int = 2048
 
 
     # ========内部默认参数 =========
 
-    # --- 硬件与视野参数 ---
-    tile_w: int = field(default=2448, init=False)
-    tile_h: int = field(default=2048, init=False)
-    
     # --- 热力图核心配置 ---
     cell_size: float = field(default=224.0, init=False)               # 热力图每个格子的物理跨度 (单位：像素，需与 Tile 坐标单位一致)
     heatmap_penalty_value: float = field(default=-100.0, init=False)  # 热力图无效区域（无数据覆盖）的默认填充值

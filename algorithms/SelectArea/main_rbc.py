@@ -153,23 +153,36 @@ def main() -> None:
 
     project = None
     roi = None
+    input_dpi = 140750
     if viz_cfg.roi_path:
         roi = RoiDataset.load(viz_cfg.roi_path)
         smear_type = roi.smear_type
+        if not roi.tiles:
+            raise ValueError("ROI 数据集不含 Tile")
+        first_tile = roi.tiles[0]
+        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][RBC] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     else:
         project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
         smear_type = project.smear_type
+        layer = project.get_layer(input_dpi)
+        if layer is None or not layer.tiles:
+            raise ValueError(f"项目中缺少 dpi={input_dpi} 的有效 Tile")
+        first_tile = next(iter(layer.tiles.values()))
+        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][RBC] 成功加载项目: {smear_type}")
 
     # 血片选区仍按有核细胞数量进行选区
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
-                        dpi=140750, 
+                        dpi=input_dpi,
                         x100_rect_width=482,
                         x100_rect_height=403,
                         heatmap_orientation=1,
                         View_type="wbc", 
-                        Smear_type=smear_type)
+                        Smear_type=smear_type,
+                        tile_w=tile_w,
+                        tile_h=tile_h)
+    print(f"[INFO][RBC] 当前 Tile 尺寸: {bm_cfg.tile_w} x {bm_cfg.tile_h}")
     
     import time
     start_time = time.time()
