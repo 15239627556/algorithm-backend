@@ -964,6 +964,8 @@ class TaskService:
             }
         smear_type = (info or {}).get("smear_type")
         dpi = info.get("dpi")
+        tile_w = info.get("tile_width")
+        tile_h = info.get("tile_height")
         heatmap_orientation = info.get('heatmap_orientation', -1)
         if not smear_type:
             smear_type = "BM"
@@ -1063,6 +1065,8 @@ class TaskService:
                 dpi=dpi,
                 View_type="WBC",
                 Smear_type=smear_type,
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
             wbc_tasks = pipeline.run(roi=roi)
@@ -1116,7 +1120,9 @@ class TaskService:
                 heatmap_orientation=heatmap_orientation,
                 dpi=dpi,
                 Smear_type="BM",
-                View_type="MEG"
+                View_type="MEG",
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             bm_cfg.target_cell_num_MEG = required_meg
 
@@ -1162,6 +1168,8 @@ class TaskService:
                 dpi=dpi,
                 View_type="WBC",
                 Smear_type="PB",
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
             wbc_tasks = pipeline.run(roi=roi)
