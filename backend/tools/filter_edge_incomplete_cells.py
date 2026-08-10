@@ -11,6 +11,10 @@
 714756 ±10% 专用（filter_cell_dicts_edge_elongated_1pct）：
 仅对有核(200000-200034)、成熟红(100005)与巨核(100001)：靠边 1% 且 max(w/h,h/w)>=2 → 删除。
 
+714756 ±10% 专用（filter_cell_dicts_small_wbc_714756）：
+仅对有核(200000-200034)：宽、高换算为微米后均 < 6µm → 删除。
+  每像素微米数 = 25.4 / dpi * 1000；框宽(高)微米 = 像素宽(高) * 每像素微米数。
+
 坐标约定与 dedup_cells_across_tiles 一致：cell 为 tile 内局部 xyxy；图像宽 tw、高 th，对应列 0..tw-1、行 0..th-1。
 """
 from __future__ import annotations
@@ -123,7 +127,15 @@ def filter_cell_dicts_edge_incomplete(
 
 # 714756 ±10%：有核(200000-200034)、成熟红(100005)与巨核(100001)的靠边细长框过滤
 _TYPES_714756_EDGE_ELONGATED = frozenset(range(200000, 200035)) | {100005, 100001}
+# 714756 ±10%：有核(200000-200034) 过小框过滤
+_TYPES_714756_WBC = frozenset(range(200000, 200035))
+DEFAULT_MIN_WBC_UM_714756 = 6.0
 DEFAULT_EDGE_RATIO_1PCT = 0.01
+
+
+def um_per_pixel_from_dpi(dpi: int) -> float:
+    """每像素对应的微米数：25.4 / dpi * 1000。"""
+    return 25.4 / float(dpi) * 1000.0
 
 
 def _primary_cell_type_from_dict(d: Dict[str, Any]) -> int | None:
@@ -225,6 +237,64 @@ def filter_cell_dicts_edge_elongated_1pct(
             ih,
             edge_ratio=edge_ratio,
             min_aspect_ratio=min_aspect_ratio,
+        ):
+            out.append(d)
+    return out
+
+
+def cell_should_drop_small_wbc_714756(
+    xmin: int,
+    ymin: int,
+    xmax: int,
+    ymax: int,
+    dpi: int,
+    *,
+    min_um: float = DEFAULT_MIN_WBC_UM_714756,
+) -> bool:
+    """
+    714756 ±10% 有核细胞：框宽、框高换算为微米后均严格小于 min_um 则丢弃。
+    """
+    box_w = int(xmax) - int(xmin)
+    box_h = int(ymax) - int(ymin)
+    if box_w <= 0 or box_h <= 0:
+        return True
+
+    um_px = um_per_pixel_from_dpi(dpi)
+    w_um = float(box_w) * um_px
+    h_um = float(box_h) * um_px
+    return w_um < float(min_um) and h_um < float(min_um)
+
+
+def filter_cell_dicts_small_wbc_714756(
+    cell_list: List[Dict[str, Any]],
+    dpi: int,
+    *,
+    target_types: frozenset = _TYPES_714756_WBC,
+    min_um: float = DEFAULT_MIN_WBC_UM_714756,
+) -> List[Dict[str, Any]]:
+    """
+    714756 ±10%：仅对 target_types（默认有核 200000-200034）过滤过小框。
+    其它类型原样保留；无法解析 bbox 的项原样保留。
+    """
+    out: List[Dict[str, Any]] = []
+    for d in cell_list:
+        if not isinstance(d, dict):
+            out.append(d)
+            continue
+        ct = _primary_cell_type_from_dict(d)
+        if ct is None or ct not in target_types:
+            out.append(d)
+            continue
+        try:
+            xmin = int(d["cell_xmin"])
+            ymin = int(d["cell_ymin"])
+            xmax = int(d["cell_xmax"])
+            ymax = int(d["cell_ymax"])
+        except (KeyError, TypeError, ValueError):
+            out.append(d)
+            continue
+        if not cell_should_drop_small_wbc_714756(
+            xmin, ymin, xmax, ymax, dpi, min_um=min_um
         ):
             out.append(d)
     return out

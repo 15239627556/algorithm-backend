@@ -288,12 +288,13 @@ async def lifespan(_app: FastAPI):
     except Exception:
         app_logger.exception("Failed to configure anyio thread pool size")
 
-    try:
-        from backend.tools.model_control import warmup_pinned_models_at_startup
-
-        warmup_pinned_models_at_startup()
-    except Exception:
-        app_logger.exception("Triton pinned model warmup failed at startup")
+    # 启动预加载暂时关闭，模型按需经 warmup_model / LRU 加载
+    # try:
+    #     from backend.tools.model_control import warmup_pinned_models_at_startup
+    #
+    #     warmup_pinned_models_at_startup()
+    # except Exception:
+    #     app_logger.exception("Triton pinned model warmup failed at startup")
 
     yield
 

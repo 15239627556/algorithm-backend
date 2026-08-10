@@ -28,6 +28,7 @@ from datetime import datetime
 from project.cells import Cell
 from backend.tools.MESSAGE_DICT import CELL_TYPES_X40, CELL_TYPES_X100, CELL_TYPES_MEG, get_counting_cell_type
 from config import next_triton_endpoint, get_triton_endpoint
+from backend.tools.model_control import ensure_model_loaded
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,13 @@ DPI_BASES = (DPI_144750, DPI_357378, DPI_714756)
 DPI_OUT_OF_RANGE_WARNING = "DPI out of valid range (144750/357378/714756 ±10%)"
 TOLERANCE = 0.1
 
-# 模型名称常量：144750 常驻 pipeline 见 config.TRITON_PINNED_PIPELINE_NAME（各组预估显存须与 GROUP_VRAM_GB 一致）
-MODEL_144750 = "DPI147246_BM_PB_pipeline"  # 144750: BM/PB 共用  预估显存占用6G
-MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用3.5G
-MODEL_714756_BM = "DPI714756_BM_PB_pipeline" #  预估显存占用3G
-MODEL_714756_CF = "DPI714756_CF_WBC_pipeline" #  预估显存占用7.5G
+# 模型名称常量（各组预估显存须与 model_control.GROUP_VRAM_GB 一致；357378 为常驻组）
+MODEL_144750 = "DPI147246_BM_PB_pipeline"  # 144750: BM/PB 共用  预估显存占用 3.3G（LRU）
+MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用 0.2G（常驻）
+MODEL_714756_BM = "DPI714756_BM_PB_pipeline"  # 714756: BM/PB  预估显存占用 3.1G（LRU）
+MODEL_714756_CF = "DPI714756_CF_WBC_pipeline"  # 714756: CF  预估显存占用 7.5G（未启用）
 # 图片增强/滤镜 pipeline（x40 超分辨率滤镜深度学习模式）
-MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline" # 预估显存占用3G
+MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"  # 预估显存占用 1.6G（LRU）
 
 # 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756}/infer（multipart）。
 # 双容器轮询：见 config.next_triton_endpoint（gpu0:9000 / gpu1:9010）。
@@ -72,8 +73,6 @@ _PIPELINE_HTTP_POOL_MAXSIZE = int(os.environ.get("PIPELINE_HTTP_POOL_MAXSIZE", "
 _thread_local = threading.local()
 _pool_config_logged = False
 _pool_config_log_lock = threading.Lock()
-_filter_model_ready_lock = threading.Lock()
-_filter_model_ready: set[tuple[int, str]] = set()
 
 
 def _new_pipeline_session() -> requests.Session:
@@ -249,46 +248,20 @@ def _post_filter_pipeline_infer(
 
 def _ensure_filter_model_loaded(endpoint: dict, gpu_id: int, target: str) -> None:
     """
-    推理前在 multi_pipeline 所连 Triton 上加载滤镜模型。
-    对齐 multi_pipeline_server POST /models/load（target=image_enhance → Image_enhance）。
+    推理前经 model_control 加载滤镜模型（参与 LRU，与检测模型共用组数上限）。
     opencv_enhance 纯 CPU，无需加载 Triton 模型。
     """
     if target != "image_enhance":
         return
 
-    cache_key = (gpu_id, target)
-    with _filter_model_ready_lock:
-        if cache_key in _filter_model_ready:
-            return
-
-    base = _normalize_http_url(endpoint.get("pipeline_base_url") or "")
-    url = f"{base.rstrip('/')}/models/load"
-    load_timeout = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
-    resp = _get_pipeline_session().post(
-        url,
-        json={"target": target, "timeout": load_timeout},
-        timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, float(load_timeout) + 30.0),
-    )
-    if resp.status_code >= 400:
-        try:
-            err = resp.json()
-        except ValueError:
-            err = resp.text[:500]
-        raise RuntimeError(f"filter model load HTTP {resp.status_code}: {err}")
-
-    data = resp.json()
-    results = data.get("results") or []
-    failed = [r for r in results if not r.get("ok")]
-    if failed:
-        raise RuntimeError(f"filter model load failed: {failed}")
-
-    with _filter_model_ready_lock:
-        _filter_model_ready.add(cache_key)
+    ok, err = ensure_model_loaded(MODEL_IMAGE_ENHANCE, gpu_id=gpu_id)
+    if not ok:
+        raise RuntimeError(f"filter model load failed on gpu={gpu_id}: {err}")
     logger.info(
-        "filter model loaded via pipeline gpu_id=%s target=%s endpoint=%s",
+        "filter model ensured gpu_id=%s target=%s endpoint=%s",
         gpu_id,
         target,
-        base,
+        _normalize_http_url(endpoint.get("pipeline_base_url") or ""),
     )
 
 
@@ -1177,12 +1150,25 @@ def _get_client(gpu_id: int = 0):
         return client
 
 
+def _resolve_triton_route(gpu_id: Optional[int] = None) -> tuple[int, dict]:
+    """与滤镜路径一致：显式 gpu_id 定点，否则 next_triton_endpoint 轮询单卡。"""
+    if gpu_id is not None:
+        gid = int(gpu_id)
+        return gid, get_triton_endpoint(gid)
+    return next_triton_endpoint()
+
+
+# 供 task_service 等模块在 infer 外做 ensure（与 infer 内路由一致）
+resolve_triton_route = _resolve_triton_route
+
+
 def infer(
     image_bytes: bytes,
     dpi: int,
     smear_type: str = "BM",
     algorithm_types: str = "",
     filename: str = "tile.jpg",
+    gpu_id: Optional[int] = None,
 ) -> dict:
     """
     细胞检测推理，仅根据 DPI 选择模型。单图识别与任务模式均使用此接口。
@@ -1190,7 +1176,8 @@ def infer(
     有效组合见 get_model_by_dpi。返回: {"cells": List[Cell], "scores": List[float] (如有)}
 
     144750 → target 147246；357378 → 357378；714756(BM) → 714756。
-    双容器轮询：每次请求经 next_triton_endpoint 交替发往 gpu0/gpu1 的 multi_pipeline。
+    平扫 upload_image 依赖 create_task 的 warmup_model，不在此做 ensure；百倍见 get_task_result_x100。
+    gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     """
     model, warning = get_model_by_dpi(
         dpi,
@@ -1198,18 +1185,7 @@ def infer(
         algorithm_types=algorithm_types,
         return_warning=True,
     )
-    gpu_id, endpoint = next_triton_endpoint()
-    # logger.debug(
-    #     "infer route gpu_id=%s name=%s pipeline=%s model=%s",
-    #     gpu_id,
-    #     endpoint.get("name"),
-    #     endpoint.get("pipeline_base_url"),
-    #     model,
-    # )
-    # ok, err = ensure_model_loaded(model, gpu_id=gpu_id)
-    # if not ok:
-    #     Error = f"Error: Model {model} load failed on gpu={gpu_id}: {err}"
-    #     raise RuntimeError(Error)
+    gpu_id, endpoint = _resolve_triton_route(gpu_id)
     if model == MODEL_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
@@ -1265,7 +1241,7 @@ def infer(
 def infer_image_enhance(image_bytes: bytes) -> tuple[bytes, str]:
     """
     x40 深度学习滤镜：multi_pipeline_server POST /image_enhance/infer（裸流）。
-    推理前先经同实例 POST /models/load 确保 Image_enhance 已在 Triton READY。
+    推理前先 ensure_model_loaded(Image_enhance_pipeline)，与检测模型共用 LRU。
     """
     gpu_id, endpoint = next_triton_endpoint()
     _ensure_filter_model_loaded(endpoint, gpu_id, "image_enhance")
