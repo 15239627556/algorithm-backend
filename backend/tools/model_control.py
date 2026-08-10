@@ -29,7 +29,6 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
             "DPI147246_BM_PB_WBC_cell_detection",
             "DPI147246_BM_PB_MEG_cell_detection",
             "DPI147246_BM_PB_constituency_score",
-            "DPI147246_BM_PB_cell_analysis",
         ],
     ),
     "DPI357378_BM_MEG_pipeline": (

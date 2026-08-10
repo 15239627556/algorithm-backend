@@ -109,5 +109,5 @@ FLASK_PORT = APP_PORT
 
 THREAD_POOL_SIZE = int(os.environ.get("THREAD_POOL_SIZE", "256"))
 
-sufa_version = "v41"
+sufa_version = "v42"
 is_doc = True
