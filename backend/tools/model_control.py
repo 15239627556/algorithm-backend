@@ -257,6 +257,49 @@ def _mutex_groups_to_evict(group_key: str, loaded_groups: set) -> set:
     return evict
 
 
+def _mutex_partner_keys(group_key: str) -> set:
+    partners: set = set()
+    for pair in MUTEX_GROUP_KEYS:
+        if group_key in pair:
+            partners |= set(pair) - {group_key}
+    return partners
+
+
+def _group_fully_loaded_on_triton(models: List[str], actually_loaded: set) -> bool:
+    return all(m in actually_loaded for m in models)
+
+
+def _evict_mutex_partners_for_load(
+    group_key: str,
+    gid: int,
+    *,
+    loaded_groups: set,
+    ready_groups: set,
+    last_used: Dict[str, float],
+    reason: str,
+) -> None:
+    """加载 group_key 前：卸载 Triton 上的互斥组，并清除仅存在于 ready 缓存的互斥组标记。"""
+    for partner in sorted(_mutex_partner_keys(group_key)):
+        if partner in loaded_groups:
+            _evict_group_on_gpu(
+                partner,
+                gid,
+                ready_groups=ready_groups,
+                last_used=last_used,
+                loaded_groups=loaded_groups,
+                reason=reason,
+            )
+        elif partner in ready_groups:
+            logger.info(
+                "Clearing stale ready cache for mutex group %s on gpu=%s (loading %s)",
+                partner,
+                gid,
+                group_key,
+            )
+            ready_groups.discard(partner)
+            last_used.pop(partner, None)
+
+
 def _models_for_group_key(group_key: str) -> List[str] | None:
     for _pn, (gk, ms) in MODEL_GROUPS.items():
         if gk == group_key:
@@ -319,19 +362,27 @@ def ensure_model_loaded(
     group_key, models = group_info
     now = time.time()
 
-    # 热路径：启动预热/先前 load 已确认 READY → 不打 Triton HTTP、几乎无串行
-    with _model_lock:
-        if group_key in _ready_groups_by_gpu.get(gid, ()):
-            last_used = _group_last_used_by_gpu.setdefault(gid, {})
-            last_used[group_key] = now
-            return True, ""
-
     with _model_lock:
         last_used = _group_last_used_by_gpu.setdefault(gid, {})
         ready_groups = _ready_groups_by_gpu.setdefault(gid, set())
+
+        # 热路径：ready 缓存命中且 Triton 上子模型齐全、无互斥组占用时才跳过 load
         if group_key in ready_groups:
-            last_used[group_key] = now
-            return True, ""
+            actually_loaded = set(get_loaded_models(gpu_id=gid))
+            loaded_groups = _get_loaded_group_keys(actually_loaded)
+            if (
+                _group_fully_loaded_on_triton(models, actually_loaded)
+                and not _mutex_groups_to_evict(group_key, loaded_groups)
+            ):
+                last_used[group_key] = now
+                return True, ""
+            logger.info(
+                "Stale ready cache for group %s on gpu=%s; reloading",
+                group_key,
+                gid,
+            )
+            ready_groups.discard(group_key)
+            last_used.pop(group_key, None)
 
         actually_loaded = set(get_loaded_models(gpu_id=gid))
 
@@ -344,15 +395,14 @@ def ensure_model_loaded(
         budget = _effective_vram_budget_gb()
         new_gb = _group_vram_gb(group_key)
 
-        for mutex_gk in sorted(_mutex_groups_to_evict(group_key, loaded_groups)):
-            _evict_group_on_gpu(
-                mutex_gk,
-                gid,
-                ready_groups=ready_groups,
-                last_used=last_used,
-                loaded_groups=loaded_groups,
-                reason=f"mutex with {group_key}",
-            )
+        _evict_mutex_partners_for_load(
+            group_key,
+            gid,
+            loaded_groups=loaded_groups,
+            ready_groups=ready_groups,
+            last_used=last_used,
+            reason=f"mutex with {group_key}",
+        )
         actually_loaded = set(get_loaded_models(gpu_id=gid))
         loaded_groups = _get_loaded_group_keys(actually_loaded)
 
