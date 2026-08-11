@@ -565,14 +565,13 @@ class TaskService:
         os.makedirs(_task_tiles_dir(task_id), exist_ok=True)
         _save_task_info(task_id, task_info)
 
-        model_name, model_warning = get_model_by_dpi(
+        # 40 倍平扫：创建时经 ensure_model_loaded 预热全部 Triton 端点（互斥/LRU）
+        model_name, model_warning = warmup_model(
             dpi,
             smear_type=task_info.get('smear_type', 'BM'),
             algorithm_types=task_info.get('target_cell_types', ''),
-            return_warning=True,
+            all_gpus=True,
         )
-        # 40 倍平扫任务串行：创建时预热 config 中全部 Triton 端点，减少首张 tile 冷启动
-        warmup_model(model_name, all_gpus=True)
         warning = err or model_warning
         if warning:
             logger.warning("创建任务 DPI 告警：%s, dpi=%s, model=%s", warning, dpi, model_name)

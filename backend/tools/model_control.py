@@ -466,16 +466,27 @@ def warmup_pinned_models_at_startup() -> None:
 
 
 def warmup_model(
-    model_name: str,
-    gpu_id: Optional[int] = None,
+    dpi: int,
+    smear_type: str = "BM",
+    algorithm_types: str = "",
     *,
+    gpu_id: Optional[int] = None,
     all_gpus: bool = False,
-) -> None:
+) -> Tuple[str, Optional[str]]:
     """
-    预热模型。
-    - all_gpus=True：预热 config.TRITON_ENDPOINTS 全部端点（平扫 create_task 串行场景）。
-    - 否则：未指定 gpu_id 时经 next_triton_endpoint 轮询单卡（与 infer 一致）。
+    预热模型：get_model_by_dpi + ensure_model_loaded（互斥/LRU，与 get_task_result_x100 一致）。
+    - all_gpus=True：预热 TRITON_ENDPOINTS 全部端点（平扫 create_task 串行场景）。
+    - 否则：显式 gpu_id 定点，未指定时经 next_triton_endpoint 轮询单卡（与 infer 一致）。
+    返回 (model_name, dpi_warning)。
     """
+    from backend.tools.triton_client import get_model_by_dpi
+
+    model_name, warning = get_model_by_dpi(
+        int(dpi),
+        smear_type=smear_type,
+        algorithm_types=algorithm_types,
+        return_warning=True,
+    )
     targets = _warmup_gpu_targets(gpu_id, all_gpus=all_gpus)
     for gid in targets:
         ok, msg = ensure_model_loaded(model_name, gpu_id=gid)
@@ -489,3 +500,4 @@ def warmup_model(
                 gid,
                 ep.get("name"),
             )
+    return model_name, warning

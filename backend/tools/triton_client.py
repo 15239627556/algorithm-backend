@@ -1176,7 +1176,7 @@ def infer(
     有效组合见 get_model_by_dpi。返回: {"cells": List[Cell], "scores": List[float] (如有)}
 
     144750 → target 147246；357378 → 357378；714756(BM) → 714756。
-    平扫 upload_image 依赖 create_task 的 warmup_model，不在此做 ensure；百倍见 get_task_result_x100。
+    平扫 upload_image 依赖 create_task 的 warmup_model（ensure_model_loaded + 互斥/LRU），不在此做 ensure；百倍见 get_task_result_x100。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     """
     model, warning = get_model_by_dpi(
