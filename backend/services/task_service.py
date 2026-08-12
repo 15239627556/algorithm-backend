@@ -18,6 +18,7 @@ from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_incomplete,
     filter_cell_dicts_edge_elongated_1pct,
+    filter_cell_dicts_small_wbc_714756,
     filter_edge_incomplete_cells,
 )
 from PIL import Image
@@ -25,8 +26,8 @@ from PIL import Image
 from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
-from backend.tools.triton_client import infer, get_model_by_dpi
-from backend.tools.model_control import warmup_model
+from backend.tools.triton_client import infer, get_model_by_dpi, resolve_triton_route
+from backend.tools.model_control import warmup_model, ensure_model_loaded
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
@@ -564,13 +565,13 @@ class TaskService:
         os.makedirs(_task_tiles_dir(task_id), exist_ok=True)
         _save_task_info(task_id, task_info)
 
-        model_name, model_warning = get_model_by_dpi(
+        # 40 倍平扫：创建时经 ensure_model_loaded 预热全部 Triton 端点（互斥/LRU）
+        model_name, model_warning = warmup_model(
             dpi,
             smear_type=task_info.get('smear_type', 'BM'),
             algorithm_types=task_info.get('target_cell_types', ''),
-            return_warning=True,
+            all_gpus=True,
         )
-        warmup_model(model_name)
         warning = err or model_warning
         if warning:
             logger.warning("创建任务 DPI 告警：%s, dpi=%s, model=%s", warning, dpi, model_name)
@@ -964,6 +965,8 @@ class TaskService:
             }
         smear_type = (info or {}).get("smear_type")
         dpi = info.get("dpi")
+        tile_w = info.get("tile_width")
+        tile_h = info.get("tile_height")
         heatmap_orientation = info.get('heatmap_orientation', -1)
         if not smear_type:
             smear_type = "BM"
@@ -1063,6 +1066,8 @@ class TaskService:
                 dpi=dpi,
                 View_type="WBC",
                 Smear_type=smear_type,
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
             wbc_tasks = pipeline.run(roi=roi)
@@ -1116,7 +1121,9 @@ class TaskService:
                 heatmap_orientation=heatmap_orientation,
                 dpi=dpi,
                 Smear_type="BM",
-                View_type="MEG"
+                View_type="MEG",
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             bm_cfg.target_cell_num_MEG = required_meg
 
@@ -1162,6 +1169,8 @@ class TaskService:
                 dpi=dpi,
                 View_type="WBC",
                 Smear_type="PB",
+                tile_w=tile_w,
+                tile_h=tile_h,
             )
             pipeline = WBCSamplingPipeline(bm_cfg)
             wbc_tasks = pipeline.run(roi=roi)
@@ -1289,8 +1298,16 @@ class TaskService:
             algorithm_types=target_cell_types or "",
             return_warning=True,
         )
-        warmup_model(model_name)
         warning = warning or model_warning
+
+        gpu_id, _ = resolve_triton_route()
+        ok, load_err = ensure_model_loaded(model_name, gpu_id=gpu_id)
+        if not ok:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": load_err,
+                "reason": load_err,
+            }
 
         try:
             result = infer(
@@ -1299,6 +1316,7 @@ class TaskService:
                 smear_type=smear_type,
                 algorithm_types=target_cell_types or "",
                 filename=image_file.filename,
+                gpu_id=gpu_id,
             )
         except Exception as e:
             logger.exception("Triton infer failed: %s", e)
@@ -1321,6 +1339,7 @@ class TaskService:
             } for c in cells]
         # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能；
         # 但对有核(200000-200034)/成熟红(100005)/巨核(100001)：靠边1%且 max(w/h,h/w)>=2 则删除
+        # 对有核(200000-200034)：宽、高均 < 6µm 则删除
         if dpi_bucket == 714756:
             edge_cell_filter = False
             if cell_list:
@@ -1333,9 +1352,12 @@ class TaskService:
                     cell_list = filter_cell_dicts_edge_elongated_1pct(
                         cell_list, tw_img, th_img
                     )
+                    cell_list = filter_cell_dicts_small_wbc_714756(
+                        cell_list, int(dpi)
+                    )
                 except Exception as e:
                     logger.warning(
-                        "get_task_result_x100: edge_elongated_1pct filter skipped: %s",
+                        "get_task_result_x100: 714756 cell filter skipped: %s",
                         e,
                     )
         if edge_cell_filter and cell_list:
