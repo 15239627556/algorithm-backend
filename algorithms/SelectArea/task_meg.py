@@ -6,6 +6,57 @@ from .data_structure import TaskOutput, CellOutput
 from .setcover import solve, SetCoverSolverParameter, expand_rect_to_nominal_bounds
 
 
+def _task_center_xy(task: TaskOutput) -> tuple[float, float]:
+    return (
+        (task.view_xmin + task.view_xmax) * 0.5,
+        (task.view_ymin + task.view_ymax) * 0.5,
+    )
+
+
+def _order_tasks_nn_chain(tasks: List[TaskOutput]) -> List[TaskOutput]:
+    """批内：以列表第一个为起点，再按最近邻依次挂接其余视野。"""
+    if len(tasks) <= 2:
+        return list(tasks)
+
+    centers = np.asarray([_task_center_xy(t) for t in tasks], dtype=np.float64)
+    n = len(tasks)
+    order: List[int] = [0]
+    unvisited = set(range(1, n))
+    current = 0
+
+    while unvisited:
+        cx, cy = centers[current]
+        nxt = min(
+            unvisited,
+            key=lambda j: (centers[j, 0] - cx) ** 2 + (centers[j, 1] - cy) ** 2,
+        )
+        order.append(nxt)
+        unvisited.remove(nxt)
+        current = nxt
+
+    return [tasks[i] for i in order]
+
+
+def order_meg_tasks_by_wbc_then_nn(
+    tasks: List[TaskOutput],
+    group_size: int = 30,
+) -> List[TaskOutput]:
+    """
+    二次路径排序（输入 tasks 须已按距 WBC 中心由近到远排好）：
+    按 group_size 切分为 M 组；每组保留组内第一个（距 WBC 更近）为拍摄起点，
+    其余按“离当前已拍视野最近”逐个挂接，再按组顺序串成整条路径。
+    """
+    if not tasks:
+        return tasks
+
+    n = max(int(group_size), 1)
+    ordered: List[TaskOutput] = []
+    for start in range(0, len(tasks), n):
+        batch = tasks[start : start + n]
+        ordered.extend(_order_tasks_nn_chain(batch))
+    return ordered
+
+
 def generate_meg_view_tasks(
     meg_cell_bounds: np.ndarray,            # 过滤后的有效 MEG 细胞 (N, 4) [xmin, ymin, xmax, ymax]
     config: BM40Config,
@@ -15,10 +66,11 @@ def generate_meg_view_tasks(
     """
     生成巨核细胞视野任务：
     1）对巨核细胞做 set-cover 得到候选视野；
-    2）根据传入的 wbc_rects 计算一个 WBC 中心点；
-    3）按视野中心到 WBC 中心的距离排序；
+    2）根据传入的 wbc_rects 计算一个 WBC 中心点，用于候选近优先与路径起点；
+    3）按视野中心到 WBC 中心的距离排序后做覆盖贪心；
     4）按 config.target_cell_num_MEG 截断视野数量；
-    5）返回 TaskOutput 列表（view_type 可用 'MEG' 标记）。
+    5）二次路径：在 WBC 近远序上每 N 个一组做最近邻链式排序；
+    6）返回 TaskOutput 列表（view_type 可用 'MEG' 标记）。
     """
     if meg_cell_bounds.size == 0:
         print("警告：无有效巨核细胞，无法生成 MEG 任务。")
@@ -135,9 +187,8 @@ def generate_meg_view_tasks(
         print("警告：在候选视野中未能覆盖任何新的巨核细胞。")
         return []
 
-    # 7. 构造 TaskOutput 列表（不再区分 Initial/Extra，统一 region_name='MEG'）
+    # 7. 构造 TaskOutput 列表（此时顺序 = 距 WBC 中心由近到远）
     meg_tasks: List[TaskOutput] = []
-    global_counter = 1
 
     for rx, ry, rw, rh, matched_idx_new in selected_rects:
         view_xmin, view_ymin, view_xmax, view_ymax = expand_rect_to_nominal_bounds(
@@ -161,17 +212,22 @@ def generate_meg_view_tasks(
                 )
 
         task_obj = TaskOutput(
-            task_index=global_counter,
-            view_type=config.View_type,             
+            task_index=0,  # 路径排序后再编号
+            view_type=config.View_type,
             smear_type=config.Smear_type,
             view_xmin=view_xmin,
             view_ymin=view_ymin,
             view_xmax=view_xmax,
             view_ymax=view_ymax,
-            region_name=config.View_type,          
+            region_name=config.View_type,
             cell_list=current_cell_outputs,
         )
         meg_tasks.append(task_obj)
-        global_counter += 1
+
+    # 8. 二次路径：WBC 近远序上按批做最近邻链（组间仍保持近→远）
+    group_size = int(getattr(config, "meg_path_group_size", 30) or 30)
+    meg_tasks = order_meg_tasks_by_wbc_then_nn(meg_tasks, group_size=group_size)
+    for i, task in enumerate(meg_tasks, start=1):
+        task.task_index = i
 
     return meg_tasks

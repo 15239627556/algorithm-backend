@@ -19,6 +19,7 @@ class BM40Config:
     Smear_type: str = "BM"              # 涂片类型标识（写入 TaskOutput，建议与 project.smear_type 一致）
     view_path_order_mode: str = "band_snake"  # 组内拍摄顺序：band_snake | tsp | scanline
     view_path_band_height: int = 5000  # band_snake 的 Y 方向分带高度（像素）
+    meg_path_group_size: int = 30  # MEG：按距 WBC 近远分批后，每批内最近邻链式排序的批大小
     tile_w: int = 2448
     tile_h: int = 2048
 
