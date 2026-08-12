@@ -5,10 +5,10 @@ from io import BytesIO
 import time
 import uuid
 import logging
-from dataclasses import replace
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+import numpy as np
 import orjson
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
@@ -27,6 +27,12 @@ from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
 from backend.tools.triton_client import infer, get_model_by_dpi, resolve_triton_route
+from backend.tools.x100_image_infer import (
+    infer_x100_on_bgr,
+    map_cell_list_from_scaled,
+    map_cells_from_scaled,
+    prepare_x100_bgr,
+)
 from backend.tools.model_control import warmup_model, ensure_model_loaded
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
@@ -251,80 +257,6 @@ def _parse_edge_cell_filter_flag(value) -> bool:
     if s in ("0", "false", "no", "off", ""):
         return False
     return True
-
-
-def _shrink_image_half_pad_black(image_bytes: bytes) -> bytes:
-    """缩小 50% 后居中贴回，其余区域用黑色填充，保持原始画布尺寸；输出 JPEG bytes。"""
-    with Image.open(BytesIO(image_bytes)) as im:
-        im_rgb = im.convert("RGB")
-        orig_w, orig_h = im_rgb.size
-        small = im_rgb.resize((orig_w // 2, orig_h // 2), Image.Resampling.LANCZOS)
-        canvas = Image.new("RGB", (orig_w, orig_h), (0, 0, 0))
-        canvas.paste(small, ((orig_w - small.width) // 2, (orig_h - small.height) // 2))
-        buf = BytesIO()
-        canvas.save(buf, format="JPEG")
-        return buf.getvalue()
-
-
-def _shrink_canvas_offsets(orig_w: int, orig_h: int) -> tuple[int, int]:
-    small_w, small_h = orig_w // 2, orig_h // 2
-    return (orig_w - small_w) // 2, (orig_h - small_h) // 2
-
-
-def _map_bbox_from_shrink_canvas(
-    xmin: int | float,
-    ymin: int | float,
-    xmax: int | float,
-    ymax: int | float,
-    orig_w: int,
-    orig_h: int,
-) -> tuple[int, int, int, int]:
-    """居中缩小画布上的检测框 → 缩放前原图坐标。"""
-    ox, oy = _shrink_canvas_offsets(orig_w, orig_h)
-    return (
-        max(0, int(round((xmin - ox) * 2))),
-        max(0, int(round((ymin - oy) * 2))),
-        max(0, int(round((xmax - ox) * 2))),
-        max(0, int(round((ymax - oy) * 2))),
-    )
-
-
-def _map_cell_list_from_shrink_canvas(
-    cell_list: list[dict[str, Any]],
-    orig_w: int,
-    orig_h: int,
-) -> list[dict[str, Any]]:
-    mapped: list[dict[str, Any]] = []
-    for item in cell_list:
-        xmin, ymin, xmax, ymax = _map_bbox_from_shrink_canvas(
-            item["cell_xmin"], item["cell_ymin"], item["cell_xmax"], item["cell_ymax"],
-            orig_w, orig_h,
-        )
-        new_item = dict(item)
-        new_item["cell_xmin"] = xmin
-        new_item["cell_ymin"] = ymin
-        new_item["cell_xmax"] = xmax
-        new_item["cell_ymax"] = ymax
-        mapped.append(new_item)
-    return mapped
-
-
-def _map_cells_from_shrink_canvas(cells: list[Cell], orig_w: int, orig_h: int) -> list[Cell]:
-    mapped: list[Cell] = []
-    for c in cells:
-        xmin, ymin, xmax, ymax = _map_bbox_from_shrink_canvas(
-            c.cell_xmin, c.cell_ymin, c.cell_xmax, c.cell_ymax,
-            orig_w, orig_h,
-        )
-        mapped.append(replace(
-            c,
-            cell_xmin=xmin,
-            cell_ymin=ymin,
-            cell_xmax=xmax,
-            cell_ymax=ymax,
-        ))
-    return mapped
-
 
 
 def _task_project_path(task_id: str) -> str:
@@ -1270,7 +1202,6 @@ class TaskService:
         - 任务模式：task_id + position 必填，结果保存到项目
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
-        # logger.info("get_task_result_x100 task_id=%s, image_file=%s, target_cell_types=%s, dpi=%s, edge_cell_filter=%s, smear_type=%s, position_xmin=%s, position_ymin=%s, position_xmax=%s, position_ymax=%s", task_id, image_file, target_cell_types, dpi, edge_cell_filter, smear_type, position_xmin, position_ymin, position_xmax, position_ymax)
         image_bytes = image_file.read()
         edge_cell_filter = _parse_edge_cell_filter_flag(edge_cell_filter)
 
@@ -1281,16 +1212,6 @@ class TaskService:
                 "ret_desc": err,
                 "reason": err,
             }
-        # 714756 ±10% 且含 MEG：缩小 50%，黑色填充回原尺寸后再推理
-        dpi_bucket, _ = _get_dpi_bucket(int(dpi))
-        meg_shrink_applied = False
-        orig_w, orig_h = 0, 0
-        if dpi_bucket == 714756 and "MEG" in _parse_cell_types(target_cell_types or ""):
-            with Image.open(BytesIO(image_bytes)) as im:
-                orig_w, orig_h = im.size
-            image_bytes = _shrink_image_half_pad_black(image_bytes)
-            meg_shrink_applied = True
-        warning = err
 
         model_name, model_warning = get_model_by_dpi(
             int(dpi),
@@ -1298,7 +1219,22 @@ class TaskService:
             algorithm_types=target_cell_types or "",
             return_warning=True,
         )
-        warning = warning or model_warning
+        warning = err or model_warning
+
+        input_dpi = int(dpi)
+        try:
+            bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h = prepare_x100_bgr(
+                image_bytes, input_dpi, model_name,
+            )
+        except ValueError as e:
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": str(e),
+                "reason": str(e),
+            }
+
+        infer_dpi = model_dpi if scale_ratio != 1.0 else input_dpi
+        dpi_bucket, _ = _get_dpi_bucket(input_dpi)
 
         gpu_id, _ = resolve_triton_route()
         ok, load_err = ensure_model_loaded(model_name, gpu_id=gpu_id)
@@ -1310,13 +1246,15 @@ class TaskService:
             }
 
         try:
-            result = infer(
-                image_bytes,
-                dpi=int(dpi),
+            result = infer_x100_on_bgr(
+                bgr,
+                infer_dpi=infer_dpi,
                 smear_type=smear_type,
-                algorithm_types=target_cell_types or "",
+                target_cell_types=target_cell_types or "",
                 filename=image_file.filename,
                 gpu_id=gpu_id,
+                max_w=max_w,
+                max_h=max_h,
             )
         except Exception as e:
             logger.exception("Triton infer failed: %s", e)
@@ -1325,11 +1263,13 @@ class TaskService:
                 "ret_desc": str(e),
                 "reason": str(e),
             }
+
+        warning = warning or result.get("warning")
         cells = result.get("cells", [])
         cell_list = result.get("cell_list", [])
-        if meg_shrink_applied:
-            cells = _map_cells_from_shrink_canvas(cells, orig_w, orig_h)
-            cell_list = _map_cell_list_from_shrink_canvas(cell_list, orig_w, orig_h)
+        if scale_ratio != 1.0:
+            cells = map_cells_from_scaled(cells, scale_ratio)
+            cell_list = map_cell_list_from_scaled(cell_list, scale_ratio)
         if not cell_list and cells:
             cell_list = [{
                 'cell_xmin': c.cell_xmin, 'cell_ymin': c.cell_ymin,
@@ -1337,23 +1277,15 @@ class TaskService:
                 'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
                           'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
             } for c in cells]
-        # 当DPI为714756 ±10%的时候不过滤边缘细胞，因为模型自带过滤功能；
-        # 但对有核(200000-200034)/成熟红(100005)/巨核(100001)：靠边1%且 max(w/h,h/w)>=2 则删除
-        # 对有核(200000-200034)：宽、高均 < 6µm 则删除
         if dpi_bucket == 714756:
             edge_cell_filter = False
             if cell_list:
                 try:
-                    if meg_shrink_applied and orig_w > 0 and orig_h > 0:
-                        tw_img, th_img = orig_w, orig_h
-                    else:
-                        with Image.open(BytesIO(image_bytes)) as im:
-                            tw_img, th_img = im.size
                     cell_list = filter_cell_dicts_edge_elongated_1pct(
-                        cell_list, tw_img, th_img
+                        cell_list, orig_w, orig_h
                     )
                     cell_list = filter_cell_dicts_small_wbc_714756(
-                        cell_list, int(dpi)
+                        cell_list, input_dpi
                     )
                 except Exception as e:
                     logger.warning(
@@ -1362,10 +1294,8 @@ class TaskService:
                     )
         if edge_cell_filter and cell_list:
             try:
-                with Image.open(BytesIO(image_bytes)) as im:
-                    tw_img, th_img = im.size
                 cell_list = filter_cell_dicts_edge_incomplete(
-                    cell_list, tw_img, th_img
+                    cell_list, orig_w, orig_h
                 )
             except Exception as e:
                 logger.warning(
