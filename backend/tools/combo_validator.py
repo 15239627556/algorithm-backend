@@ -2,35 +2,48 @@
 """DPI + smear_type + target_cell_types 有效组合校验"""
 from __future__ import annotations
 
-# 有效组合: (dpi_base, smear_type) -> 允许的 target_cell_types 集合
-# dpi 匹配 ±10%: 144750(130275-159225), 357378(321640-393116), 714756(643280-786232)
-VALID_DPI_BASES = (144750, 357378, 714756)
-DPI_OUT_OF_RANGE_WARNING = "DPI out of valid range (144750/357378/714756 ±10%)"
+# BM/PB DPI ±10%: 144750(130275-159225), 357378(321640-393116), 714756(643280-786232)
+# CF DPI ±10%: 35000(31500-38500), 71000(63900-78100)
+BM_PB_DPI_BASES = (144750, 357378, 714756)
+CF_DPI_BASES = (35000, 71000)
+VALID_DPI_BASES = BM_PB_DPI_BASES  # 兼容旧引用
+DPI_35000 = 35000
+DPI_71000 = 71000
+DPI_OUT_OF_RANGE_WARNING_BM_PB = "DPI out of valid range (144750/357378/714756 ±10%)"
+DPI_OUT_OF_RANGE_WARNING_CF = "DPI out of valid range (35000/71000 ±10%)"
 VALID_COMBINATIONS = {
     (144750, "BM"): {"WBC", "MEG"},
     (144750, "PB"): {"WBC", "RBC"},
     (357378, "BM"): {"WBC", "MEG"},
     (357378, "PB"): {"WBC", "RBC"},
-    (714756, "BM"): {"WBC", "RBC", "MEG","PLAT"},
-    (714756, "PB"): {"WBC", "RBC", "MEG","PLAT"},
-    (714756, "CF"): {"WBC"},
+    (714756, "BM"): {"WBC", "RBC", "MEG", "PLAT"},
+    (714756, "PB"): {"WBC", "RBC", "MEG", "PLAT"},
+    (35000, "CF"): {"WBC"},
+    (71000, "CF"): {"WBC"},
 }
 TOLERANCE = 0.1
 
-# 遗留倍率 -> DPI
+# 遗留倍率 -> DPI（仅 BM/PB）
 LEGACY_DPI_MAP = {40: 144750, 50: 357378, 100: 714756}
 
 
-def _get_dpi_bucket(dpi: int) -> tuple[int, str | None]:
-    """根据 DPI 返回所属 bucket；超出范围时返回最近 bucket 和告警。"""
-    if dpi in LEGACY_DPI_MAP:
-        return LEGACY_DPI_MAP[dpi], None
-    for base in VALID_DPI_BASES:
+def _get_dpi_bucket(dpi: int, smear_type: str | None = None) -> tuple[int, str | None]:
+    """根据 DPI 与涂片类型返回所属 bucket；超出范围时返回最近 bucket 和告警。"""
+    st = (smear_type or "").strip().upper()
+    if st == "CF":
+        bases = CF_DPI_BASES
+        warning_msg = DPI_OUT_OF_RANGE_WARNING_CF
+    else:
+        bases = BM_PB_DPI_BASES
+        warning_msg = DPI_OUT_OF_RANGE_WARNING_BM_PB
+        if dpi in LEGACY_DPI_MAP:
+            return LEGACY_DPI_MAP[dpi], None
+    for base in bases:
         low = int(base * (1 - TOLERANCE))
         high = int(base * (1 + TOLERANCE))
         if low <= dpi <= high:
             return base, None
-    return min(VALID_DPI_BASES, key=lambda base: abs(dpi - base)), DPI_OUT_OF_RANGE_WARNING
+    return min(bases, key=lambda base: abs(dpi - base)), warning_msg
 
 
 def _parse_cell_types(s: str) -> set[str]:
@@ -64,9 +77,9 @@ def validate_combo(
     返回 (True, None)、(True, "告警描述") 或 (False, "错误描述")。
     allow_empty_types: create_task 时 target_cell_types 可为空，后续 upload 再校验。
     """
-    bucket, warning = _get_dpi_bucket(dpi)
-
     st = (smear_type or "BM").strip().upper()
+    bucket, warning = _get_dpi_bucket(dpi, smear_type=st)
+
     key = (bucket, st)
     if key not in VALID_COMBINATIONS:
         valid_st = sorted({k[1] for k in VALID_COMBINATIONS if k[0] == bucket})
@@ -79,6 +92,9 @@ def validate_combo(
     allowed = VALID_COMBINATIONS[key]
     invalid = requested - allowed
     if invalid:
-        return False, f"Invalid combo: DPI={bucket} smear_type={st} target_cell_types must be subset of {sorted(allowed)}, got invalid {sorted(invalid)}"
+        return False, (
+            f"Invalid combo: DPI={bucket} smear_type={st} target_cell_types must be "
+            f"subset of {sorted(allowed)}, got invalid {sorted(invalid)}"
+        )
 
     return True, warning

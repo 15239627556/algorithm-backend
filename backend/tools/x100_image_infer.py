@@ -19,7 +19,8 @@ from backend.tools.triton_client import (
     MODEL_144750,
     MODEL_357378,
     MODEL_714756_BM,
-    MODEL_714756_CF,
+    MODEL_35000_CF,
+    MODEL_71000_CF,
     infer,
 )
 from project.cells import Cell
@@ -32,7 +33,8 @@ _MODEL_TILE_LIMITS: dict[str, tuple[int, int]] = {
     MODEL_144750: (3200, 2200),
     MODEL_357378: (2448, 2048),
     MODEL_714756_BM: (4896, 4096),
-    MODEL_714756_CF: (4896, 4096),
+    MODEL_35000_CF: (2448, 2048),
+    MODEL_71000_CF: (4896, 4096),
 }
 
 

@@ -38,13 +38,18 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
             "DPI357378_BM_MEG_cell_classifier",
         ],
     ),
-    # "DPI714756_CF_WBC_pipeline": (
-    #     "DPI714756_CF",
-    #     [
-            # "DPI714756_CF_WBC_cell_detector",
-            # "DPI714756_CF_WBC_cell_classifier",
-    #     ],
-    # ),
+    "DPI35000_CF_WBC_pipeline": (
+        "DPI35000_CF",
+        [
+            "DPI35000_CSF_cell_detection",
+        ],
+    ),
+    "DPI71000_CF_WBC_pipeline": (
+        "DPI71000_CF",
+        [
+            "DPI71000_CSF_cell_detection",
+        ],
+    ),
     "DPI714756_BM_PB_pipeline": (
         "DPI714756_BM_PB",
         [
@@ -84,7 +89,8 @@ PINNED_GROUP_KEYS: FrozenSet[str] = _pinned_group_keys()
 GROUP_VRAM_GB: Dict[str, float] = {
     "DPI147246_BM_PB": 3.3,
     "DPI357378_BM_MEG": 0.2,
-    # "DPI714756_CF": 7.5,
+    "DPI35000_CF": 2.2,
+    "DPI71000_CF": 2.2,
     "DPI714756_BM_PB": 3.1,
     "Image_enhance": 1.6,
 }
@@ -101,9 +107,14 @@ TRITON_GPU_VRAM_GB = float(os.environ.get("TRITON_GPU_VRAM_GB", "11"))
 TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "3"))
 # 每张 GPU 显存中最多同时保留的模型组数（含常驻组；超限时 LRU 淘汰最久未用非常驻组）
 MAX_LOADED_MODEL_GROUPS = int(os.environ.get("TRITON_MAX_LOADED_MODEL_GROUPS", "2"))
-# 互斥组：同 GPU 上不可共存，加载一侧时强制卸载另一侧
+# 互斥组：同 GPU 上不可共存，加载一侧时强制卸载同组其余模型
 MUTEX_GROUP_KEYS: Tuple[FrozenSet[str], ...] = (
-    frozenset({"DPI147246_BM_PB", "DPI714756_BM_PB"}),
+    frozenset({
+        "DPI147246_BM_PB",
+        "DPI714756_BM_PB",
+        "DPI35000_CF",
+        "DPI71000_CF",
+    }),
 )
 
 

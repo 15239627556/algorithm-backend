@@ -1234,7 +1234,7 @@ class TaskService:
             }
 
         infer_dpi = model_dpi if scale_ratio != 1.0 else input_dpi
-        dpi_bucket, _ = _get_dpi_bucket(input_dpi)
+        dpi_bucket, _ = _get_dpi_bucket(input_dpi, smear_type=smear_type)
 
         gpu_id, _ = resolve_triton_route()
         ok, load_err = ensure_model_loaded(model_name, gpu_id=gpu_id)
