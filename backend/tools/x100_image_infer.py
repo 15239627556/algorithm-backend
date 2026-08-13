@@ -13,7 +13,6 @@ import numpy as np
 from backend.tools.combo_validator import TOLERANCE
 from backend.tools.image_tiling import (
     DEFAULT_TILE_OVERLAP,
-    merge_tiled_results,
     tile_ranges_1d,
 )
 from backend.tools.triton_client import (
@@ -24,6 +23,8 @@ from backend.tools.triton_client import (
     infer,
 )
 from project.cells import Cell
+from project.tiles import Tile
+from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,116 @@ def _cells_to_cell_list(cells: list[Cell]) -> list[dict[str, Any]]:
     } for c in cells]
 
 
+def _cell_dict_to_cell(cell_dict: dict[str, Any]) -> Cell:
+    """cell_list 单项 → Cell（局部坐标，供 dedup_cells_across_tiles 使用）。"""
+    tops = cell_dict.get("tops") or []
+    top0 = tops[0] if tops and isinstance(tops[0], dict) else {}
+    extra = dict(cell_dict.get("extra") or {})
+    if len(tops) > 1:
+        extra["_tops"] = tops
+    return Cell(
+        cell_xmin=int(cell_dict["cell_xmin"]),
+        cell_ymin=int(cell_dict["cell_ymin"]),
+        cell_xmax=int(cell_dict["cell_xmax"]),
+        cell_ymax=int(cell_dict["cell_ymax"]),
+        cell_type=int(top0.get("cell_type", cell_dict.get("cell_type", 0))),
+        cell_type_name=str(top0.get("cell_type_name", cell_dict.get("cell_type_name", ""))),
+        class_confidence=float(
+            top0.get("class_confidence", cell_dict.get("class_confidence", 1.0)) or 1.0
+        ),
+        bbox_confidence=float(
+            top0.get("bbox_confidence", cell_dict.get("bbox_confidence", 1.0)) or 1.0
+        ),
+        extra=extra,
+    )
+
+
+def _cell_to_global_dict(cell: Cell, ox: int, oy: int) -> dict[str, Any]:
+    """去重后的 Cell（局部坐标）→ 全图 cell_list 项。"""
+    saved_tops = cell.extra.get("_tops") if cell.extra else None
+    if saved_tops:
+        tops = saved_tops
+    else:
+        tops = [{
+            "cell_type": cell.cell_type,
+            "cell_type_name": cell.cell_type_name,
+            "class_confidence": float(cell.class_confidence),
+            "bbox_confidence": float(cell.bbox_confidence),
+        }]
+    item: dict[str, Any] = {
+        "cell_xmin": int(cell.cell_xmin) + ox,
+        "cell_ymin": int(cell.cell_ymin) + oy,
+        "cell_xmax": int(cell.cell_xmax) + ox,
+        "cell_ymax": int(cell.cell_ymax) + oy,
+        "tops": tops,
+    }
+    extra = {k: v for k, v in (cell.extra or {}).items() if k != "_tops"}
+    if extra:
+        item["extra"] = extra
+    return item
+
+
+def _build_tiles_for_dedup_grid(
+    ys: list[tuple[int, int]],
+    xs: list[tuple[int, int]],
+    cell_lists: dict[tuple[int, int, int, int], list[dict[str, Any]]],
+) -> list[Tile]:
+    """按切图网格构建 Tile，row_index/col_index 与 dedup_cells_across_tiles 邻接关系对齐。"""
+    tiles: list[Tile] = []
+    for row_idx, (y0, y1) in enumerate(ys):
+        for col_idx, (x0, x1) in enumerate(xs):
+            key = (y0, y1, x0, x1)
+            cell_dicts = cell_lists.get(key, [])
+            tiles.append(Tile(
+                image_uid=f"{row_idx}_{col_idx}",
+                w=x1 - x0,
+                h=y1 - y0,
+                x=x0,
+                y=y0,
+                meta={"row_index": row_idx, "col_index": col_idx},
+                cells=[_cell_dict_to_cell(d) for d in cell_dicts],
+            ))
+    return tiles
+
+
+def _tiles_to_global_cell_list(tiles: list[Tile]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for tile in tiles:
+        ox = int(tile.x or 0)
+        oy = int(tile.y or 0)
+        for cell in tile.cells or []:
+            merged.append(_cell_to_global_dict(cell, ox, oy))
+    return merged
+
+
+def dedup_tiled_x100_results(
+    ys: list[tuple[int, int]],
+    xs: list[tuple[int, int]],
+    cell_lists: dict[tuple[int, int, int, int], list[dict[str, Any]]],
+    *,
+    tile_w: int,
+    tile_h: int,
+    iou_thresh: float = 0.2,
+) -> list[dict[str, Any]]:
+    """分块 cell_list 经 Tile 适配后做跨块 NMS 去重，返回全图坐标 cell_list。"""
+    tiles = _build_tiles_for_dedup_grid(ys, xs, cell_lists)
+    before = sum(len(t.cells or []) for t in tiles)
+    if before == 0:
+        return []
+    dedup_cells_across_tiles_per_type(
+        tiles,
+        tile_w=tile_w,
+        tile_h=tile_h,
+        iou_thresh=iou_thresh,
+    )
+    merged = _tiles_to_global_cell_list(tiles)
+    logger.info(
+        "x100 tiled dedup: %d tiles, %d -> %d cells (iou_thresh=%.2f)",
+        len(tiles), before, len(merged), iou_thresh,
+    )
+    return merged
+
+
 def infer_x100_on_bgr(
     bgr: np.ndarray,
     *,
@@ -191,29 +302,35 @@ def infer_x100_on_bgr(
 
     ys = tile_ranges_1d(h, max_h, DEFAULT_TILE_OVERLAP)
     xs = tile_ranges_1d(w, max_w, DEFAULT_TILE_OVERLAP)
-    tiles = [(y0, y1, x0, x1) for (y0, y1) in ys for (x0, x1) in xs]
+    tile_count = len(ys) * len(xs)
     logger.info(
         "x100 tiled infer: %dx%d -> %d tiles (overlap=%d, max=%dx%d)",
-        w, h, len(tiles), DEFAULT_TILE_OVERLAP, max_w, max_h,
+        w, h, tile_count, DEFAULT_TILE_OVERLAP, max_w, max_h,
     )
 
-    segments: list[tuple[int, int, int, int, list[dict[str, Any]]]] = []
+    cell_lists: dict[tuple[int, int, int, int], list[dict[str, Any]]] = {}
     warning: str | None = None
-    for y0, y1, x0, x1 in tiles:
-        crop = bgr[y0:y1, x0:x1]
-        if crop.size == 0:
-            continue
-        part = _run_infer(encode_bgr_jpeg(crop))
-        warning = warning or part.get("warning")
-        raw_list = part.get("cell_list") or []
-        cells = part.get("cells") or []
-        cl: list[dict[str, Any]] = [x for x in raw_list if isinstance(x, dict)]
-        if not cl and cells:
-            cl = _cells_to_cell_list(cells)
-        segments.append((y0, y1, x0, x1, cl))
+    for y0, y1 in ys:
+        for x0, x1 in xs:
+            crop = bgr[y0:y1, x0:x1]
+            if crop.size == 0:
+                cell_lists[(y0, y1, x0, x1)] = []
+                continue
+            part = _run_infer(encode_bgr_jpeg(crop))
+            warning = warning or part.get("warning")
+            raw_list = part.get("cell_list") or []
+            cells = part.get("cells") or []
+            cl: list[dict[str, Any]] = [x for x in raw_list if isinstance(x, dict)]
+            if not cl and cells:
+                cl = _cells_to_cell_list(cells)
+            cell_lists[(y0, y1, x0, x1)] = cl
+
+    merged_list = dedup_tiled_x100_results(
+        ys, xs, cell_lists, tile_w=max_w, tile_h=max_h,
+    )
 
     result: dict[str, Any] = {
-        "cell_list": merge_tiled_results(segments),
+        "cell_list": merged_list,
         "cells": [],
     }
     if warning:
