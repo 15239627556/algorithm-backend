@@ -710,8 +710,16 @@ class TaskService:
         t5 = time.time()
         try:
             dpi = info.get('dpi', 144750)
+            tile_w = int(info.get('tile_width', 2448))
+            tile_h = int(info.get('tile_height', 2048))
             layer = project.get_layer(dpi)
-            tiles = dedup_cells_across_tiles_per_type(layer.iter_tiles())
+            tiles = dedup_cells_across_tiles_per_type(
+                layer.iter_tiles(),
+                tile_w=tile_w,
+                tile_h=tile_h,
+                iou_thresh=0.2,
+                ios_thresh=0.7
+                )
             t6 = time.time()
             logger.info(
                 "dedup_cells_across_tiles task_id=%s ms=%.2f",

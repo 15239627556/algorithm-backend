@@ -266,6 +266,7 @@ def dedup_tiled_x100_results(
         tile_w=tile_w,
         tile_h=tile_h,
         iou_thresh=iou_thresh,
+        ios_thresh=0.7,
     )
     merged = _tiles_to_global_cell_list(tiles)
     logger.info(
