@@ -52,23 +52,118 @@ def compute_effective_scores(
     return scores_t_opt.to(torch.float32) * (0.5 + 0.5 * completeness_norm) + area_norm.to(torch.float32)
 
 
+def _pairwise_ios(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
+    """计算 IoS 矩阵，shape=(na, nb)。IoS = inter / min(area_a, area_b)。"""
+    aw = np.maximum(0.0, boxes_a[:, 2] - boxes_a[:, 0])
+    ah = np.maximum(0.0, boxes_a[:, 3] - boxes_a[:, 1])
+    bw = np.maximum(0.0, boxes_b[:, 2] - boxes_b[:, 0])
+    bh = np.maximum(0.0, boxes_b[:, 3] - boxes_b[:, 1])
+    area_a = aw * ah
+    area_b = bw * bh
+
+    xx1 = np.maximum(boxes_a[:, None, 0], boxes_b[None, :, 0])
+    yy1 = np.maximum(boxes_a[:, None, 1], boxes_b[None, :, 1])
+    xx2 = np.minimum(boxes_a[:, None, 2], boxes_b[None, :, 2])
+    yy2 = np.minimum(boxes_a[:, None, 3], boxes_b[None, :, 3])
+    inter = np.maximum(0.0, xx2 - xx1) * np.maximum(0.0, yy2 - yy1)
+    return inter / np.maximum(np.minimum(area_a[:, None], area_b[None, :]), 1e-6)
+
+
+def _cross_tile_ios_filter(
+    boxes_np: np.ndarray,
+    scores_np: np.ndarray,
+    keep_idx: np.ndarray,
+    num_left: int,
+    ios_thresh: float,
+    iou_thresh: float,
+) -> np.ndarray:
+    """
+    在 IoU-NMS 存活框上，仅对跨 tile 对做一次向量化 IoS 抑制。
+    对每个 IoS >= 阈值的左右框对，丢弃分数较低者。
+    """
+    keep_idx = np.asarray(keep_idx, dtype=np.int64)
+    left = keep_idx[keep_idx < num_left]
+    right = keep_idx[keep_idx >= num_left]
+    if left.size == 0 or right.size == 0:
+        return keep_idx
+
+    bi = boxes_np[left]
+    bj = boxes_np[right]
+    area_i = np.maximum(0.0, bi[:, 2] - bi[:, 0]) * np.maximum(0.0, bi[:, 3] - bi[:, 1])
+    area_j = np.maximum(0.0, bj[:, 2] - bj[:, 0]) * np.maximum(0.0, bj[:, 3] - bj[:, 1])
+    area_min = float(min(area_i.min(), area_j.min()))
+    area_max = float(max(area_i.max(), area_j.max()))
+    # 面积足够接近时，高 IoS 会被 IoU-NMS 覆盖
+    if area_max <= 0.0 or (area_min / area_max) >= float(iou_thresh):
+        return keep_idx
+
+    ios = _pairwise_ios(bi, bj)
+    a_idx, b_idx = np.nonzero(ios >= float(ios_thresh))
+    if a_idx.size == 0:
+        return keep_idx
+
+    si = scores_np[left]
+    sj = scores_np[right]
+    left_wins = si[a_idx] >= sj[b_idx]
+    drop_left = np.zeros(left.size, dtype=bool)
+    drop_right = np.zeros(right.size, dtype=bool)
+    drop_right[b_idx[left_wins]] = True
+    drop_left[a_idx[~left_wins]] = True
+    return np.concatenate([left[~drop_left], right[~drop_right]], axis=0)
+
+
+def nms_iou_then_ios(
+    boxes_t: torch.Tensor,
+    scores_t: torch.Tensor,
+    boxes_np: np.ndarray,
+    scores_np: np.ndarray,
+    num_left: int,
+    iou_thresh: float,
+    ios_thresh: float,
+) -> np.ndarray:
+    """
+    快速两阶段：
+    1) torchvision IoU-NMS（C++/CUDA，保持原速度主体）
+    2) 跨 tile 向量化 IoS 过滤（无 Python 贪心循环）
+    """
+    if boxes_t.numel() == 0:
+        return np.empty((0,), dtype=np.int64)
+
+    keep_t = torch_nms(boxes_t, scores_t, float(iou_thresh))
+    keep_np = keep_t.detach().cpu().numpy().astype(np.int64, copy=False)
+    if ios_thresh <= 0 or keep_np.size <= 1 or num_left <= 0:
+        return keep_np
+
+    return _cross_tile_ios_filter(
+        boxes_np=boxes_np,
+        scores_np=scores_np,
+        keep_idx=keep_np,
+        num_left=num_left,
+        ios_thresh=float(ios_thresh),
+        iou_thresh=float(iou_thresh),
+    )
+
+
 def dedup_cells_across_tiles(
         tiles_40x: List[Tile],
         tile_w: int = 2448,
         tile_h: int = 2048,
         iou_thresh: float = 0.2,
+        ios_thresh: float = 0.5,
 ) -> List[Tile]:
     """
-    在相邻 40x tile 的重叠带内做 NMS 去重（torchvision.ops.nms）。
+    在相邻 40x tile 的重叠带内做 NMS 去重（先 IoU，再跨 tile IoS）。
     - 输入：List[Tile]，每个 tile 的 cells 列表中的细胞坐标为局部坐标（相对于瓦片）
     - 相邻关系：右、下、右下、左下
     - NMS 分数：使用 Cell.class_confidence，并结合“离 tile 边界的完整度”与“面积归一化”联合打分；
       若该候选缺分数，则仅用面积归一化兜底
-    - iou_thresh: 细胞的交并比阈值（用于 NMS）
+    - iou_thresh: 交并比阈值（IoU = 交集 / 并集）
+    - ios_thresh: 交集/较小框面积阈值（IoS = 交集 / min(两框面积)）；<=0 时关闭 IoS
     - 输出：List[Tile]，去重后的 tiles（cells 坐标仍为局部坐标，与输入一致）
     """
-    # 检测 GPU 以加速 NMS
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # 重叠带单次 NMS 规模通常不大；IoS 在 numpy/CPU 上做。
+    # 若走 CUDA，每对 neighbor 都要 .cpu()，同步开销远大于 NMS 收益（实测更慢）。
+    device = torch.device("cpu")
 
     tiles_data = []
 
@@ -91,6 +186,7 @@ def dedup_cells_across_tiles(
             scores = np.empty((0,), dtype=np.float32)
             rects_t = torch.empty((0, 4), dtype=torch.float32, device=device)
             eff_scores_t = torch.empty((0,), dtype=torch.float32, device=device)
+            eff_scores_np = np.empty((0,), dtype=np.float32)
         else:
             # 向量化获取坐标与分数
             rects_list = [[c.cell_xmin, c.cell_ymin, c.cell_xmax, c.cell_ymax] for c in cells]
@@ -111,6 +207,7 @@ def dedup_cells_across_tiles(
 
             # 【核心优化】：在此处一次性预计算 effective_scores，而不是在双循环里
             eff_scores_t = compute_effective_scores(rects_t, scores_t, image_rect)
+            eff_scores_np = eff_scores_t.detach().cpu().numpy()
 
         tiles_data.append({
             "orig_idx": idx,
@@ -121,6 +218,7 @@ def dedup_cells_across_tiles(
             "rects_np": rects_xyxy,
             "rects_t": rects_t,             # 用于 NMS (GPU/CPU)
             "eff_scores_t": eff_scores_t,   # 已预计算好的融合打分
+            "eff_scores_np": eff_scores_np,  # IoS 过滤用，避免循环内反复 .cpu()
         })
 
     # 排序 & 建立空间索引
@@ -186,14 +284,27 @@ def dedup_cells_across_tiles(
 
             boxes_t = torch.cat([boxes_i_t, boxes_j_t], dim=0)
             scores_t = torch.cat([scores_i_t, scores_j_t], dim=0)
+            boxes_np = np.concatenate(
+                [rects_i[idx_i_np], rects_j[idx_j_np]], axis=0
+            )
+            scores_np = np.concatenate(
+                [ti["eff_scores_np"][idx_i_np], tj["eff_scores_np"][idx_j_np]],
+                axis=0,
+            )
 
-            # 执行 NMS
-            keep = torch_nms(boxes_t, scores_t, float(iou_thresh))
+            # 执行快速两阶段 NMS：IoU (torchvision) + 跨 tile IoS (向量化)
+            keep_np = nms_iou_then_ios(
+                boxes_t=boxes_t,
+                scores_t=scores_t,
+                boxes_np=boxes_np,
+                scores_np=scores_np,
+                num_left=num_left,
+                iou_thresh=float(iou_thresh),
+                ios_thresh=float(ios_thresh),
+            )
 
-            # 将 keep 掩码转回 CPU 计算丢弃项
-            kept_mask = torch.zeros(num_left + num_right, dtype=torch.bool, device=device)
-            kept_mask[keep] = True
-            kept_mask_np = kept_mask.cpu().numpy()
+            kept_mask_np = np.zeros(num_left + num_right, dtype=bool)
+            kept_mask_np[keep_np] = True
 
             if num_left > 0:
                 drop_i = ~kept_mask_np[:num_left]
@@ -236,6 +347,7 @@ def dedup_cells_across_tiles_per_type(
         tile_w: int = 2448,
         tile_h: int = 2048,
         iou_thresh: float = 0.2,
+        ios_thresh: float = 0.5,
         cell_types: List[int] | None = None,
 ) -> List[Tile]:
     """
@@ -248,6 +360,7 @@ def dedup_cells_across_tiles_per_type(
     参数：
     - cell_types=None: 自动扫描 tiles 中出现过的全部 cell_type，并逐类去重。
     - cell_types=[...]: 只对指定类型去重；未指定的类型原样保留。
+    - ios_thresh: 传给 dedup_cells_across_tiles；<=0 时关闭 IoS。
     """
     if not tiles_40x:
         return tiles_40x
@@ -290,6 +403,7 @@ def dedup_cells_across_tiles_per_type(
             tile_w=tile_w,
             tile_h=tile_h,
             iou_thresh=iou_thresh,
+            ios_thresh=ios_thresh,
         )
 
         for tile in tiles_40x:
