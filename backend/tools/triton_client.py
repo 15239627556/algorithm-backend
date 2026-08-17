@@ -35,6 +35,7 @@ from backend.tools.MESSAGE_DICT import (
 from backend.tools.combo_validator import _get_dpi_bucket, DPI_35000, DPI_71000
 from config import next_triton_endpoint, get_triton_endpoint
 from backend.tools.model_control import ensure_model_loaded
+from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +321,12 @@ RED_AGG_LABELS = {
     "1": "单个细胞",
     "34": "缗钱状红细胞",
     "35": "凝集红细胞",
+}
+RED_SIZE_LABELS = {
+    "1": "无大小异常",
+    "19": "大红细胞",
+    "20": "小红细胞",
+    "21": "巨大红细胞",
 }
 
 
@@ -866,6 +873,30 @@ def _append_red_abnormality_extra(
     }
 
 
+def _classify_red_size_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
+    """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定大小异常。"""
+    um_px = um_per_pixel_from_dpi(dpi)
+    avg_um = (w_px * um_px + h_px * um_px) / 2.0
+    if avg_um < 6:
+        label_id = "20"
+    elif avg_um < 10:
+        label_id = "1"
+    elif avg_um <= 15:
+        label_id = "19"
+    else:
+        label_id = "21"
+    return label_id, RED_SIZE_LABELS[label_id]
+
+
+def _append_red_size_extra(extra: dict[str, Any], w_px: float, h_px: float, dpi: int) -> None:
+    label_id, name = _classify_red_size_label_id(w_px, h_px, dpi)
+    extra["SIZE"] = {
+        "name": name,
+        "label_id": label_id,
+        "confidence": 1.0,
+    }
+
+
 def _build_red_rbc_extra(
     i: int,
     struct: Optional[np.ndarray],
@@ -876,8 +907,12 @@ def _build_red_rbc_extra(
     morph_prob: Optional[np.ndarray],
     agg: Optional[np.ndarray],
     agg_prob: Optional[np.ndarray],
+    *,
+    w_px: float = 0.0,
+    h_px: float = 0.0,
+    dpi: int = DPI_714756,
 ) -> dict[str, Any]:
-    """仅在有异常时写入 extra：结构/颜色/形态/聚集及对应置信度。"""
+    """写入 extra：结构/颜色/形态/聚集及对应置信度；大小异常由框尺寸与 DPI 计算。"""
     extra: dict[str, Any] = {}
     # 结构异常
     _append_red_abnormality_extra(extra, "STRUCT", RED_STRUCT_INV, RED_STRUCT_LABELS, struct, struct_prob, i)
@@ -887,10 +922,18 @@ def _build_red_rbc_extra(
     _append_red_abnormality_extra(extra, "MORPH", RED_MORPH_INV, RED_MORPH_LABELS, morph, morph_prob, i)
     # 聚集异常
     _append_red_abnormality_extra(extra, "AGG", RED_AGG_INV, RED_AGG_LABELS, agg, agg_prob, i)
+    # 大小异常（规则计算，置信度固定为 1）
+    if w_px > 0 and h_px > 0:
+        _append_red_size_extra(extra, w_px, h_px, dpi)
     return extra
 
 
-def _infer_714756_bm_from_pipeline_json(res: dict[str, Any], smear_type: str) -> dict[str, Any]:
+def _infer_714756_bm_from_pipeline_json(
+    res: dict[str, Any],
+    smear_type: str,
+    *,
+    dpi: int = DPI_714756,
+) -> dict[str, Any]:
     # logger.info("714756_bm pipeline 原始返回:\n%s", res)
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
@@ -967,6 +1010,9 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any], smear_type: str) ->
     if red_num > 0 and rd is not None:
 
         def _red_extra(i: int) -> dict[str, Any]:
+            row = np.asarray(rd[i]).flatten()
+            w_px = float(row[2]) if len(row) >= 4 else 0.0
+            h_px = float(row[3]) if len(row) >= 4 else 0.0
             return _build_red_rbc_extra(
                 i,
                 red_class_struct,
@@ -977,6 +1023,9 @@ def _infer_714756_bm_from_pipeline_json(res: dict[str, Any], smear_type: str) ->
                 red_class_morph_prob,
                 red_class_agg,
                 red_class_agg_prob,
+                w_px=w_px,
+                h_px=h_px,
+                dpi=dpi,
             )
 
         rbc_cells = _cells_from_xywh_detections(
@@ -1257,7 +1306,7 @@ def infer(
             PIPELINE_HTTP_TIMEOUT_S,
             extra_form={"tasks": tasks},
         )
-        result = _infer_714756_bm_from_pipeline_json(res_json, smear_type)
+        result = _infer_714756_bm_from_pipeline_json(res_json, smear_type, dpi=dpi)
         if warning:
             result["warning"] = warning
         return result
