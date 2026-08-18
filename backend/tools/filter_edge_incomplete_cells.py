@@ -16,7 +16,7 @@
   每像素微米数 = 25.4 / dpi * 1000；框宽(高)微米 = 像素宽(高) * 每像素微米数。
 
 144750 ±10% 专用（filter_cell_dicts_small_edge_144750）：
-宽、高换算为微米后任一边严格小于 6µm → 删除（不限细胞类型）。
+宽、高换算为微米后任一边严格小于 7µm → 删除（不限细胞类型）。
   换算规则同上。
 
 坐标约定与 dedup_cells_across_tiles 一致：cell 为 tile 内局部 xyxy；图像宽 tw、高 th，对应列 0..tw-1、行 0..th-1。
@@ -134,7 +134,7 @@ _TYPES_714756_EDGE_ELONGATED = frozenset(range(200000, 200035)) | {100005, 10000
 # 714756 ±10%：有核(200000-200034) 过小框过滤
 _TYPES_714756_WBC = frozenset(range(200000, 200035))
 DEFAULT_MIN_WBC_UM_714756 = 6.0
-DEFAULT_MIN_EDGE_UM_144750 = 6.0
+DEFAULT_MIN_EDGE_UM_144750 = 7.0
 DEFAULT_EDGE_RATIO_1PCT = 0.01
 
 
