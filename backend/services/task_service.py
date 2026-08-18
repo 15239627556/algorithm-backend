@@ -18,9 +18,11 @@ from backend.tools.json_safe_writer import serialize_non_json_fields
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_incomplete,
     filter_cell_dicts_edge_elongated_1pct,
+    filter_cell_dicts_small_edge_144750,
     filter_cell_dicts_small_wbc_714756,
     filter_edge_incomplete_cells,
 )
+from backend.tools.triton_client import DPI_144750
 from PIL import Image
 
 from project.smear_project import SmearProject
@@ -678,9 +680,12 @@ class TaskService:
                 } for c in cells]
             tile_w = int(info.get('tile_width', 2448))
             tile_h = int(info.get('tile_height', 2048))
+            dpi_bucket, _ = _get_dpi_bucket(dpi, smear_type=smear_type)
             cell_list = filter_cell_dicts_edge_elongated_1pct(
                 cell_list, tile_w, tile_h
             )
+            if dpi_bucket == DPI_144750:
+                cell_list = filter_cell_dicts_small_edge_144750(cell_list, dpi)
             keep_bboxes = {_bbox_key(d) for d in cell_list}
             cells_payload = [
                 d for d in _cells_to_dicts(cells) if _bbox_key(d) in keep_bboxes
@@ -1300,6 +1305,14 @@ class TaskService:
                         "get_task_result_x100: 714756 cell filter skipped: %s",
                         e,
                     )
+        elif dpi_bucket == DPI_144750 and cell_list:
+            try:
+                cell_list = filter_cell_dicts_small_edge_144750(cell_list, input_dpi)
+            except Exception as e:
+                logger.warning(
+                    "get_task_result_x100: 144750 cell filter skipped: %s",
+                    e,
+                )
         if edge_cell_filter and cell_list:
             try:
                 cell_list = filter_cell_dicts_edge_incomplete(
