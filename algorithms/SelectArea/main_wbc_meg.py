@@ -33,6 +33,12 @@ from .pipeline_wbc import WBCSamplingPipeline
 from .pipeline_meg import MegSamplingPipeline
 from .main_wbc import visualize_results
 from .main_meg import visualize_meg_results, collect_wbc_view_rects_from_results
+from .project_info import (
+    load_dpi_and_orientation,
+    load_project_info,
+    resolve_info_path,
+    resolve_roi_path,
+)
 
 
 # 百倍视野尺寸：批量测试固定值，无需再改代码
@@ -115,36 +121,6 @@ class ProjectPaths:
     out_key: str
 
 
-def _resolve_info_path(json_path: Path) -> Optional[Path]:
-    """同路径下查找 info：{stem}.info.json 或 info.json。"""
-    candidates = [
-        json_path.parent / f"{json_path.stem}.info.json",
-        json_path.parent / "info.json",
-    ]
-    seen = set()
-    for p in candidates:
-        p = p.resolve()
-        if p in seen:
-            continue
-        seen.add(p)
-        if p.is_file():
-            return p
-    return None
-
-
-def _resolve_roi_path(json_path: Path) -> Optional[Path]:
-    roi = json_path.parent / f"{json_path.stem}.roi.npz"
-    return roi if roi.is_file() else None
-
-
-def load_project_info(info_path: Path) -> Dict[str, Any]:
-    with open(info_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise ValueError(f"info 文件应为 JSON 对象: {info_path}")
-    return data
-
-
 def discover_projects(
     inputs: Sequence[Path],
     data_root: Optional[Path] = None,
@@ -177,9 +153,19 @@ def discover_projects(
         name = json_path.name
         if not name.endswith(".json") or name.endswith(".info.json"):
             return
-        if name in ("results.json", "results_meg.json", "results_wbc.json"):
+        if name in (
+            "results.json",
+            "results_meg.json",
+            "results_wbc.json",
+            "results_rbc.json",
+            "summary.json",
+            "batch_summary.json",
+        ):
             return
-        info_path = _resolve_info_path(json_path)
+        stem = json_path.stem
+        if stem.endswith(("_before_dedup", "_old", "_dedup")):
+            return
+        info_path = resolve_info_path(json_path)
         if info_path is None:
             print(f"[SKIP] 无 info 文件，跳过: {json_path}")
             return
@@ -190,7 +176,7 @@ def discover_projects(
             project_dir=json_path.parent,
             json_path=json_path,
             info_path=info_path,
-            roi_path=_resolve_roi_path(json_path),
+            roi_path=resolve_roi_path(json_path),
             out_key=_out_key_for(json_path),
         )
 
@@ -252,14 +238,6 @@ def _load_data(
     raise ValueError(f"不支持的 input_source: {input_source!r}")
 
 
-def _info_int(info: Dict[str, Any], key: str, default: Optional[int] = None) -> int:
-    if key not in info or info[key] is None:
-        if default is None:
-            raise KeyError(f"info 缺少字段 {key!r}")
-        return int(default)
-    return int(info[key])
-
-
 def run_one_project(
     proj: ProjectPaths,
     out_root: Path,
@@ -270,14 +248,14 @@ def run_one_project(
     skip_viz: bool = False,
 ) -> Dict[str, Any]:
     """跑单个项目的 WBC + MEG，结果写入 out_root / proj.out_key。"""
-    info = load_project_info(proj.info_path)
-    dpi = _info_int(info, "dpi")
-    heatmap_orientation = _info_int(info, "heatmap_orientation", default=1)
-    # tile 优先用 info，缺省再从数据推断
-    info_tile_w = info.get("tile_width")
-    info_tile_h = info.get("tile_height")
+    params = load_dpi_and_orientation(proj.json_path)
+    dpi = params.dpi
+    heatmap_orientation = params.heatmap_orientation
+    tile_w = params.tile_w
+    tile_h = params.tile_h
+    smear_hint = params.smear_type
 
-    smear_hint = info.get("smear_type")
+    info = load_project_info(params.info_path)
     target_types = str(info.get("target_cell_types") or "WBC,MEG").upper()
     run_meg = "MEG" in target_types
 
@@ -288,10 +266,13 @@ def run_one_project(
     with open(out_dir / "info_used.json", "w", encoding="utf-8") as f:
         json.dump(
             {
-                "source_info": str(proj.info_path),
+                "source_info": str(params.info_path),
                 "source_json": str(proj.json_path),
                 "dpi": dpi,
                 "heatmap_orientation": heatmap_orientation,
+                "tile_width": tile_w,
+                "tile_height": tile_h,
+                "smear_type": smear_hint,
                 "x100_rect_width": X100_RECT_WIDTH,
                 "x100_rect_height": X100_RECT_HEIGHT,
                 "target_cell_num_WBC": target_cell_num_wbc,
@@ -306,19 +287,19 @@ def run_one_project(
     print(f"\n{'=' * 60}")
     print(f"[PROJECT] {proj.out_key}")
     print(f"  json : {proj.json_path}")
-    print(f"  info : {proj.info_path}")
+    print(f"  info : {params.info_path}")
     print(f"  out  : {out_dir}")
-    print(f"  dpi={dpi}, heatmap_orientation={heatmap_orientation}, source={input_source}")
+    print(
+        f"  dpi={dpi}, heatmap_orientation={heatmap_orientation}, "
+        f"tile=({tile_w},{tile_h}), smear_type={smear_hint}, source={input_source}"
+    )
 
-    project, roi, smear_type, tile_w, tile_h = _load_data(
+    project, roi, smear_type, _tile_w, _tile_h = _load_data(
         proj.json_path, proj.roi_path, input_source, dpi
     )
-    if info_tile_w is not None:
-        tile_w = int(info_tile_w)
-    if info_tile_h is not None:
-        tile_h = int(info_tile_h)
+    # tile / smear 优先使用 info
     if smear_hint:
-        smear_type = str(smear_hint)
+        smear_type = smear_hint
 
     # ---------- WBC ----------
     wbc_cfg = BM40Config(

@@ -20,12 +20,13 @@ from project.roi_store import RoiDataset
 from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput
 from .pipeline_rbc import RBCSamplingPipeline
+from .project_info import load_dpi_and_orientation
 
 
 @dataclass(frozen=True)
 class VizConfigRBC:
     # 这里改成你自己的测试 json
-    json_path: str = "/home/ubuntu/VScodeProjects//项目json数据/选区靠边问题/202607140001/8c9186e9d3504d688f88d29c9374d364.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/20260807_project/2dbc4b9af4074b8195c983107ace8584/2dbc4b9af4074b8195c983107ace8584.json"
     # 设置为 .roi.npz 时优先直接读取 RoiDataset；None 时保持 JSON 输入方式。
     roi_path: str | None = None
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
@@ -153,35 +154,36 @@ def main() -> None:
 
     project = None
     roi = None
-    input_dpi = 140750
+    json_path = Path(viz_cfg.json_path)
+    info = load_dpi_and_orientation(json_path)
+    print(
+        f"[INFO][RBC] 从 info 读取: dpi={info.dpi}, heatmap_orientation={info.heatmap_orientation}, "
+        f"tile=({info.tile_w},{info.tile_h}), smear_type={info.smear_type}, info={info.info_path}"
+    )
     if viz_cfg.roi_path:
         roi = RoiDataset.load(viz_cfg.roi_path)
-        smear_type = roi.smear_type
+        smear_type = info.smear_type or roi.smear_type
         if not roi.tiles:
             raise ValueError("ROI 数据集不含 Tile")
-        first_tile = roi.tiles[0]
-        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][RBC] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     else:
-        project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
-        smear_type = project.smear_type
-        layer = project.get_layer(input_dpi)
+        project = SmearProject.load_json(str(json_path))
+        smear_type = info.smear_type or project.smear_type
+        layer = project.get_layer(info.dpi)
         if layer is None or not layer.tiles:
-            raise ValueError(f"项目中缺少 dpi={input_dpi} 的有效 Tile")
-        first_tile = next(iter(layer.tiles.values()))
-        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
+            raise ValueError(f"项目中缺少 dpi={info.dpi} 的有效 Tile")
         print(f"[INFO][RBC] 成功加载项目: {smear_type}")
 
     # 血片选区仍按有核细胞数量进行选区
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
-                        dpi=input_dpi,
+                        dpi=info.dpi,
                         x100_rect_width=482,
                         x100_rect_height=403,
-                        heatmap_orientation=1,
+                        heatmap_orientation=info.heatmap_orientation,
                         View_type="wbc", 
                         Smear_type=smear_type,
-                        tile_w=tile_w,
-                        tile_h=tile_h)
+                        tile_w=info.tile_w,
+                        tile_h=info.tile_h)
     print(f"[INFO][RBC] 当前 Tile 尺寸: {bm_cfg.tile_w} x {bm_cfg.tile_h}")
     
     import time

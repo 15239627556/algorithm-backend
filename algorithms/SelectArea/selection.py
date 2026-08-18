@@ -18,6 +18,241 @@ from .config import BM40Config
 from .data_structure import SelectionResult, Rect
 
 
+def _fill_mask_holes(mask: np.ndarray) -> np.ndarray:
+    """填充二值主体内部孔洞，图像边界连通的背景保持为背景。"""
+    if mask.size == 0:
+        return mask
+
+    # 补一圈确定的背景，使所有“外部背景”在 padding 中连通，
+    # 随后只需从左上角执行一次 floodFill。
+    padded = cv2.copyMakeBorder(
+        mask, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0
+    )
+    inv = cv2.bitwise_not(padded)
+    flood = inv.copy()
+    flood_mask = np.zeros(
+        (padded.shape[0] + 2, padded.shape[1] + 2), dtype=np.uint8
+    )
+    cv2.floodFill(flood, flood_mask, (0, 0), 128)
+
+    holes = np.where(flood == 255, 255, 0).astype(np.uint8)
+    filled = cv2.bitwise_or(padded, holes)
+    return filled[1:-1, 1:-1]
+
+
+def build_valid_score_mask(
+    grid: HeatmapGrid,
+    config: BM40Config,
+    raw_score_map: np.ndarray,
+) -> np.ndarray:
+    """以有评分区域的重复最低分为背景，构建并修整前景主体掩码。"""
+    score_map = np.asarray(raw_score_map, dtype=np.float32)
+    # weights == 0 的格子只是没有计算到评分，不能参与最低背景分统计。
+    covered = np.isfinite(score_map) & (grid.weights > 0)
+    if not np.any(covered):
+        return np.zeros(score_map.shape, dtype=np.uint8)
+
+    # BM/PB 均采用同一规则：有评分区域中的重复最低分代表空白背景，
+    # 严格高于最低分的区域是原始前景。isclose 用于吸收加权平均的浮点误差。
+    background_min = float(np.min(score_map[covered]))
+    is_background = np.isclose(
+        score_map, background_min, rtol=1e-5, atol=1e-5
+    )
+    score_valid = covered & ~is_background
+
+    valid = np.where(score_valid, 255, 0).astype(np.uint8)
+    if not np.any(valid):
+        return valid
+
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, config.coast_close_ksize
+    )
+    valid = cv2.morphologyEx(
+        valid,
+        cv2.MORPH_CLOSE,
+        kernel,
+        iterations=max(1, int(config.coast_close_iters)),
+    )
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        valid, connectivity=8, ltype=cv2.CV_32S
+    )
+    if count > 1:
+        largest_label = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        valid = np.where(labels == largest_label, 255, 0).astype(np.uint8)
+
+    return _fill_mask_holes(valid)
+
+
+def get_valid_score_range(grid: HeatmapGrid, config: BM40Config) -> float:
+    """返回海岸惩罚前有效评分区的 max-min，供接近分候选判定。"""
+    raw = grid.finalize(fill_value=config.heatmap_penalty_value)
+    valid = build_valid_score_mask(grid, config, raw) > 0
+    if not np.any(valid):
+        return 0.0
+    valid_scores = raw[valid]
+    return float(np.max(valid_scores) - np.min(valid_scores))
+
+
+def _normalize_heatmap_for_debug(
+    score_map: np.ndarray,
+    valid_mask: np.ndarray,
+) -> np.ndarray:
+    """仅按有效评分区归一化为 uint8，背景保持黑色。"""
+    valid = (valid_mask > 0) & np.isfinite(score_map)
+    image = np.zeros(score_map.shape, dtype=np.uint8)
+    if not np.any(valid):
+        return image
+
+    values = score_map[valid]
+    value_min = float(np.min(values))
+    value_max = float(np.max(values))
+    if value_max - value_min <= 1e-12:
+        image[valid] = 255
+        return image
+
+    normalized = (score_map[valid] - value_min) * (255.0 / (value_max - value_min))
+    image[valid] = np.clip(normalized, 0, 255).astype(np.uint8)
+    return image
+
+
+def _save_coast_debug_images(
+    raw_score_map: np.ndarray,
+    penalized_score_map: np.ndarray,
+    valid_mask: np.ndarray,
+    inland_mask: np.ndarray,
+    coast_band: np.ndarray,
+    coast_penalty: np.ndarray,
+    top_bottom_penalty: np.ndarray,
+    effective_penalty: np.ndarray,
+) -> None:
+    """保存海岸带、惩罚区域及惩罚前后热力图。"""
+    if os.getenv("SELECT_AREA_DEBUG_COAST") != "1":
+        return
+
+    debug_dir = Path(
+        os.getenv(
+            "SELECT_AREA_DEBUG_COAST_DIR",
+            str(Path(__file__).resolve().parent / "output" / "coast_debug"),
+        )
+    )
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_vis = _normalize_heatmap_for_debug(raw_score_map, valid_mask)
+    penalized_vis = _normalize_heatmap_for_debug(
+        penalized_score_map, valid_mask
+    )
+
+    # 与红细胞 C++ 调试图一致：灰度底图，绿=内陆，红=腐蚀得到的海岸带。
+    coast_vis = cv2.cvtColor(raw_vis, cv2.COLOR_GRAY2BGR)
+    coast_vis[inland_mask > 0] = (0, 180, 0)
+    coast_vis[coast_band > 0] = (0, 0, 255)
+
+    max_penalty = float(np.max(effective_penalty))
+    if max_penalty > 0:
+        penalty_gray = np.clip(
+            effective_penalty * (255.0 / max_penalty), 0, 255
+        ).astype(np.uint8)
+    else:
+        penalty_gray = np.zeros(effective_penalty.shape, dtype=np.uint8)
+    penalty_gray[valid_mask == 0] = 0
+    penalty_color = cv2.applyColorMap(penalty_gray, cv2.COLORMAP_JET)
+    penalty_color[valid_mask == 0] = 0
+
+    debug_images = {
+        "valid_mask.png": valid_mask,
+        "inland_mask.png": inland_mask,
+        "coast_band.png": coast_vis,
+        "heatmap_raw.png": raw_vis,
+        "heatmap_penalized.png": penalized_vis,
+        "coast_penalty.png": np.clip(
+            coast_penalty * (255.0 / max(float(np.max(coast_penalty)), 1e-6)),
+            0,
+            255,
+        ).astype(np.uint8),
+        "top_bottom_penalty.png": np.clip(
+            top_bottom_penalty
+            * (255.0 / max(float(np.max(top_bottom_penalty)), 1e-6)),
+            0,
+            255,
+        ).astype(np.uint8),
+        "effective_penalty.png": penalty_color,
+    }
+    for filename, image in debug_images.items():
+        cv2.imwrite(str(debug_dir / filename), image)
+    print(f"[DEBUG][COAST] 海岸线与惩罚热力图已保存至: {debug_dir}")
+
+
+def apply_coast_penalty(
+    raw_score_map: np.ndarray,
+    grid: HeatmapGrid,
+    config: BM40Config,
+) -> Tuple[np.ndarray, float]:
+    """施加海岸线及上下固定边缘惩罚，返回热力图和背景填充值。"""
+    score_map = np.asarray(raw_score_map, dtype=np.float32).copy()
+    valid_mask = build_valid_score_mask(grid, config, score_map)
+    valid = valid_mask > 0
+    if not np.any(valid):
+        return score_map, float(config.heatmap_penalty_value)
+
+    if config.Smear_type.upper() == "PB":
+        coast_penalty_drop = config.coast_penalty_drop_pb
+        top_bottom_margin = config.top_bottom_margin_pb
+        top_bottom_penalty_drop = config.top_bottom_penalty_drop_pb
+    else:
+        coast_penalty_drop = config.coast_penalty_drop_bm
+        top_bottom_margin = config.top_bottom_margin_bm
+        top_bottom_penalty_drop = config.top_bottom_penalty_drop_bm
+
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, config.coast_erode_ksize
+    )
+    inland = cv2.erode(
+        valid_mask,
+        kernel,
+        iterations=max(1, int(config.coast_erode_iters)),
+        borderType=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+    coast_band = cv2.bitwise_and(valid_mask, cv2.bitwise_not(inland))
+
+    distance_to_inland = cv2.distanceTransform(
+        cv2.bitwise_not(inland), cv2.DIST_L2, 3
+    )
+    distance_scale = max(float(config.coast_penalty_distance), 1e-6)
+    coast_penalty = (
+        float(coast_penalty_drop)
+        * np.minimum(distance_to_inland / distance_scale, 1.0)
+    ).astype(np.float32, copy=False)
+    coast_penalty[~valid] = 0.0
+
+    rows = score_map.shape[0]
+    inward = np.minimum(np.arange(rows), np.arange(rows)[::-1]).astype(np.float32)
+    margin = max(int(top_bottom_margin), 1)
+    row_penalty = float(top_bottom_penalty_drop) * (
+        1.0 - np.minimum(inward / float(margin), 1.0)
+    )
+    top_bottom_penalty = np.broadcast_to(row_penalty[:, None], score_map.shape)
+
+    effective_penalty = np.maximum(coast_penalty, top_bottom_penalty)
+    score_map[valid] -= effective_penalty[valid]
+
+    background_floor = float(np.min(score_map[valid]) - 1e-6)
+    score_map[~valid] = background_floor
+
+    _save_coast_debug_images(
+        raw_score_map=np.asarray(raw_score_map, dtype=np.float32),
+        penalized_score_map=score_map,
+        valid_mask=valid_mask,
+        inland_mask=inland,
+        coast_band=coast_band,
+        coast_penalty=coast_penalty,
+        top_bottom_penalty=top_bottom_penalty,
+        effective_penalty=effective_penalty,
+    )
+    return score_map, background_floor
+
+
 def _search_one_window_angle(
     args: Tuple[
         int,
@@ -45,7 +280,7 @@ def _search_one_window_angle(
         user_search_mask,
         head_crop_rect,
         orientation,
-        heatmap_penalty_value,
+        background_floor,
         kernel_margin,
         rows,
         cols,
@@ -63,7 +298,7 @@ def _search_one_window_angle(
             rect_pad_x,
             rect_pad_x,
             cv2.BORDER_CONSTANT,
-            value=float(heatmap_penalty_value),
+            value=float(background_floor),
         )
         rect_padded_cells = cv2.copyMakeBorder(
             cell_matrix,
@@ -91,7 +326,7 @@ def _search_one_window_angle(
             pad,
             pad,
             cv2.BORDER_CONSTANT,
-            value=float(heatmap_penalty_value),
+            value=float(background_floor),
         )
         padded_cells = cv2.copyMakeBorder(
             cell_matrix,
@@ -161,15 +396,20 @@ def find_candidate_regions(
     avg_score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
     rows, cols = avg_score_map.shape
 
-    # B. 计算边缘惩罚图
-    valid_mask = (grid.weights > 0).astype(np.uint8)
-    dist_map = cv2.distanceTransform(valid_mask, cv2.DIST_L2, 5)
-    penalty_map = np.zeros_like(avg_score_map)
-    radius = config.edge_avoidance_radius
-    near_edge_mask = (dist_map < radius) & (valid_mask > 0)
-    penalty_map[near_edge_mask] = config.edge_penalty_magnitude * (1.0 - dist_map[near_edge_mask] / radius)
-    
-    adjusted_score_map = avg_score_map + penalty_map
+    # B. 海岸线过滤：逐格惩罚写入热力图后再参与窗口卷积。
+    if config.coast_penalty_enabled:
+        adjusted_score_map, background_floor = apply_coast_penalty(
+            avg_score_map, grid, config
+        )
+    else:
+        adjusted_score_map = avg_score_map.copy()
+        valid = grid.weights > 0
+        background_floor = (
+            float(np.min(adjusted_score_map[valid]) - 1e-6)
+            if np.any(valid)
+            else float(config.heatmap_penalty_value)
+        )
+        adjusted_score_map[~valid] = background_floor
 
     # 如果有用户选区，初步压低底图分数
     if user_search_mask is not None:
@@ -189,7 +429,7 @@ def find_candidate_regions(
             user_search_mask,
             head_crop_rect,
             orientation,
-            config.heatmap_penalty_value,
+            background_floor,
             config.kernel_margin,
             rows,
             cols,
@@ -275,10 +515,54 @@ def prepare_uniformity_map(cell_matrix: np.ndarray, config: BM40Config) -> np.nd
     return cv2.boxFilter(presence_map, -1, (kw, kh), normalize=True)
 
 
+def get_shape_priority(result: SelectionResult, config: BM40Config) -> int:
+    """0=横向矩形，1=近正方形，2=纵向矩形。"""
+    width, height = result.rect_size_grid
+    short_side = min(width, height)
+    long_side = max(width, height)
+    if short_side <= 0:
+        return 2
+    if long_side / short_side <= float(config.near_square_aspect_ratio):
+        return 1
+    return 0 if width > height else 2
+
+
+def sort_candidates_by_score_and_shape(
+    candidates: List[SelectionResult],
+    config: BM40Config,
+    score_range: float,
+) -> List[SelectionResult]:
+    """
+    先按分值降序；与最高分相差不超过有效热力图分值范围 5% 的候选，
+    再按横向、近正方形、纵向排序，同形状内仍按分值降序。
+    """
+    ordered = sorted(candidates, key=lambda item: item.area_score, reverse=True)
+    if len(ordered) <= 1:
+        return ordered
+
+    tolerance = max(0.0, float(score_range)) * float(
+        config.shape_score_close_ratio
+    )
+    best_score = ordered[0].area_score
+    close_count = 1
+    while (
+        close_count < len(ordered)
+        and best_score - ordered[close_count].area_score <= tolerance
+    ):
+        close_count += 1
+
+    ordered[:close_count] = sorted(
+        ordered[:close_count],
+        key=lambda item: (get_shape_priority(item, config), -item.area_score),
+    )
+    return ordered
+
+
 def select_best_uniform_region(
     selected_results: List[SelectionResult],
     cell_matrix: np.ndarray,
-    config: BM40Config
+    config: BM40Config,
+    score_range: float = 0.0,
 ) -> SelectionResult:
     """
     从候选选区中选出最佳。
@@ -289,8 +573,10 @@ def select_best_uniform_region(
     # 1. 预计算覆盖率图
     u_map = prepare_uniformity_map(cell_matrix, config)
     
-    # 2. 取得分最高的前 N 名进行评价
-    top_candidates = sorted(selected_results, key=lambda x: x.area_score, reverse=True)[:3]
+    # 2. 接近分候选先应用形状优先级，再取前三名做均匀性评价。
+    top_candidates = sort_candidates_by_score_and_shape(
+        selected_results, config, score_range
+    )[:3]
     
     best_res = None
     max_u_score = -1.0

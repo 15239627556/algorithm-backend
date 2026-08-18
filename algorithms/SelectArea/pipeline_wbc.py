@@ -17,7 +17,8 @@ from .geometry import compute_head_crop, generate_search_window_sizes
 from .selection import (
     find_candidate_regions, 
     filter_candidates, 
-    select_best_uniform_region
+    get_valid_score_range,
+    select_best_uniform_region,
 )
 from .task_region_extraction import (
     build_forbidden_mask, 
@@ -229,7 +230,8 @@ class WBCSamplingPipeline:
             self.best_res = select_best_uniform_region(
                 selected_results=selected_list,
                 cell_matrix=self.cell_matrix,
-                config=self.cfg
+                config=self.cfg,
+                score_range=get_valid_score_range(self.grid, self.cfg),
             )
 
         # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）

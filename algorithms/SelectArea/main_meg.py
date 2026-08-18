@@ -24,16 +24,17 @@ import matplotlib.patheffects as path_effects
 from .data_structure import TaskOutput, CellOutput
 from .config import BM40Config
 from .pipeline_meg import MegSamplingPipeline
+from .project_info import load_dpi_and_orientation
 
 
 # ===================== 可视化配置 =====================
 @dataclass(frozen=True)
 class VizConfigMeg:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.json"
-    roi_path: str | None = "/home/ubuntu/VScodeProjects/项目json数据/新数据类型/20260805002/b5caee92b7554d01b4b6dec96ef8fb8c.roi.npz"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/选区视野不连续/20260625003/71346d80f6f949259776e11c3dd75a1a.json"
+    roi_path: str | None = None
     # 默认优先使用 NPZ；可用 SELECT_AREA_INPUT_SOURCE=json 强制走旧 JSON 路径。
-    input_source: str = "roi"
+    input_source: str = "json"
     out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
     # MEG 结果输出文件名
     meg_result_json: str = "results_meg.json"
@@ -238,39 +239,41 @@ def main() -> None:
     # 1. 优先加载预计算 ROI 数据；未配置时保持 JSON 输入方式。
     project = None
     roi = None
-    input_dpi = 144750
+    json_path = Path(viz_cfg.json_path)
+    info = load_dpi_and_orientation(json_path)
+    print(
+        f"[INFO][MEG] 从 info 读取: dpi={info.dpi}, heatmap_orientation={info.heatmap_orientation}, "
+        f"tile=({info.tile_w},{info.tile_h}), smear_type={info.smear_type}, info={info.info_path}"
+    )
     input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
     if input_source == "roi":
         if not viz_cfg.roi_path:
             raise ValueError("input_source='roi' 时必须配置 roi_path")
         roi = RoiDataset.load(viz_cfg.roi_path)
-        smear_type = roi.smear_type
+        smear_type = info.smear_type or roi.smear_type
         if not roi.tiles:
             raise ValueError("ROI 数据集不含 Tile")
-        first_tile = roi.tiles[0]
-        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
         print(f"[INFO][MEG] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     elif input_source == "json":
-        project = SmearProject.load_json(str(Path(viz_cfg.json_path)))
-        smear_type = project.smear_type
-        layer = project.get_layer(input_dpi)
+        project = SmearProject.load_json(str(json_path))
+        smear_type = info.smear_type or project.smear_type
+        layer = project.get_layer(info.dpi)
         if layer is None or not layer.tiles:
-            raise ValueError(f"项目中缺少 dpi={input_dpi} 的有效 Tile")
-        first_tile = next(iter(layer.tiles.values()))
-        tile_w, tile_h = int(first_tile.w), int(first_tile.h)
+            raise ValueError(f"项目中缺少 dpi={info.dpi} 的有效 Tile")
         print(f"[INFO][MEG] 成功加载项目: {smear_type}")
     else:
         raise ValueError(f"不支持的输入来源: {input_source!r}（仅支持 'json' 或 'roi'）")
 
     # 2. 构造 BM40Config（需先取 WBC_cell_type，用于有核细胞过滤）
-    bm_cfg = BM40Config(target_cell_num_MEG=200*3, 
-                        dpi=input_dpi,
-                        x100_rect_width=605,
-                        x100_rect_height=445,
+    bm_cfg = BM40Config(target_cell_num_MEG=30*3, 
+                        dpi=info.dpi,
+                        x100_rect_width=496,
+                        x100_rect_height=415,
                         View_type="MEG", 
+                        heatmap_orientation=info.heatmap_orientation,
                         Smear_type=smear_type,
-                        tile_w=tile_w,
-                        tile_h=tile_h)
+                        tile_w=info.tile_w,
+                        tile_h=info.tile_h)
     print(f"[INFO][MEG] 当前 Tile 尺寸: {bm_cfg.tile_w} x {bm_cfg.tile_h}")
 
     # 3. 从 WBC 选区结果读取视野边界，用于 MEG 排序参考

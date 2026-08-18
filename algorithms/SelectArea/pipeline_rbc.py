@@ -17,6 +17,7 @@ from .geometry import compute_head_crop, generate_search_window_sizes
 from .selection import (
     find_candidate_regions,
     filter_candidates,
+    get_valid_score_range,
     select_best_uniform_region,
 )
 from .task_region_extraction import (
@@ -201,6 +202,7 @@ class RBCSamplingPipeline:
                 selected_results=selected_list,
                 cell_matrix=self.cell_matrix,
                 config=self.cfg,
+                score_range=get_valid_score_range(self.grid, self.cfg),
             )
 
         self.task_rects = generate_initial_and_extra_tasks(

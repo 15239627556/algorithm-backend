@@ -14,12 +14,14 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from project.tiles import Tile
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
+from algorithms.SelectArea.project_info import load_dpi_and_orientation
 
 
 # ===================== 运行配置 =====================
 @dataclass(frozen=True)
 class DedupMegConfig:
     # BM 项目 JSON（SmearProject.load_json），含 40x layers.tiles 与 tile.cells
+    # dpi / tile_w / tile_h / smear_type 从同目录 info 自动读取
     json_path: str = (
         "/home/ubuntu/VScodeProjects/项目json数据/20260807/"
         "edd259c80c1546bf943b83d346c04ad0_old.json"
@@ -27,13 +29,10 @@ class DedupMegConfig:
     out_dir: str = str(Path(__file__).resolve().parent / "output")
     # 去重结果输出文件名（留空则使用 <输入stem>_dedup.json）
     output_json: str = ""
-    dpi: int = 134912
     # None=全部类型分别去重；指定则只对该类型去重
     cell_type: int | None = None
     iou_thresh: float = 0.2
-    ios_thresh: float = 0.5  # <=0 关闭 IoS，仅 IoU NMS
-    tile_w: int = 2448
-    tile_h: int = 2048
+    ios_thresh: float = 0.7  # <=0 关闭 IoS，仅 IoU NMS
 
 
 def count_cells(tiles: List[Tile], cell_type: int | None = None) -> int:
@@ -57,20 +56,27 @@ def main() -> None:
         print(f"[ERROR][DEDUP] 输入文件不存在: {json_path}")
         return
 
+    info = load_dpi_and_orientation(json_path)
+    print(
+        f"[INFO][DEDUP] 从 info 读取: dpi={info.dpi}, tile=({info.tile_w},{info.tile_h}), "
+        f"smear_type={info.smear_type}, info={info.info_path}"
+    )
+
     print(f"[INFO][DEDUP] 加载项目 JSON: {json_path}")
     project = SmearProject.load_json(str(json_path))
-    print(f"[INFO][DEDUP] 涂片类型: {project.smear_type}")
+    smear_type = info.smear_type or project.smear_type
+    print(f"[INFO][DEDUP] 涂片类型: {smear_type}")
 
-    layer_40x = project.get_layer(cfg.dpi)
+    layer_40x = project.get_layer(info.dpi)
     if not layer_40x or not layer_40x.tiles:
-        print(f"[ERROR][DEDUP] dpi={cfg.dpi} 层无有效 tiles")
+        print(f"[ERROR][DEDUP] dpi={info.dpi} 层无有效 tiles")
         return
 
     tiles_40x = list(layer_40x.tiles.values())
-    print(f"[INFO][DEDUP] dpi={cfg.dpi}, tiles 数量: {len(tiles_40x)}")
+    print(f"[INFO][DEDUP] dpi={info.dpi}, tiles 数量: {len(tiles_40x)}")
     print(
         f"[INFO][DEDUP] 参数: iou_thresh={cfg.iou_thresh}, ios_thresh={cfg.ios_thresh}, "
-        f"tile=({cfg.tile_w},{cfg.tile_h}), cell_type={cfg.cell_type}"
+        f"tile=({info.tile_w},{info.tile_h}), cell_type={cfg.cell_type}"
     )
 
     before_target = count_cells(tiles_40x, cfg.cell_type)
@@ -86,8 +92,8 @@ def main() -> None:
     start_time = time.perf_counter()
     dedup_cells_across_tiles_per_type(
         tiles_40x=tiles_40x,
-        tile_w=cfg.tile_w,
-        tile_h=cfg.tile_h,
+        tile_w=info.tile_w,
+        tile_h=info.tile_h,
         iou_thresh=cfg.iou_thresh,
         ios_thresh=cfg.ios_thresh,
         cell_types=[cfg.cell_type] if cfg.cell_type is not None else None,

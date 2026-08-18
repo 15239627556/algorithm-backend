@@ -1,7 +1,6 @@
 # config.py
 from dataclasses import dataclass, field
 from typing import Tuple, List, Dict, Optional
-import numpy as np
 import cv2
 
 @dataclass
@@ -57,8 +56,31 @@ class BM40Config:
     bmp_label: int = field(default=5, init=False)                            # 骨髓小粒规避参数
     forbidden_label5_min_component_size: int = field(default=32, init=False)    # label=5 连通域格数 >=32 才视为禁区
     init_task_select_ratio: float = field(default=0.3, init=False)           # 生成初始拍摄任务时，阈值搜索允许误差比例
-    edge_avoidance_radius: int = field(default=20, init=False)                # 边缘规避半径（单位：格子数）
-    edge_penalty_magnitude: float = field(default=-10.0, init=False)         # 边缘惩罚幅度
+   
+    # --- 评分海岸线惩罚（尺寸均为 Python 热力图格数） ---
+    coast_penalty_enabled: bool = field(default=True, init=False)
+    # coast_close_ksize: Tuple[int, int] = field(default=(45, 37), init=False)  # 闭运算核(w,h)
+    coast_close_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 闭运算核(w,h)
+    coast_close_iters: int = field(default=2, init=False)   # 闭运算迭代次数
+    coast_erode_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 腐蚀核(w,h)
+    coast_erode_iters: int = field(default=2, init=False)   # 内陆区腐蚀迭代次数
+    coast_penalty_distance: float = field(default=20.0, init=False)  # 海岸惩罚渐变距离
+
+    # BM 的 logPrior 约为 -2~-13，惩罚尺度参考 x40 gai25。
+    coast_penalty_drop_bm: float = field(default=12.0, init=False) # 骨髓海岸线惩罚降低系数
+    top_bottom_margin_bm: int = field(default=55, init=False)  # 骨髓上下边缘带宽
+    top_bottom_penalty_drop_bm: float = field(default=12.0, init=False) # 骨髓顶部底部边缘惩罚降低系数
+
+    # PB/RBC 的评分约为 0~1，惩罚尺度参考 select_redcell_area_07。
+    coast_penalty_drop_pb: float = field(default=2.0, init=False) # 血片海岸线惩罚降低系数
+    # top_bottom_penalty 线性生效带宽：越大，越能压制靠近上下边缘的候选。
+    top_bottom_margin_pb: int = field(default=91, init=False)  # 血片上下边缘带宽（加宽）
+    top_bottom_penalty_drop_pb: float = field(default=2.0, init=False) # 血片顶部底部边缘惩罚降低系数   
+
+    # 候选平均分距最高分不超过原始有效热力图分值范围的 5% 时，
+    # 形状优先级：横向矩形 > 近正方形 > 纵向矩形。
+    shape_score_close_ratio: float = field(default=0.02, init=False) # 形状评分接近比例
+    near_square_aspect_ratio: float = field(default=1.5, init=False) # 近正方形宽高比
 
     # --- 百倍视野选区覆盖算法参数 ---
     setcover_pad: int = field(default=100, init=False)     # 百倍视野选区覆盖算法时，搜索区域扩展像素数
@@ -83,3 +105,4 @@ class BM40Config:
         if self.Smear_type.upper() == "PB":
             return self.angles_pb
         return self.angles_bm
+
