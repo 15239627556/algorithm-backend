@@ -29,7 +29,9 @@ from project.cells import Cell
 from backend.tools.triton_client import infer, get_model_by_dpi, resolve_triton_route
 from backend.tools.x100_image_infer import (
     infer_x100_on_bgr,
+    map_cell_list_from_pad,
     map_cell_list_from_scaled,
+    map_cells_from_pad,
     map_cells_from_scaled,
     prepare_x100_bgr,
 )
@@ -1231,7 +1233,7 @@ class TaskService:
 
         input_dpi = int(dpi)
         try:
-            bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h = prepare_x100_bgr(
+            bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y = prepare_x100_bgr(
                 image_bytes, input_dpi, model_name,
             )
         except ValueError as e:
@@ -1275,6 +1277,9 @@ class TaskService:
         warning = warning or result.get("warning")
         cells = result.get("cells", [])
         cell_list = result.get("cell_list", [])
+        if pad_x or pad_y:
+            cells = map_cells_from_pad(cells, pad_x, pad_y)
+            cell_list = map_cell_list_from_pad(cell_list, pad_x, pad_y)
         if scale_ratio != 1.0:
             cells = map_cells_from_scaled(cells, scale_ratio)
             cell_list = map_cell_list_from_scaled(cell_list, scale_ratio)

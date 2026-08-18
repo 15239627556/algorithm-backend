@@ -29,12 +29,13 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-_MODEL_TILE_LIMITS: dict[str, tuple[int, int]] = {
-    MODEL_144750: (3200, 2200),
-    MODEL_357378: (2448, 2048),
-    MODEL_714756_BM: (4896, 4096),
-    MODEL_35000_CF: (2448, 2048),
-    MODEL_71000_CF: (4896, 4096),
+_MODEL_TILE_LIMITS: dict[str, tuple[int, int, int, int] | None] = {
+    # (max_w, max_h, min_w, min_h)；None 表示无尺寸限制（CF 模型）
+    MODEL_144750: (3200, 2200, 2448, 2048),
+    MODEL_357378: (2448, 2048, 2448, 2048),
+    MODEL_714756_BM: (4896, 4896, 2048, 1536),
+    MODEL_35000_CF: None,
+    MODEL_71000_CF: None,
 }
 
 
@@ -49,15 +50,31 @@ def extract_model_dpi(model_name: str) -> int:
     return val
 
 
-def model_tile_limits(model_name: str) -> tuple[int, int]:
-    limits = _MODEL_TILE_LIMITS.get(model_name)
+def model_tile_limits(model_name: str) -> tuple[int, int, int, int] | None:
+    """返回 (max_w, max_h, min_w, min_h)；None 表示该模型无尺寸限制。"""
+    if model_name in _MODEL_TILE_LIMITS:
+        return _MODEL_TILE_LIMITS[model_name]
+    model_dpi = extract_model_dpi(model_name)
+    if model_dpi in (35000, 71000):
+        return None
+    fallback = MODEL_714756_BM if model_dpi == 714756 else MODEL_357378
+    return _MODEL_TILE_LIMITS.get(fallback)
+
+
+def model_tile_max_limits(model_name: str) -> tuple[int, int] | None:
+    limits = model_tile_limits(model_name)
     if limits is None:
-        model_dpi = extract_model_dpi(model_name)
-        return _MODEL_TILE_LIMITS.get(
-            MODEL_714756_BM if model_dpi == 714756 else MODEL_357378,
-            (4896, 4096),
-        )
-    return limits
+        return None
+    max_w, max_h, _, _ = limits
+    return max_w, max_h
+
+
+def model_tile_min_limits(model_name: str) -> tuple[int, int] | None:
+    limits = model_tile_limits(model_name)
+    if limits is None:
+        return None
+    _, _, min_w, min_h = limits
+    return min_w, min_h
 
 
 def dpi_needs_scale(input_dpi: int, model_dpi: int) -> bool:
@@ -94,6 +111,30 @@ def scale_bgr(bgr: np.ndarray, scale_ratio: float) -> np.ndarray:
     return cv2.resize(bgr, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
 
+def pad_bgr_to_min(
+    bgr: np.ndarray,
+    min_w: int,
+    min_h: int,
+) -> tuple[np.ndarray, int, int]:
+    """
+    宽或高小于模型最小支持时，用黑底居中填充至 min_w x min_h。
+    返回 (padded_bgr, pad_x, pad_y)，pad 为原图左上角在画布中的偏移。
+    """
+    h, w = int(bgr.shape[0]), int(bgr.shape[1])
+    min_w = int(min_w)
+    min_h = int(min_h)
+    if w >= min_w and h >= min_h:
+        return bgr, 0, 0
+
+    canvas_w = max(w, min_w)
+    canvas_h = max(h, min_h)
+    pad_x = (canvas_w - w) // 2
+    pad_y = (canvas_h - h) // 2
+    canvas = np.zeros((canvas_h, canvas_w, 3), dtype=bgr.dtype)
+    canvas[pad_y:pad_y + h, pad_x:pad_x + w] = bgr
+    return canvas, pad_x, pad_y
+
+
 def map_bbox_from_scaled(
     xmin: int | float,
     ymin: int | float,
@@ -108,6 +149,67 @@ def map_bbox_from_scaled(
         max(0, int(round(float(xmax) * inv))),
         max(0, int(round(float(ymax) * inv))),
     )
+
+
+def map_bbox_from_pad(
+    xmin: int | float,
+    ymin: int | float,
+    xmax: int | float,
+    ymax: int | float,
+    pad_x: int,
+    pad_y: int,
+) -> tuple[int, int, int, int]:
+    return (
+        int(round(float(xmin) - pad_x)),
+        int(round(float(ymin) - pad_y)),
+        int(round(float(xmax) - pad_x)),
+        int(round(float(ymax) - pad_y)),
+    )
+
+
+def map_cell_list_from_pad(
+    cell_list: list[dict[str, Any]],
+    pad_x: int,
+    pad_y: int,
+) -> list[dict[str, Any]]:
+    if pad_x == 0 and pad_y == 0:
+        return cell_list
+    mapped: list[dict[str, Any]] = []
+    for item in cell_list:
+        xmin, ymin, xmax, ymax = map_bbox_from_pad(
+            item["cell_xmin"], item["cell_ymin"], item["cell_xmax"], item["cell_ymax"],
+            pad_x, pad_y,
+        )
+        new_item = dict(item)
+        new_item["cell_xmin"] = xmin
+        new_item["cell_ymin"] = ymin
+        new_item["cell_xmax"] = xmax
+        new_item["cell_ymax"] = ymax
+        mapped.append(new_item)
+    return mapped
+
+
+def map_cells_from_pad(
+    cells: list[Cell],
+    pad_x: int,
+    pad_y: int,
+) -> list[Cell]:
+    if pad_x == 0 and pad_y == 0:
+        return cells
+    mapped: list[Cell] = []
+    for c in cells:
+        xmin, ymin, xmax, ymax = map_bbox_from_pad(
+            c.cell_xmin, c.cell_ymin, c.cell_xmax, c.cell_ymax,
+            pad_x, pad_y,
+        )
+        mapped.append(replace(
+            c,
+            cell_xmin=xmin,
+            cell_ymin=ymin,
+            cell_xmax=xmax,
+            cell_ymax=ymax,
+        ))
+    return mapped
 
 
 def map_cell_list_from_scaled(
@@ -300,6 +402,10 @@ def infer_x100_on_bgr(
             gpu_id=gpu_id,
         )
 
+    # max_w/max_h <= 0 表示模型无尺寸上限，整图直接推理
+    if max_w <= 0 or max_h <= 0:
+        return _run_infer(encode_bgr_jpeg(bgr))
+
     if w <= max_w and h <= max_h:
         return _run_infer(encode_bgr_jpeg(bgr))
 
@@ -345,13 +451,17 @@ def prepare_x100_bgr(
     image_bytes: bytes,
     input_dpi: int,
     model_name: str,
-) -> tuple[np.ndarray, int, int, float, int, int, int]:
+) -> tuple[np.ndarray, int, int, float, int, int, int, int, int]:
     """
-    解码并按 DPI 比值缩放图像。
-    返回 (bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h)。
+    解码、按 DPI 比值缩放，并在必要时黑底居中填充至模型最小尺寸。
+    返回 (bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y)。
     """
     model_dpi = extract_model_dpi(model_name)
-    max_w, max_h = model_tile_limits(model_name)
+    limits = model_tile_limits(model_name)
+    if limits is None:
+        max_w, max_h = 0, 0
+    else:
+        max_w, max_h, min_w, min_h = limits
 
     bgr = decode_image_bgr(image_bytes)
     if bgr is None:
@@ -367,4 +477,16 @@ def prepare_x100_bgr(
             orig_w, orig_h, int(bgr.shape[1]), int(bgr.shape[0]),
         )
 
-    return bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h
+    pad_x, pad_y = 0, 0
+    if limits is not None:
+        _, _, min_w, min_h = limits
+        pre_pad_h, pre_pad_w = int(bgr.shape[0]), int(bgr.shape[1])
+        bgr, pad_x, pad_y = pad_bgr_to_min(bgr, min_w, min_h)
+        if pad_x or pad_y:
+            logger.info(
+                "x100 min pad: %dx%d -> %dx%d pad=(%d,%d) min=%dx%d",
+                pre_pad_w, pre_pad_h, int(bgr.shape[1]), int(bgr.shape[0]),
+                pad_x, pad_y, min_w, min_h,
+            )
+
+    return bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y
