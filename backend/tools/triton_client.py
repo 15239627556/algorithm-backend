@@ -329,6 +329,32 @@ RED_SIZE_LABELS = {
     "21": "巨大红细胞",
 }
 
+PLAT_MORPH_LABELS = {
+    '0': '无形态异常',
+    '1': '畸形血小板'
+}
+
+PLAT_DIST_LABELS = {
+    '0': '无分布异常',
+    '1': '片状',
+    '2': '小簇',
+    '3': '大簇',
+    '4': '杂志'
+}
+
+PLAT_COLOR_LABELS = {
+    '0': '无颜色异常',
+    "1": "颗粒减少血小板",
+    "2": "灰色血小板"
+}
+
+PLAT_SEZ_LABELS = {
+    '0': '无大小异常',
+    '1': '大血小板',
+    '2': '小血小板',
+    '3': '巨大血小板'
+}
+
 
 def _red_inv_from_map(label_map: dict[str, int]) -> List[str]:
     """由 label_id->class_id 反查 class_id->label_id 列表。"""
@@ -873,6 +899,27 @@ def _append_red_abnormality_extra(
     }
 
 
+def _append_plat_abnormality_extra(
+    extra: dict[str, Any],
+    key: str,
+    labels: dict[str, str],
+    class_arr: Optional[np.ndarray],
+    prob_arr: Optional[np.ndarray],
+    i: int,
+) -> None:
+    """血小板分类 head：class_id 即 label_id，无需 RED 式 label 映射。"""
+    class_raw = _array_at(class_arr, i)
+    if class_raw is None:
+        return
+    label_id = str(int(class_raw))
+    prob = _array_at(prob_arr, i)
+    extra[key] = {
+        "name": labels.get(label_id, label_id),
+        "label_id": label_id,
+        "confidence": float(prob) if prob is not None else None,
+    }
+
+
 def _classify_red_size_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
     """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定大小异常。"""
     um_px = um_per_pixel_from_dpi(dpi)
@@ -895,6 +942,53 @@ def _append_red_size_extra(extra: dict[str, Any], w_px: float, h_px: float, dpi:
         "label_id": label_id,
         "confidence": 1.0,
     }
+
+
+def _classify_plat_sez_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
+    """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定血小板大小异常。"""
+    um_px = um_per_pixel_from_dpi(dpi)
+    avg_um = (w_px * um_px + h_px * um_px) / 2.0
+    if avg_um < 2:
+        label_id = "2"
+    elif avg_um < 5:
+        label_id = "0"
+    elif avg_um <= 8:
+        label_id = "1"
+    else:
+        label_id = "3"
+    return label_id, PLAT_SEZ_LABELS[label_id]
+
+
+def _append_plat_sez_extra(extra: dict[str, Any], w_px: float, h_px: float, dpi: int) -> None:
+    label_id, name = _classify_plat_sez_label_id(w_px, h_px, dpi)
+    extra["SIZE"] = {
+        "name": name,
+        "label_id": label_id,
+        "confidence": 1.0,
+    }
+
+
+def _build_plat_extra(
+    i: int,
+    morph: Optional[np.ndarray],
+    morph_prob: Optional[np.ndarray],
+    dist: Optional[np.ndarray],
+    dist_prob: Optional[np.ndarray],
+    color: Optional[np.ndarray],
+    color_prob: Optional[np.ndarray],
+    *,
+    w_px: float = 0.0,
+    h_px: float = 0.0,
+    dpi: int = DPI_714756,
+) -> dict[str, Any]:
+    """写入 extra：形态/分布/颜色及对应置信度；大小异常由框尺寸与 DPI 计算。"""
+    extra: dict[str, Any] = {}
+    _append_plat_abnormality_extra(extra, "MORPH", PLAT_MORPH_LABELS, morph, morph_prob, i)
+    _append_plat_abnormality_extra(extra, "DIST", PLAT_DIST_LABELS, dist, dist_prob, i)
+    _append_plat_abnormality_extra(extra, "COLOR", PLAT_COLOR_LABELS, color, color_prob, i)
+    if w_px > 0 and h_px > 0:
+        _append_plat_sez_extra(extra, w_px, h_px, dpi)
+    return extra
 
 
 def _build_red_rbc_extra(
@@ -954,6 +1048,13 @@ def _infer_714756_bm_from_pipeline_json(
     red_class_morph_prob = _as_float64_array(_res_get(res, "red_class_morph_prob", "RED_CLASS_MORPH_PROB"))
     red_class_agg = _as_float64_array(_res_get(res, "red_class_agg", "RED_CLASS_AGG"))
     red_class_agg_prob = _as_float64_array(_res_get(res, "red_class_agg_prob", "RED_CLASS_AGG_PROB"))
+
+    plat_class_morph = _as_float64_array(_res_get(res, "plat_class_morph", "PLAT_CLASS_MORPH"))
+    plat_class_morph_prob = _as_float64_array(_res_get(res, "plat_class_morph_prob", "PLAT_CLASS_MORPH_PROB"))
+    plat_class_dist = _as_float64_array(_res_get(res, "plat_class_dist", "PLAT_CLASS_DIST"))
+    plat_class_dist_prob = _as_float64_array(_res_get(res, "plat_class_dist_prob", "PLAT_CLASS_DIST_PROB"))
+    plat_class_color = _as_float64_array(_res_get(res, "plat_class_color", "PLAT_CLASS_COLOR"))
+    plat_class_color_prob = _as_float64_array(_res_get(res, "plat_class_color_prob", "PLAT_CLASS_COLOR_PROB"))
 
     boxes = _as_float64_array(boxes_raw)
     if boxes is None or boxes.size == 0:
@@ -1038,8 +1139,26 @@ def _infer_714756_bm_from_pipeline_json(
     pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
     plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
     if plat_num > 0 and pd is not None:
+
+        def _plat_extra(i: int) -> dict[str, Any]:
+            row = np.asarray(pd[i]).flatten()
+            w_px = float(row[2]) if len(row) >= 4 else 0.0
+            h_px = float(row[3]) if len(row) >= 4 else 0.0
+            return _build_plat_extra(
+                i,
+                plat_class_morph,
+                plat_class_morph_prob,
+                plat_class_dist,
+                plat_class_dist_prob,
+                plat_class_color,
+                plat_class_color_prob,
+                w_px=w_px,
+                h_px=h_px,
+                dpi=dpi,
+            )
+
         plat_cells = _cells_from_xywh_detections(
-            pd, plat_num, plat_scores, 100004, "血小板",
+            pd, plat_num, plat_scores, 100006, "血小板", extra_builder=_plat_extra,
         )
         cells.extend(plat_cells)
         scores_out.extend([c.bbox_confidence for c in plat_cells])

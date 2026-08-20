@@ -57,7 +57,8 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
             "DPI714756_BM_PB_WBC_classifier",
             "DPI714756_BM_PB_RED_cell_detection",
             "DPI714756_BM_PB_RED_cell_classifier",
-            "DPI714756_BM_PB_PLAT_detection"
+            "DPI714756_BM_PB_PLAT_detection",
+            "DPI714756_BM_PB_PLAT_classifier",
         ],
     ),
     "Image_enhance_pipeline": (
