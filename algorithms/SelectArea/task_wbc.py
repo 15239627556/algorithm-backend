@@ -193,7 +193,7 @@ def generate_wbc_view_tasks(
     task_rects: List[Tuple[int, int, int, int]], # 拍摄区域网格坐标任务矩形列表
     grid: HeatmapGrid,
     config: BM40Config,
-    params: Optional[SetCoverSolverParameter] = None
+    params: Optional[SetCoverSolverParameter] = None,
 ) -> List[TaskOutput]:
     """Smear_type
     生成百倍视野任务，标记所属区域名称，并返回平铺的任务列表。

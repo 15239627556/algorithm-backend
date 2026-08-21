@@ -38,10 +38,11 @@ from .main_wbc_meg import (
 from .pipeline_rbc import RBCSamplingPipeline
 from .pipeline_wbc import WBCSamplingPipeline
 from .project_info import load_dpi_and_orientation, load_project_info
+from .task_region_extraction import save_bubble_forbidden_debug
 
 
 DEFAULT_DATA_ROOT = Path("/home/ubuntu/VScodeProjects/项目json数据/20260807_project")
-DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "20260807_project_2"
+DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "20260807_project_3"
 
 X100_WBC_WIDTH = 496
 X100_WBC_HEIGHT = 415
@@ -137,6 +138,9 @@ def run_one_project(
     with open(out_dir / result_name, "w", encoding="utf-8") as f:
         json.dump([t.to_dict() for t in tasks], f, indent=2, ensure_ascii=False)
 
+    save_bubble_forbidden_debug(
+        pipeline.bubble_forbidden_mask, pipeline.grid, out_dir
+    )
     if not skip_viz and pipeline.best_res is not None and pipeline.grid is not None:
         visualize = visualize_wbc_results if is_bm else visualize_rbc_results
         visualize(

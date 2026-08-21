@@ -101,6 +101,260 @@ def build_forbidden_mask(
     return forbidden_mask
 
 
+def _bubble_dilate_radius_cells(config: BM40Config) -> int:
+    """膨胀半径：百倍视野半对角线对应的格数 + 安全余量。"""
+    half_diag = 0.5 * float(
+        (config.x100_rect_width ** 2 + config.x100_rect_height ** 2) ** 0.5
+    )
+    cells = int(np.ceil(half_diag / max(float(config.cell_size), 1.0)))
+    extra = max(0, int(config.bubble_dilate_extra_cells))
+    return max(1, cells + extra)
+
+
+def _normalize_score_gray(score_map: np.ndarray) -> np.ndarray:
+    gray = np.zeros(score_map.shape, dtype=np.uint8)
+    finite = np.isfinite(score_map)
+    if not np.any(finite):
+        return gray
+    lo = float(np.min(score_map[finite]))
+    hi = float(np.max(score_map[finite]))
+    if hi > lo:
+        gray[finite] = np.clip(
+            (score_map[finite] - lo) / (hi - lo) * 255.0, 0, 255
+        ).astype(np.uint8)
+    else:
+        gray[finite] = 128
+    return gray
+
+
+def _save_bubble_step_pair(
+    out_dir: Path,
+    stem: str,
+    mask: np.ndarray,
+    score_gray: np.ndarray,
+    color: Tuple[int, int, int] = (0, 0, 255),
+) -> None:
+    """保存二值图 + 叠加热力图（验证用）。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    mask_u8 = (np.asarray(mask) > 0).astype(np.uint8)
+    cv2.imwrite(str(out_dir / f"{stem}.png"), mask_u8 * 255)
+    overlay = cv2.cvtColor(score_gray, cv2.COLOR_GRAY2BGR)
+    if np.any(mask_u8):
+        overlay[mask_u8 > 0] = (
+            0.35 * overlay[mask_u8 > 0]
+            + 0.65 * np.array(color, dtype=np.float32)
+        ).astype(np.uint8)
+    cv2.imwrite(str(out_dir / f"{stem}_overlay.png"), overlay)
+
+
+def _keep_round_bubble_components(
+    mask: np.ndarray,
+    config: BM40Config,
+) -> Tuple[np.ndarray, int]:
+    """保留圆/椭圆连通域，返回 (mask, 连通域数)。"""
+    kept = np.zeros_like(mask)
+    if not np.any(mask):
+        return kept, 0
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        mask, connectivity=8, ltype=cv2.CV_32S
+    )
+    min_area = max(1, int(config.bubble_min_area))
+    max_area = max(min_area, int(config.bubble_max_area))
+    min_circ = float(config.bubble_min_circularity)
+    max_aspect = max(1.0, float(config.bubble_max_aspect_ratio))
+    n_kept = 0
+    for label_id in range(1, count):
+        area = int(stats[label_id, cv2.CC_STAT_AREA])
+        if area < min_area or area > max_area:
+            continue
+        comp = np.where(labels == label_id, 255, 0).astype(np.uint8)
+        contours, _ = cv2.findContours(
+            comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            continue
+        contour = max(contours, key=cv2.contourArea)
+        peri = float(cv2.arcLength(contour, True))
+        if peri <= 1e-6:
+            continue
+        circularity = 4.0 * np.pi * area / (peri * peri)
+        if circularity < min_circ:
+            continue
+        x, y, w, h = cv2.boundingRect(contour)
+        short_side = max(min(w, h), 1)
+        if max(w, h) / float(short_side) > max_aspect:
+            continue
+        kept[labels == label_id] = 255
+        n_kept += 1
+    return kept, n_kept
+
+
+def build_bubble_forbidden_mask(
+    grid: HeatmapGrid,
+    config: BM40Config,
+    score_map: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """
+    空泡检测（涂抹体填洞）：
+    1. 较高阈值得到高分涂抹体
+    2. 小核闭运算封小缝（避免把空泡封进主体）
+    3. 填洞；口袋 = 填洞后 − 填洞前
+    4. 开运算去掉碎噪
+    5. 圆/椭圆筛选
+    最后再按百倍视野尺度膨胀为禁区。
+    洞内可有稀疏高分细胞，不要求整颗空泡都是低分。
+    各步过程图写到 algorithms/SelectArea/output/bubble_steps/（验证用）。
+    """
+    from .selection import _fill_mask_holes
+
+    rows, cols = grid.values.shape
+    empty = np.zeros((rows, cols), dtype=np.uint8)
+    if not config.bubble_avoid_enabled:
+        return empty
+
+    if score_map is None:
+        score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
+    score_map = np.asarray(score_map, dtype=np.float32)
+    covered = np.isfinite(score_map) & (grid.weights > 0)
+    if not np.any(covered):
+        return empty
+
+    covered_scores = score_map[covered]
+    background_min = float(np.min(covered_scores))
+    score_max = float(np.max(covered_scores))
+    score_span = score_max - background_min
+    if score_span <= 1e-6:
+        return empty
+
+    steps_dir = Path(__file__).resolve().parent / "output" / "bubble_steps"
+    score_gray = _normalize_score_gray(score_map)
+
+    # 1. 高分涂抹体（明显高于背景的区域）
+    smear_thresh = background_min + float(config.bubble_smear_ratio) * score_span
+    smear = np.where(covered & (score_map > smear_thresh), 255, 0).astype(np.uint8)
+    _save_bubble_step_pair(steps_dir, "01_smear", smear, score_gray, (0, 255, 0))
+    if not np.any(smear):
+        print("[INFO][BUBBLE] 无高分涂抹体")
+        return empty
+
+    # 2. 小核闭运算：只封涂抹体上的细缝，不要用大核把海岸湾封死
+    close_w, close_h = config.bubble_close_ksize
+    close_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (max(1, int(close_w)), max(1, int(close_h)))
+    )
+    smear_closed = cv2.morphologyEx(smear, cv2.MORPH_CLOSE, close_kernel)
+    _save_bubble_step_pair(
+        steps_dir, "02_smear_closed", smear_closed, score_gray, (0, 255, 0)
+    )
+
+    # 3. 填洞；口袋 = 内部孔洞（空泡，含洞内稀疏细胞）
+    filled = _fill_mask_holes(smear_closed)
+    pockets = np.where((filled > 0) & (smear_closed == 0), 255, 0).astype(np.uint8)
+    _save_bubble_step_pair(steps_dir, "03a_filled", filled, score_gray, (255, 128, 0))
+    _save_bubble_step_pair(steps_dir, "03b_pockets", pockets, score_gray, (0, 0, 255))
+    if not np.any(pockets):
+        print(
+            f"[INFO][BUBBLE] 涂抹体内无闭合孔洞 "
+            f"(过程图已保存: {steps_dir})"
+        )
+        return empty
+
+    # 4. 开运算去掉碎噪口袋
+    open_w, open_h = config.bubble_open_ksize
+    open_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (max(1, int(open_w)), max(1, int(open_h)))
+    )
+    pockets_opened = cv2.morphologyEx(pockets, cv2.MORPH_OPEN, open_kernel)
+    _save_bubble_step_pair(
+        steps_dir, "04_pockets_opened", pockets_opened, score_gray, (0, 0, 255)
+    )
+
+    # 5. 圆/椭圆筛选
+    bubbles, n_kept = _keep_round_bubble_components(pockets_opened, config)
+    _save_bubble_step_pair(
+        steps_dir, "05_round_kept", bubbles, score_gray, (0, 0, 255)
+    )
+    if n_kept == 0 or not np.any(bubbles):
+        print(
+            f"[INFO][BUBBLE] 圆/椭圆筛选后无空泡 "
+            f"(过程图已保存: {steps_dir})"
+        )
+        return empty
+
+    radius = _bubble_dilate_radius_cells(config)
+    kernel_size = 2 * radius + 1
+    dilate_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)
+    )
+    dilated = cv2.dilate(bubbles, dilate_kernel, iterations=1)
+    _save_bubble_step_pair(
+        steps_dir, "06_dilated", dilated, score_gray, (0, 0, 255)
+    )
+    print(
+        f"[INFO][BUBBLE] 填洞空泡={n_kept}，涂抹体阈值={smear_thresh:.4f}，"
+        f"闭核={config.bubble_close_ksize}，开核={config.bubble_open_ksize}，"
+        f"膨胀半径={radius} 格，禁区格数={int(np.count_nonzero(dilated))}，"
+        f"过程图={steps_dir}"
+    )
+    return (dilated > 0).astype(np.uint8)
+
+
+def save_bubble_forbidden_debug(
+    bubble_mask: Optional[np.ndarray],
+    grid: HeatmapGrid,
+    save_dir: Path,
+    *,
+    stem: str = "bubble_mask",
+) -> None:
+    """
+    保存空泡禁区：网格原尺寸二值图 + 叠加热力图（红=禁区）。
+    一格一像素，便于对照 heatmap.png 检查检测是否正确。
+    """
+    if bubble_mask is None or grid is None:
+        return
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    mask = (np.asarray(bubble_mask) > 0).astype(np.uint8)
+    cv2.imwrite(str(save_dir / f"{stem}.png"), mask * 255)
+
+    score_map = np.asarray(grid.finalize(fill_value=np.nan), dtype=np.float32)
+    gray = np.zeros(score_map.shape, dtype=np.uint8)
+    finite = np.isfinite(score_map)
+    if np.any(finite):
+        lo = float(np.min(score_map[finite]))
+        hi = float(np.max(score_map[finite]))
+        if hi > lo:
+            gray[finite] = np.clip(
+                (score_map[finite] - lo) / (hi - lo) * 255.0, 0, 255
+            ).astype(np.uint8)
+        else:
+            gray[finite] = 128
+
+    overlay = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    overlay[mask > 0] = (
+        0.35 * overlay[mask > 0] + 0.65 * np.array([0, 0, 255], dtype=np.float32)
+    ).astype(np.uint8)
+    cv2.imwrite(str(save_dir / f"{stem}_overlay.png"), overlay)
+    print(
+        f"[DEBUG][BUBBLE] 空泡 mask 已保存: {save_dir / (stem + '.png')} "
+        f"(禁区格数={int(mask.sum())})"
+    )
+
+
+def build_combined_forbidden_mask(
+    grid: HeatmapGrid,
+    config: BM40Config,
+    tiles: Optional[List[Tile]] = None,
+    particle_rects: Optional[List[Tuple[float, float, float, float]]] = None,
+) -> np.ndarray:
+    """label=5 禁区 ∪ 空泡膨胀禁区。"""
+    forbidden = build_forbidden_mask(
+        grid, config, tiles=tiles, particle_rects=particle_rects
+    )
+    bubbles = build_bubble_forbidden_mask(grid, config)
+    return np.where((forbidden > 0) | (bubbles > 0), 1, 0).astype(np.uint8)
+
 
 def _find_initial_task_bm(
     grid: HeatmapGrid,
@@ -305,20 +559,22 @@ def generate_initial_and_extra_tasks(
     grid: HeatmapGrid,
     cell_matrix: np.ndarray,
     tiles: List[Tile],
-    config: BM40Config
+    config: BM40Config,
+    forbidden_mask: Optional[np.ndarray] = None,
 ) -> List[Tuple[int, int, int, int]]:
     """
     生成一个初始拍摄框，随后通过行/列扩张覆盖整个大选区。
     """
-    # 1. 含骨髓小粒的网格
+    # 1. 含骨髓小粒 / 空泡的网格
     rows, cols = grid.values.shape
-    forbidden_mask = build_forbidden_mask(grid, config, tiles=tiles)
+    if forbidden_mask is None:
+        forbidden_mask = build_combined_forbidden_mask(grid, config, tiles=tiles)
     
     # 选区掩码（大框范围）
     selection_mask = np.zeros((rows, cols), dtype=np.uint8)
     cv2.fillPoly(selection_mask, [best_selection.vertices_grid.astype(np.int32)], 1)
     
-    # 有效搜索区 = 选区 - 禁区 
+    # 有效搜索区 = 选区 - (label=5 ∪ 空泡膨胀区)
     valid_search_mask = cv2.bitwise_and(selection_mask, cv2.bitwise_not(forbidden_mask))
     
     # 2. 寻找初始拍摄框 (小框目标为 target_cell_num_WBC，不乘 ratio)

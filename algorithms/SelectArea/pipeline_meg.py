@@ -1,7 +1,6 @@
 # pipeline_meg.py
 import numpy as np
 from typing import List, Optional, TYPE_CHECKING
-import math
 import sys
 from pathlib import Path
 
@@ -12,8 +11,11 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from .config import BM40Config
 from .data_structure import TaskOutput
-from .heatmaps import HeatmapGrid, compute_global_bounds_from_tiles
-from .task_region_extraction import build_forbidden_mask
+from .heatmaps import HeatmapGrid, build_score_heatmap
+from .task_region_extraction import (
+    build_bubble_forbidden_mask,
+    build_forbidden_mask,
+)
 from .task_meg import generate_meg_view_tasks
 
 if TYPE_CHECKING:
@@ -48,28 +50,6 @@ def _collect_meg_cells_fast(tiles, meg_type: int):
     return all_meg_cells_list
 
 
-def _build_lightweight_grid_for_mask(tiles, cell_size: float) -> HeatmapGrid:
-    """
-    仅为禁区过滤构建轻量网格：
-    - 只计算边界与网格尺寸；
-    - 不写入 score/weight（避免 build_score_heatmap 的重计算）。
-    """
-    min_x, min_y, max_x, max_y = compute_global_bounds_from_tiles(tiles)
-    width = max_x - min_x
-    height = max_y - min_y
-    cols = int(math.ceil(width / cell_size))
-    rows = int(math.ceil(height / cell_size))
-    values = np.zeros((rows, cols), dtype=np.float32)
-    weights = np.zeros((rows, cols), dtype=np.float32)
-    return HeatmapGrid(
-        origin_x=min_x,
-        origin_y=min_y,
-        cell_size=cell_size,
-        values=values,
-        weights=weights,
-    )
-
-
 class MegSamplingPipeline:
     """
     巨核细胞采样流水线：
@@ -85,6 +65,7 @@ class MegSamplingPipeline:
         self.cfg = config
         self.grid = None
         self.forbidden_mask = None
+        self.bubble_forbidden_mask = None
 
     def run_meg(
         self,
@@ -92,6 +73,7 @@ class MegSamplingPipeline:
         wbc_rects: List[List[int]] | None = None,
         *,
         roi: Optional["RoiDataset"] = None,
+        heatmap_grid: Optional[HeatmapGrid] = None,
     ) -> List[TaskOutput]:
         if roi is not None:
             tiles = roi.tiles
@@ -133,18 +115,29 @@ class MegSamplingPipeline:
             print("[INFO][MEG] 未在 40x tiles 中找到任何巨核细胞。")
             return []
 
-        # 4. 构建 HeatmapGrid（仅依赖 scores，不涉及细胞类型）
-        self.grid = _build_lightweight_grid_for_mask(tiles, self.cfg.cell_size)
+        # 4. 热力图：可复用有核已算好的 grid，否则与 WBC 同样构建
+        if heatmap_grid is not None:
+            self.grid = heatmap_grid
+        else:
+            self.grid = (
+                roi.build_heatmap_grid(self.cfg)
+                if roi is not None
+                else build_score_heatmap(tiles, config=self.cfg)
+            )
 
-        # 5. 构建禁区掩码（与 WBC 流程保持一致）
+        # 5. 禁区：与有核相同，label=5 与空泡分开构建后再合并过滤细胞
         self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg)
+        region_forbidden = self.forbidden_mask
+        if self.bubble_forbidden_mask is not None:
+            region_forbidden = np.where((self.forbidden_mask > 0) | (self.bubble_forbidden_mask > 0),1,0,).astype(np.uint8)
 
-        # 6. 使用 forbidden_mask 过滤巨核细胞（不在禁区内的才保留）
+        # 6. 使用合并禁区过滤巨核细胞（不在禁区内的才保留）
         centers = 0.5 * (all_meg_cells_array[:, 0:2] + all_meg_cells_array[:, 2:4])
         gxs = ((centers[:, 0] - self.grid.origin_x) // self.grid.cell_size).astype(np.int32)
         gys = ((centers[:, 1] - self.grid.origin_y) // self.grid.cell_size).astype(np.int32)
 
-        rows, cols = self.forbidden_mask.shape
+        rows, cols = region_forbidden.shape
         in_bounds = (gxs >= 0) & (gxs < cols) & (gys >= 0) & (gys < rows)
         if not np.any(in_bounds):
             print("[INFO][MEG] 所有巨核细胞均落在网格之外。")
@@ -153,7 +146,7 @@ class MegSamplingPipeline:
         valid_pos_idx = np.where(in_bounds)[0]
         valid_gxs = gxs[in_bounds]
         valid_gys = gys[in_bounds]
-        non_forbidden = self.forbidden_mask[valid_gys, valid_gxs] == 0
+        non_forbidden = region_forbidden[valid_gys, valid_gxs] == 0
         keep_idx = valid_pos_idx[non_forbidden]  # 0 表示非禁区
 
         if keep_idx.size == 0:

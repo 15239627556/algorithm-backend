@@ -24,6 +24,7 @@ from .data_structure import SelectionResult, TaskOutput
 from .config import BM40Config
 from .pipeline_wbc import WBCSamplingPipeline
 from .project_info import load_dpi_and_orientation
+from .task_region_extraction import save_bubble_forbidden_debug
 
 
 # ===================== 可视化配置 =====================
@@ -32,7 +33,7 @@ class VizConfig:
     # 输入与输出路径配置
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
     # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/20260807_project/00fba2154bb74682a4a2133f82ed7f37/00fba2154bb74682a4a2133f82ed7f37.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/选区视野不连续/20260625003/71346d80f6f949259776e11c3dd75a1a.json"
     roi_path: str | None = None
     # 默认优先使用 NPZ；可用 SELECT_AREA_INPUT_SOURCE=json 强制走旧 JSON 路径。
     input_source: str = "json"
@@ -266,14 +267,17 @@ def main() -> None:
 
 
 
-    # 3. 执行可视化：同样直接传入 project
+    out_path = Path(viz_cfg.out_dir)
+    save_bubble_forbidden_debug(
+        pipeline.bubble_forbidden_mask, pipeline.grid, out_path
+    )
     if pipeline.best_res and pipeline.grid:
         visualize_results(
             best_res=pipeline.best_res,
             tasks=final_task_list,
             grid_info=pipeline.grid,
             user_search_mask=pipeline.user_search_mask,
-            save_path_base=Path(viz_cfg.out_dir)
+            save_path_base=out_path
         )
 
 

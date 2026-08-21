@@ -21,6 +21,7 @@ from .config import BM40Config
 from .data_structure import SelectionResult, TaskOutput
 from .pipeline_rbc import RBCSamplingPipeline
 from .project_info import load_dpi_and_orientation
+from .task_region_extraction import save_bubble_forbidden_debug
 
 
 @dataclass(frozen=True)
@@ -175,7 +176,9 @@ def main() -> None:
         print(f"[INFO][RBC] 成功加载项目: {smear_type}")
 
     # 血片选区仍按有核细胞数量进行选区
-    bm_cfg = BM40Config(target_cell_num_WBC=200, 
+    user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
+    pm_cfg = BM40Config(target_cell_num_WBC=200, 
+                        user_choice_area=user_choice_area,
                         dpi=info.dpi,
                         x100_rect_width=482,
                         x100_rect_height=403,
@@ -184,11 +187,11 @@ def main() -> None:
                         Smear_type=smear_type,
                         tile_w=info.tile_w,
                         tile_h=info.tile_h)
-    print(f"[INFO][RBC] 当前 Tile 尺寸: {bm_cfg.tile_w} x {bm_cfg.tile_h}")
+    print(f"[INFO][RBC] 当前 Tile 尺寸: {pm_cfg.tile_w} x {pm_cfg.tile_h}")
     
     import time
     start_time = time.time()
-    pipeline = RBCSamplingPipeline(bm_cfg)
+    pipeline = RBCSamplingPipeline(pm_cfg)
     final_task_list = pipeline.run(project=project, roi=roi)
     end_time = time.time()
     print(f"[INFO][RBC] 算法执行时间: {end_time - start_time} 秒")
@@ -200,6 +203,9 @@ def main() -> None:
         json.dump(json_ready_results, f, indent=2, ensure_ascii=False)
     print(f"[INFO][RBC] 转换完成，共 {len(json_ready_results)} 条任务数据")
 
+    save_bubble_forbidden_debug(
+        pipeline.bubble_forbidden_mask, pipeline.grid, out_dir
+    )
     if pipeline.best_res and pipeline.grid:
         visualize_results(
             best_res=pipeline.best_res,

@@ -21,7 +21,8 @@ from .selection import (
     select_best_uniform_region,
 )
 from .task_region_extraction import (
-    build_forbidden_mask, 
+    build_bubble_forbidden_mask,
+    build_forbidden_mask,
     generate_initial_and_extra_tasks
 )
 from .task_wbc import (
@@ -80,7 +81,8 @@ class WBCSamplingPipeline:
         self.cell_matrix = None    # 存储细胞密度矩阵 
         self.best_res = None       # 存储最终选区结果 
         self.task_rects = None     # 存储网格坐标任务区域 
-        self.forbidden_mask = None # 存储禁区掩码 
+        self.forbidden_mask = None # 存储禁区掩码（label=5）
+        self.bubble_forbidden_mask = None  # 空泡膨胀禁区（拍摄框搜索 + 有效细胞过滤）
         self.user_search_mask = None # 存储用户选区掩码
 
 
@@ -162,6 +164,8 @@ class WBCSamplingPipeline:
         target_num = self.cfg.target_cell_num_WBC * self.cfg.target_ratio
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
+        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles) # 骨髓小粒（label=5）禁区
+        self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg) # 空泡禁区
 
         # 4. 特殊情况处理：全图细胞不足
         if all_cell_count < target_num:
@@ -208,7 +212,7 @@ class WBCSamplingPipeline:
                 search_rects=search_rects,
                 head_crop_rect=head_rect,
                 config=self.cfg,
-                user_search_mask=self.user_search_mask
+                user_search_mask=self.user_search_mask,
             )
             print(f"[INFO][WBC] 过滤前的 head 候选区域数量: {len(results['head_results'])}")
             # print(f"[INFO][WBC] 过滤前的 head 候选区域: {results['head_results']}")
@@ -234,29 +238,32 @@ class WBCSamplingPipeline:
                 score_range=get_valid_score_range(self.grid, self.cfg),
             )
 
-        # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）
+        # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）：规避 label=5 与空泡
+        region_forbidden = self.forbidden_mask
+        if self.bubble_forbidden_mask is not None:
+            region_forbidden = np.where((self.forbidden_mask > 0) | (self.bubble_forbidden_mask > 0),1,0,).astype(np.uint8)
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
             grid=self.grid,
             cell_matrix=self.cell_matrix,
             tiles=tiles,
-            config=self.cfg
+            config=self.cfg,
+            forbidden_mask=region_forbidden,
         )
-        # 10. 构建禁区掩码并提取有效细胞
-        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles) 
+        # 10. 提取有效细胞：规避 label=5 与空泡膨胀区（含周围一圈）
         valid_cells = collect_valid_cells_vectorized(
             all_cells_array=all_cells_array, 
             best_selection=self.best_res, 
             grid=self.grid, 
-            forbidden_mask=self.forbidden_mask
+            forbidden_mask=region_forbidden
         )
 
-        # 11. 生成最终采样任务
+        # 11. 用过滤后的细胞直接生成百倍视野
         final_tasks = generate_wbc_view_tasks(
             cell_bounds=valid_cells,
             task_rects=self.task_rects,
             grid=self.grid,
-            config=self.cfg
+            config=self.cfg,
         )
 
         return final_tasks

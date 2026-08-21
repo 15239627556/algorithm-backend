@@ -75,14 +75,21 @@ def _build_cell_count_grid_from_bounds(all_cells_array: np.ndarray, grid) -> np.
 
 
 class RBCSamplingPipeline:
+    """
+    血片（PB）有核细胞采样流水线。
+    选区与视野生成逻辑对齐 WBC，但血片不做空泡规避。
+    """
+
     def __init__(self, config: BM40Config):
         self.cfg = config
-        self.grid = None
-        self.cell_matrix = None
-        self.best_res = None
-        self.task_rects = None
-        self.forbidden_mask = None
-        self.user_search_mask = None
+        # --- 中间结果存储占位（用于调试/可视化） ---
+        self.grid = None             # HeatmapGrid
+        self.cell_matrix = None      # 细胞密度矩阵
+        self.best_res = None         # 最终选区结果
+        self.task_rects = None       # 网格坐标拍摄区域
+        self.forbidden_mask = None   # 禁区掩码（label=5；血片通常为空或极少）
+        self.bubble_forbidden_mask = None  # 血片不建空泡禁区，保持 None
+        self.user_search_mask = None  # 用户选区掩码
 
     def run(
         self,
@@ -90,6 +97,10 @@ class RBCSamplingPipeline:
         *,
         roi: Optional["RoiDataset"] = None,
     ) -> List[TaskOutput]:
+        """
+        执行血片有核细胞采样。
+        支持 SmearProject 或 RoiDataset；不做空泡过滤。
+        """
         if roi is not None:
             tiles = roi.tiles
         else:
@@ -106,9 +117,13 @@ class RBCSamplingPipeline:
             return []
 
         if self.cfg.target_cell_num_WBC <= 0:
-            print(f"[WARNING][RBC] target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，将返回空任务。")
+            print(
+                f"[WARNING][RBC] target_cell_num_WBC({self.cfg.target_cell_num_WBC}) <= 0，"
+                f"将返回空任务。"
+            )
             return []
 
+        # 1. 基础数据准备：热力图 + 有核细胞坐标 + 密度矩阵
         self.grid = (
             roi.build_heatmap_grid(self.cfg)
             if roi is not None
@@ -129,6 +144,7 @@ class RBCSamplingPipeline:
         )
         rows, cols = self.cell_matrix.shape
 
+        # --- 构建用户选区约束掩码 ---
         self.user_search_mask = None
         if self.cfg.user_choice_area:
             self.user_search_mask = np.zeros((rows, cols), dtype=np.uint8)
@@ -139,6 +155,7 @@ class RBCSamplingPipeline:
             self.user_search_mask[r0:r1, c0:c1] = 1
             print(f"[INFO][RBC] 已应用用户约束选区: Grid({c0},{r0}) to Grid({c1},{r1})")
 
+        # 2. 计算全局统计量
         if self.user_search_mask is not None:
             all_cell_count = int(np.sum(self.cell_matrix[self.user_search_mask > 0]))
             print(f"[INFO][RBC] 用户选区内细胞数量：{all_cell_count}")
@@ -146,11 +163,14 @@ class RBCSamplingPipeline:
             all_cell_count = int(np.sum(self.cell_matrix))
             print(f"[INFO][RBC] 全部细胞数量：{all_cell_count}")
 
-        # 血片选区仍按有核细胞数量进行选择
+        # 3. 业务参数准备（血片仍按有核细胞数量选区；不做空泡规避）
         target_num = self.cfg.target_cell_num_WBC * self.cfg.target_ratio
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
+        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        self.bubble_forbidden_mask = None  # 血片不检测、不过滤空泡
 
+        # 4. 特殊情况：全图细胞不足
         if all_cell_count < target_num:
             if self.cfg.user_choice_area:
                 c0, r0 = self.grid.global_to_grid(self.cfg.user_choice_area["x_min"], self.cfg.user_choice_area["y_min"])
@@ -168,6 +188,7 @@ class RBCSamplingPipeline:
                     rect_size_grid=(c1 - c0, r1 - r0),
                     vertices_grid=np.array([[c0, r0], [c1, r0], [c1, r1], [c0, r1]]),
                 )
+                print("[INFO][RBC] 细胞不足，但已将选区锁定在用户指定区域。")
             else:
                 self.best_res = SelectionResult(
                     area_score=float(np.nanmean(self.grid.finalize())),
@@ -177,7 +198,9 @@ class RBCSamplingPipeline:
                     rect_size_grid=(cols, rows),
                     vertices_grid=np.array([[0, 0], [cols, 0], [cols, rows], [0, rows]]),
                 )
+                print("[INFO][RBC] 细胞不足，降级为全图选区。")
         else:
+            # 5. 正常选区：寻找候选区
             results = find_candidate_regions(
                 grid=self.grid,
                 cell_matrix=self.cell_matrix,
@@ -189,6 +212,7 @@ class RBCSamplingPipeline:
             print(f"[INFO][RBC] 过滤前的 head 候选区域数量: {len(results['head_results'])}")
             print(f"[INFO][RBC] 过滤前的 tail 候选区域数量: {len(results['tail_results'])}")
 
+            # 6. 过滤候选区
             selected_list = filter_candidates(
                 results=results,
                 config=self.cfg,
@@ -198,6 +222,7 @@ class RBCSamplingPipeline:
             if os.getenv("SELECT_AREA_DEBUG_CANDIDATES") == "1":
                 print(f"[INFO][RBC] 候选区域: {selected_list}")
 
+            # 7. 均匀性评估：选出最佳选区
             self.best_res = select_best_uniform_region(
                 selected_results=selected_list,
                 cell_matrix=self.cell_matrix,
@@ -205,15 +230,17 @@ class RBCSamplingPipeline:
                 score_range=get_valid_score_range(self.grid, self.cfg),
             )
 
+        # 8. 生成拍摄区域（初始拍摄框 + 补拍）：仅规避 label=5，不做空泡过滤
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
             grid=self.grid,
             cell_matrix=self.cell_matrix,
             tiles=tiles,
             config=self.cfg,
+            forbidden_mask=self.forbidden_mask,
         )
 
-        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        # 9. 提取有效细胞：仅规避 label=5
         valid_cells = collect_valid_cells_vectorized(
             all_cells_array=all_cells_array,
             best_selection=self.best_res,
@@ -221,6 +248,7 @@ class RBCSamplingPipeline:
             forbidden_mask=self.forbidden_mask,
         )
 
+        # 10. 用过滤后的细胞生成百倍视野
         final_tasks = generate_wbc_view_tasks(
             cell_bounds=valid_cells,
             task_rects=self.task_rects,
@@ -228,4 +256,3 @@ class RBCSamplingPipeline:
             config=self.cfg,
         )
         return final_tasks
-

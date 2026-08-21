@@ -1040,7 +1040,7 @@ class TaskService:
                     try:
                         meg_pipeline = MegSamplingPipeline(bm_cfg)
                         meg_tasks = meg_pipeline.run_meg(
-                            roi=roi, wbc_rects=wbc_rects_meg
+                            roi=roi, wbc_rects=wbc_rects_meg, heatmap_grid=pipeline.grid
                         )
                         meg_task_rects = [task.to_dict() for task in meg_tasks]
                     except Exception as e:

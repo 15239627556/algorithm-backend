@@ -33,6 +33,7 @@ from .pipeline_wbc import WBCSamplingPipeline
 from .pipeline_meg import MegSamplingPipeline
 from .main_wbc import visualize_results
 from .main_meg import visualize_meg_results, collect_wbc_view_rects_from_results
+from .task_region_extraction import save_bubble_forbidden_debug
 from .project_info import (
     load_dpi_and_orientation,
     load_project_info,
@@ -323,6 +324,9 @@ def run_one_project(
     with open(wbc_json_path, "w", encoding="utf-8") as f:
         json.dump([t.to_dict() for t in wbc_tasks], f, indent=2, ensure_ascii=False)
 
+    save_bubble_forbidden_debug(
+        wbc_pipeline.bubble_forbidden_mask, wbc_pipeline.grid, out_dir
+    )
     if not skip_viz and wbc_pipeline.best_res is not None and wbc_pipeline.grid is not None:
         visualize_results(
             best_res=wbc_pipeline.best_res,
@@ -376,6 +380,7 @@ def run_one_project(
         project=project,
         wbc_rects=wbc_rects,
         roi=roi,
+        heatmap_grid=wbc_pipeline.grid,
     )
     t_meg = time.time() - t1
     print(f"[MEG] {len(meg_tasks)} views, {t_meg:.3f}s")

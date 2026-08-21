@@ -56,10 +56,21 @@ class BM40Config:
     bmp_label: int = field(default=5, init=False)                            # 骨髓小粒规避参数
     forbidden_label5_min_component_size: int = field(default=32, init=False)    # label=5 连通域格数 >=32 才视为禁区
     init_task_select_ratio: float = field(default=0.3, init=False)           # 生成初始拍摄任务时，阈值搜索允许误差比例
+
+    # --- 空泡规避（仅用热力图分值，不读 40 倍图） ---
+    # 高分涂抹体填洞 → 口袋 = 填洞后 − 填洞前 → 圆/椭圆筛选。
+    bubble_avoid_enabled: bool = field(default=True, init=False)
+    bubble_smear_ratio: float = field(default=0.3, init=False)  # 涂抹体阈值：bg + ratio*(max-bg)
+    bubble_close_ksize: Tuple[int, int] = field(default=(5, 5), init=False)  # 仅封涂抹体小缝，勿过大
+    bubble_open_ksize: Tuple[int, int] = field(default=(3, 3), init=False)   # 口袋开运算去碎噪
+    bubble_min_area: int = field(default=20, init=False)  # 口袋最小面积（格）
+    bubble_max_area: int = field(default=2000, init=False)  # 口袋最大面积（格）
+    bubble_min_circularity: float = field(default=0.45, init=False)  # 最小圆度
+    bubble_max_aspect_ratio: float = field(default=3.0, init=False)  # 最大外接框长宽比
+    bubble_dilate_extra_cells: int = field(default=3, init=False)  # 最终禁区再扩格数
    
     # --- 评分海岸线惩罚（尺寸均为 Python 热力图格数） ---
     coast_penalty_enabled: bool = field(default=True, init=False)
-    # coast_close_ksize: Tuple[int, int] = field(default=(45, 37), init=False)  # 闭运算核(w,h)
     coast_close_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 闭运算核(w,h)
     coast_close_iters: int = field(default=2, init=False)   # 闭运算迭代次数
     coast_erode_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 腐蚀核(w,h)
