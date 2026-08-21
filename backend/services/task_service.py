@@ -38,6 +38,7 @@ from backend.tools.x100_image_infer import (
 from backend.tools.model_control import warmup_model, ensure_model_loaded
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
+from algorithms.SelectArea.main_rbc import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
@@ -1102,7 +1103,7 @@ class TaskService:
                 }
 
         elif smear_type == "PB" and normalized_task_type == "WBC":
-            bm_cfg = BM40Config(
+            pb_cfg = BM40Config(
                 user_choice_area=user_choice_area,
                 target_cell_num_WBC=required_wbc,
                 x100_rect_width=int(view_width),
@@ -1114,7 +1115,7 @@ class TaskService:
                 tile_w=tile_w,
                 tile_h=tile_h,
             )
-            pipeline = WBCSamplingPipeline(bm_cfg)
+            pipeline = RBCSamplingPipeline(pb_cfg)
             wbc_tasks = pipeline.run(roi=roi)
             final_task_list = [task.to_dict() for task in wbc_tasks]
         else:

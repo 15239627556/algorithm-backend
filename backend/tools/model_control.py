@@ -14,6 +14,7 @@ from config import (
     TRITON_HTTP_URL,
     get_triton_endpoint,
     next_triton_endpoint,
+    camera
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,19 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
         ],
     ),
 }
+
+if camera == "flir":
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'] = (
+        "DPI714756_BM_PB",
+        [
+            "DPI714756_BM_PB_WBC_detector",
+            "DPI714756_FLIR_BM_PB_WBC_classifier",
+            "DPI714756_BM_PB_RED_cell_detection",
+            "DPI714756_BM_PB_RED_cell_classifier",
+            "DPI714756_BM_PB_PLAT_detection",
+            "DPI714756_BM_PB_PLAT_classifier",
+        ],
+    )
 
 # 常驻组（加载后不参与 LRU 淘汰）；亦为启动预热列表（当前预热已关闭，见 warmup_pinned_models_at_startup）
 STARTUP_WARMUP_PIPELINES: Tuple[str, ...] = (

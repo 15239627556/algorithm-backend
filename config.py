@@ -40,6 +40,10 @@ TRITON_IPS = [
     # "triton_gpu1",
 ]
 
+# flir相机   "camera": "flir"
+# 其它相机 "camera": "default"
+camera = "flir"
+
 # 各端点共用端口：8000(HTTP)、8001(gRPC)、8002(Metrics)、9000(multi_pipeline)
 TRITON_HTTP_PORT = 8000
 TRITON_GRPC_PORT = 8001
@@ -109,5 +113,5 @@ FLASK_PORT = APP_PORT
 
 THREAD_POOL_SIZE = int(os.environ.get("THREAD_POOL_SIZE", "256"))
 
-sufa_version = "v46"
+sufa_version = "v47"
 is_doc = True
