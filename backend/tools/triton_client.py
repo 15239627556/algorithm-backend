@@ -45,7 +45,9 @@ DPI_357378 = 357378  # 巨核细胞定位分类
 DPI_714756 = 714756  # 有核细胞/成熟红细胞
 
 # 模型名称常量（各组预估显存须与 model_control.GROUP_VRAM_GB 一致；357378 为常驻组）
-MODEL_144750 = "DPI147246_BM_PB_pipeline"  # 144750: BM/PB  预估显存占用 3.3G（LRU）
+MODEL_144750_BM = "DPI147246_BM_pipeline"  # 144750 骨髓  预估显存占用 3.3G（LRU）
+MODEL_144750_PB = "DPI147246_PB_pipeline"  # 144750 血片  预估显存占用 3.3G（LRU）
+MODELS_144750 = frozenset({MODEL_144750_BM, MODEL_144750_PB})
 MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用 0.2G（常驻）
 MODEL_714756_BM = "DPI714756_BM_PB_pipeline"  # 714756: BM/PB  预估显存占用 3.1G（LRU）
 MODEL_35000_CF = "DPI35000_CF_WBC_pipeline"  # 35000: CF  预估显存占用 2.2G（LRU）
@@ -389,7 +391,7 @@ def get_model_by_dpi(
     仅根据 DPI 选择 Triton 模型（与 smear_type、target_cell_types 组合见下方有效表）。
 
     有效组合:
-    - 144750 ± 10%: BM(WBC,MEG) / PB(WBC,RBC) → MODEL_144750
+    - 144750 ± 10%: BM(WBC,MEG) → MODEL_144750_BM；PB(WBC,RBC) → MODEL_144750_PB
     - 357378 ± 10%: BM(MEG) → MODEL_357378；BM(WBC) 暂无专用模型，临时走 MODEL_714756_BM
     - 714756 ± 10%: BM/PB(WBC,RBC,MEG,PLAT) → MODEL_714756_BM
     - 35000 ± 10%: CF(WBC) → MODEL_35000_CF
@@ -403,7 +405,7 @@ def get_model_by_dpi(
     if st == "CF":
         model = MODEL_35000_CF if bucket == DPI_35000 else MODEL_71000_CF
     elif bucket == DPI_144750:
-        model = MODEL_144750
+        model = MODEL_144750_PB if st == "PB" else MODEL_144750_BM
     elif bucket == DPI_357378:
         if st == "BM" and "WBC" in at and "MEG" not in at:
             model = MODEL_714756_BM
@@ -510,7 +512,7 @@ def _post_multipart_pipeline_infer(
     timeout_s: float,
     extra_form: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 task_mode；147246 为 enable_meg）。"""
+    """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 task_mode；147246 为 enable_meg、slide_type）。"""
     if not url.lower().startswith("http"):
         url = f"http://{url}"
 
@@ -1384,15 +1386,19 @@ def infer(
         return_warning=True,
     )
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
-    if model == MODEL_144750:
+    if model in MODELS_144750:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
+        slide_type = smear_type.strip().upper() or "BM"
         url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
         res_json = _post_raw_pipeline_infer(
             url,
             image_bytes,
             filename,
             PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={"enable_meg": str(int(enable_meg))},
+            extra_form={
+                "enable_meg": str(int(enable_meg)),
+                "slide_type": slide_type,
+            },
         )
 
         wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)

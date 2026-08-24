@@ -1124,7 +1124,7 @@ class TaskService:
                 "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
             }
-        logger.info("roi_selection finished task_id=%s, ", task_id)
+        logger.info("roi_selection finished task_id=%s, task_list=%s", task_id, str(final_task_list))
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
