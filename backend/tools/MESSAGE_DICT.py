@@ -147,7 +147,9 @@ def get_counting_cell_type(cell_id, smear_type="BM"):
         else:
             return "EFC"
     elif cell_id in CELL_TYPE_CSF:
-        return "EFC"
+        if cell_id == 400007:
+            return 'EFC'
+        return "WBC"
     else:
         return "EFC"
 
