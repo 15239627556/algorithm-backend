@@ -44,6 +44,11 @@ TRITON_IPS = [
 # 其它相机 "camera": "default"
 camera = "flir"
 
+# 红细胞开关
+rbc_switch = False
+# 血小板开关
+plt_switch = False
+
 # 各端点共用端口：8000(HTTP)、8001(gRPC)、8002(Metrics)、9000(multi_pipeline)
 TRITON_HTTP_PORT = 8000
 TRITON_GRPC_PORT = 8001
@@ -113,5 +118,5 @@ FLASK_PORT = APP_PORT
 
 THREAD_POOL_SIZE = int(os.environ.get("THREAD_POOL_SIZE", "256"))
 
-sufa_version = "v48"
+sufa_version = "v49"
 is_doc = True
