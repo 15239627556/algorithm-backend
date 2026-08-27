@@ -59,14 +59,17 @@ class BM40Config:
 
     # --- 空泡规避（仅用热力图分值，不读 40 倍图） ---
     # 高分涂抹体填洞 → 口袋 = 填洞后 − 填洞前 → 圆/椭圆筛选。
+    # 宁可漏检、少误杀：抬高 min_area / 小面积圆度，放宽 max_area，大面积圆度略松。
     bubble_avoid_enabled: bool = field(default=True, init=False)
     bubble_smear_ratio: float = field(default=0.3, init=False)  # 涂抹体阈值：bg + ratio*(max-bg)
     bubble_close_ksize: Tuple[int, int] = field(default=(5, 5), init=False)  # 仅封涂抹体小缝，勿过大
     bubble_open_ksize: Tuple[int, int] = field(default=(3, 3), init=False)   # 口袋开运算去碎噪
-    bubble_min_area: int = field(default=20, init=False)  # 口袋最小面积（格）
-    bubble_max_area: int = field(default=2000, init=False)  # 口袋最大面积（格）
-    bubble_min_circularity: float = field(default=0.45, init=False)  # 最小圆度
-    bubble_max_aspect_ratio: float = field(default=3.0, init=False)  # 最大外接框长宽比
+    bubble_min_area: int = field(default=100, init=False)  # 口袋最小面积（格）；过小易误杀碎斑
+    bubble_max_area: int = field(default=5000, init=False)  # 口袋最大面积（格）；避免滤掉真大空泡
+    bubble_min_circularity: float = field(default=0.60, init=False)  # 小面积最小圆度（更严）
+    bubble_large_area_threshold: int = field(default=400, init=False)  # 大于该面积改用大空泡圆度
+    bubble_min_circularity_large: float = field(default=0.40, init=False)  # 大面积最小圆度（略松）
+    bubble_max_aspect_ratio: float = field(default=2.5, init=False)  # 最大外接框长宽比（收紧）
     bubble_dilate_extra_cells: int = field(default=3, init=False)  # 最终禁区再扩格数
    
     # --- 评分海岸线惩罚（尺寸均为 Python 热力图格数） ---

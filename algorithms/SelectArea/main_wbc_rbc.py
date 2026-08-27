@@ -42,7 +42,7 @@ from .task_region_extraction import save_bubble_forbidden_debug
 
 
 DEFAULT_DATA_ROOT = Path("/home/ubuntu/VScodeProjects/项目json数据/20260807_project")
-DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "20260807_project_3"
+DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "20260807_project_4"
 
 X100_WBC_WIDTH = 496
 X100_WBC_HEIGHT = 415

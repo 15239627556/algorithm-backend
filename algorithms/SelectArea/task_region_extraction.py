@@ -147,6 +147,14 @@ def _save_bubble_step_pair(
     cv2.imwrite(str(out_dir / f"{stem}_overlay.png"), overlay)
 
 
+def _bubble_min_circularity_for_area(area: int, config: BM40Config) -> float:
+    """小面积更严、大面积略松，减少碎斑误报同时保住锯齿大空泡。"""
+    large_thr = max(int(config.bubble_min_area), int(config.bubble_large_area_threshold))
+    if area >= large_thr:
+        return float(config.bubble_min_circularity_large)
+    return float(config.bubble_min_circularity)
+
+
 def _keep_round_bubble_components(
     mask: np.ndarray,
     config: BM40Config,
@@ -161,7 +169,6 @@ def _keep_round_bubble_components(
     )
     min_area = max(1, int(config.bubble_min_area))
     max_area = max(min_area, int(config.bubble_max_area))
-    min_circ = float(config.bubble_min_circularity)
     max_aspect = max(1.0, float(config.bubble_max_aspect_ratio))
     n_kept = 0
     for label_id in range(1, count):
@@ -175,11 +182,17 @@ def _keep_round_bubble_components(
         if not contours:
             continue
         contour = max(contours, key=cv2.contourArea)
+        # 大面积口袋轮廓锯齿会压低圆度：先做轻度近似再测。
+        if area >= int(config.bubble_large_area_threshold) and len(contour) >= 8:
+            eps = 0.02 * float(cv2.arcLength(contour, True))
+            approx = cv2.approxPolyDP(contour, eps, True)
+            if len(approx) >= 3:
+                contour = approx
         peri = float(cv2.arcLength(contour, True))
         if peri <= 1e-6:
             continue
         circularity = 4.0 * np.pi * area / (peri * peri)
-        if circularity < min_circ:
+        if circularity < _bubble_min_circularity_for_area(area, config):
             continue
         x, y, w, h = cv2.boundingRect(contour)
         short_side = max(min(w, h), 1)
