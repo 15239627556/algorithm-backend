@@ -14,6 +14,9 @@ from config import (
     TRITON_HTTP_URL,
     get_triton_endpoint,
     next_triton_endpoint,
+    camera,
+    rbc_switch,
+    plt_switch,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,12 +26,20 @@ _logged_http_bases: set[str] = set()
 # 模型组：pipeline 名称 -> (组标识, [子模型..., pipeline])
 # 子模型先加载，pipeline 最后加载
 MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
-    "DPI147246_BM_PB_pipeline": (
-        "DPI147246_BM_PB",
+    "DPI147246_BM_pipeline": (
+        "DPI147246_BM",
         [
             "DPI147246_BM_PB_WBC_cell_detection",
             "DPI147246_BM_PB_MEG_cell_detection",
-            "DPI147246_BM_PB_constituency_score",
+            "DPI147246_BM_constituency_score",
+        ],
+    ),
+    "DPI147246_PB_pipeline": (
+        "DPI147246_PB",
+        [
+            "DPI147246_BM_PB_WBC_cell_detection",
+            "DPI147246_BM_PB_MEG_cell_detection",
+            "DPI147246_PB_constituency_score",
         ],
     ),
     "DPI357378_BM_MEG_pipeline": (
@@ -54,10 +65,7 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
         "DPI714756_BM_PB",
         [
             "DPI714756_BM_PB_WBC_detector",
-            "DPI714756_BM_PB_WBC_classifier",
-            "DPI714756_BM_PB_RED_cell_detection",
-            "DPI714756_BM_PB_RED_cell_classifier",
-            "DPI714756_BM_PB_PLAT_detection"
+            "DPI714756_BM_PB_WBC_classifier"
         ],
     ),
     "Image_enhance_pipeline": (
@@ -68,6 +76,20 @@ MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
     ),
 }
 
+if camera == "flir":
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'] = (
+        "DPI714756_BM_PB",
+        [
+            "DPI714756_BM_PB_WBC_detector",
+            "DPI714756_FLIR_BM_PB_WBC_classifier"
+        ],
+    )
+if rbc_switch:
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_RED_cell_detection")
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_RED_cell_classifier")
+if plt_switch:
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_PLAT_detection")
+    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_PLAT_classifier")
 # 常驻组（加载后不参与 LRU 淘汰）；亦为启动预热列表（当前预热已关闭，见 warmup_pinned_models_at_startup）
 STARTUP_WARMUP_PIPELINES: Tuple[str, ...] = (
     "DPI357378_BM_MEG_pipeline",
@@ -87,7 +109,8 @@ PINNED_GROUP_KEYS: FrozenSet[str] = _pinned_group_keys()
 
 # 每组预估显存占用（GB），与 backend.tools.triton_client 注释一致；用于加载前测算是否需 LRU 淘汰
 GROUP_VRAM_GB: Dict[str, float] = {
-    "DPI147246_BM_PB": 3.3,
+    "DPI147246_BM": 3.3,
+    "DPI147246_PB": 3.3,
     "DPI357378_BM_MEG": 0.2,
     "DPI35000_CF": 2.2,
     "DPI71000_CF": 2.2,
@@ -106,12 +129,14 @@ LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
 TRITON_GPU_VRAM_GB = float(os.environ.get("TRITON_GPU_VRAM_GB", "11"))
 TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "3"))
 # 每张 GPU 显存中最多同时保留的模型组数（含常驻组；超限时 LRU 淘汰最久未用非常驻组）
-MAX_LOADED_MODEL_GROUPS = int(os.environ.get("TRITON_MAX_LOADED_MODEL_GROUPS", "2"))
+# 默认 3：允许 147246 + 714756 与常驻 357378 同时驻留（互斥不再强制卸 714756）
+MAX_LOADED_MODEL_GROUPS = int(os.environ.get("TRITON_MAX_LOADED_MODEL_GROUPS", "3"))
 # 互斥组：同 GPU 上不可共存，加载一侧时强制卸载同组其余模型
+# 注意：DPI714756_BM_PB 不在互斥内，可与 DPI147246_* 共存
 MUTEX_GROUP_KEYS: Tuple[FrozenSet[str], ...] = (
     frozenset({
-        "DPI147246_BM_PB",
-        "DPI714756_BM_PB",
+        "DPI147246_BM",
+        "DPI147246_PB",
         "DPI35000_CF",
         "DPI71000_CF",
     }),

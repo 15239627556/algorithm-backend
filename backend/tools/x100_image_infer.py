@@ -16,7 +16,8 @@ from backend.tools.image_tiling import (
     tile_ranges_1d,
 )
 from backend.tools.triton_client import (
-    MODEL_144750,
+    MODEL_144750_BM,
+    MODEL_144750_PB,
     MODEL_357378,
     MODEL_714756_BM,
     MODEL_35000_CF,
@@ -31,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 _MODEL_TILE_LIMITS: dict[str, tuple[int, int, int, int] | None] = {
     # (max_w, max_h, min_w, min_h)；None 表示无尺寸限制（CF 模型）
-    MODEL_144750: (3200, 2200, 2448, 2048),
+    MODEL_144750_BM: (3200, 2200, 2448, 2048),
+    MODEL_144750_PB: (3200, 2200, 2448, 2048),
     MODEL_357378: (2448, 2048, 2448, 2048),
     MODEL_714756_BM: (4896, 4896, 2048, 1536),
     MODEL_35000_CF: None,
