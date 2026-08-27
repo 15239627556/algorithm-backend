@@ -30,9 +30,11 @@ from backend.tools.MESSAGE_DICT import (
     CELL_TYPES_X40,
     CELL_TYPES_X100,
     CELL_TYPES_MEG,
+    CELL_TYPE_RBC,
+    CELL_TYPE_PLT,
     get_counting_cell_type,
 )
-from backend.tools.combo_validator import _get_dpi_bucket, DPI_35000, DPI_71000
+from backend.tools.combo_validator import _get_dpi_bucket, _parse_cell_types, DPI_35000, DPI_71000
 from config import next_triton_endpoint, get_triton_endpoint
 from backend.tools.model_control import ensure_model_loaded
 from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
@@ -357,6 +359,26 @@ PLAT_SEZ_LABELS = {
     '3': '巨大血小板'
 }
 
+# 成熟红细胞 TOP5：凝集 > 形状 > 结构 > 大小 > 颜色；label_id "1" 为无异常
+_RED_TOP5_PRIORITY = ("AGG", "MORPH", "STRUCT", "SIZE", "COLOR")
+_RED_NORMAL_LABEL_IDS = frozenset({"1"})
+# 血小板 TOP5：形状 > 分布 > 大小 > 颜色；label_id "0" 为无异常
+_PLAT_TOP5_PRIORITY = ("MORPH", "DIST", "SIZE", "COLOR")
+_PLAT_NORMAL_LABEL_IDS = frozenset({"0"})
+# 血小板 (head, label_id) → CELL_TYPE_PLT
+_PLAT_HEAD_LABEL_TO_TYPE = {
+    ("MORPH", "1"): 600005,
+    ("DIST", "1"): 600001,
+    ("DIST", "2"): 600002,
+    ("DIST", "3"): 600003,
+    ("DIST", "4"): 600004,
+    ("SIZE", "1"): 600008,
+    ("SIZE", "2"): 600009,
+    ("SIZE", "3"): 600010,
+    ("COLOR", "1"): 600006,
+    ("COLOR", "2"): 600007,
+}
+
 
 def _red_inv_from_map(label_map: dict[str, int]) -> List[str]:
     """由 label_id->class_id 反查 class_id->label_id 列表。"""
@@ -392,14 +414,15 @@ def get_model_by_dpi(
 
     有效组合:
     - 144750 ± 10%: BM(WBC,MEG) → MODEL_144750_BM；PB(WBC,RBC) → MODEL_144750_PB
-    - 357378 ± 10%: BM(MEG) → MODEL_357378；BM(WBC) 暂无专用模型，临时走 MODEL_714756_BM
-    - 714756 ± 10%: BM/PB(WBC,RBC,MEG,PLAT) → MODEL_714756_BM
+    - 357378 ± 10%: BM(MEG) → MODEL_357378；BM/PB 的 WBC/RBC/PLAT 走 MODEL_714756_BM
+    - 714756 ± 10%: BM/PB(WBC,RBC,PLAT) → MODEL_714756_BM；含 MEG 时 → MODEL_357378
     - 35000 ± 10%: CF(WBC) → MODEL_35000_CF
     - 71000 ± 10%: CF(WBC) → MODEL_71000_CF
     超出范围时使用绝对差最小的 DPI bucket，并可通过 return_warning 返回告警。
     """
     st = smear_type.strip().upper()
     at = algorithm_types.strip().upper()
+    types = _parse_cell_types(at)
     bucket, warning = _get_dpi_bucket(dpi, smear_type=st)
 
     if st == "CF":
@@ -407,13 +430,13 @@ def get_model_by_dpi(
     elif bucket == DPI_144750:
         model = MODEL_144750_PB if st == "PB" else MODEL_144750_BM
     elif bucket == DPI_357378:
-        if st == "BM" and "WBC" in at and "MEG" not in at:
-            model = MODEL_714756_BM
-        elif st == "PB" and ("WBC" in at or "RBC" in at):
+        uses_714756 = bool(types & {"WBC", "RBC", "PLAT"})
+        uses_meg = "MEG" in types
+        if uses_714756 and not uses_meg:
             model = MODEL_714756_BM
         else:
             model = MODEL_357378
-    elif "MEG" in at:
+    elif "MEG" in types:
         model = MODEL_357378
     else:
         model = MODEL_714756_BM
@@ -421,6 +444,25 @@ def get_model_by_dpi(
     if return_warning:
         return model, warning
     return model
+
+
+def _714756_tasks_from_algorithm_types(algorithm_types: str) -> str:
+    """714756 pipeline 只接受 wbc/red/plat；RBC→red，其余类型丢弃。"""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for raw in (algorithm_types or "").lower().split(","):
+        t = raw.strip()
+        if not t:
+            continue
+        if "_" in t:
+            t = t.split("_")[-1]
+        if t == "rbc":
+            t = "red"
+        if t not in {"wbc", "red", "plat"} or t in seen:
+            continue
+        seen.add(t)
+        parts.append(t)
+    return ",".join(parts)
 
 
 def _post_raw_pipeline_infer(
@@ -1024,6 +1066,114 @@ def _build_red_rbc_extra(
     return extra
 
 
+def _rbc_head_label_to_cell_type(_key: str, label_id: str) -> Optional[int]:
+    """红细胞 label_id → CELL_TYPE_RBC；"1" 为无异常。"""
+    try:
+        lid = int(label_id)
+    except (TypeError, ValueError):
+        return None
+    cell_type = 500000 if lid == 1 else 500000 + lid
+    return cell_type if cell_type in CELL_TYPE_RBC else None
+
+
+def _plat_head_label_to_cell_type(key: str, label_id: str) -> Optional[int]:
+    cell_type = _PLAT_HEAD_LABEL_TO_TYPE.get((key, str(label_id)))
+    if cell_type is None or cell_type not in CELL_TYPE_PLT:
+        return None
+    return cell_type
+
+
+def _top_item_from_abnormality(
+    cell_type: int,
+    class_confidence: float,
+    bbox_confidence: float,
+    smear_type: str,
+) -> dict[str, Any]:
+    return {
+        "cell_type": cell_type,
+        "class_confidence": float(class_confidence),
+        "bbox_confidence": float(bbox_confidence),
+        "count_type": get_counting_cell_type(cell_type, smear_type),
+    }
+
+
+def _tops_from_abnormal_extra(
+    extra: dict[str, Any],
+    bbox_confidence: float,
+    smear_type: str,
+    *,
+    priority_keys: tuple[str, ...],
+    normal_label_ids: frozenset[str],
+    label_to_cell_type: Callable[[str, str], Optional[int]],
+    normal_cell_type: int,
+) -> list[dict[str, Any]]:
+    """按优先级收集异常分类，最多 5 项；全无异常则唯一项为正常类型。"""
+    tops: list[dict[str, Any]] = []
+    for key in priority_keys:
+        info = extra.get(key)
+        if not isinstance(info, dict):
+            continue
+        label_id = str(info.get("label_id", "")).strip()
+        if not label_id or label_id in normal_label_ids:
+            continue
+        cell_type = label_to_cell_type(key, label_id)
+        if cell_type is None or cell_type == normal_cell_type:
+            continue
+        conf = info.get("confidence")
+        tops.append(_top_item_from_abnormality(
+            cell_type,
+            float(conf) if conf is not None else 1.0,
+            bbox_confidence,
+            smear_type,
+        ))
+        if len(tops) >= 5:
+            break
+    if not tops:
+        tops.append(_top_item_from_abnormality(normal_cell_type, 1.0, bbox_confidence, smear_type))
+    return tops
+
+
+def _finalize_abnormal_top5_cells(
+    cells: List[Cell],
+    smear_type: str,
+    *,
+    type_map: dict,
+    normal_cell_type: int,
+    priority_keys: tuple[str, ...],
+    normal_label_ids: frozenset[str],
+    label_to_cell_type: Callable[[str, str], Optional[int]],
+) -> list[dict[str, Any]]:
+    """根据 extra 生成 TOP5，并回写 cell_type / cell_type_name / class_confidence。"""
+    out: list[dict[str, Any]] = []
+    for c in cells:
+        tops = _tops_from_abnormal_extra(
+            c.extra or {},
+            float(c.bbox_confidence),
+            smear_type,
+            priority_keys=priority_keys,
+            normal_label_ids=normal_label_ids,
+            label_to_cell_type=label_to_cell_type,
+            normal_cell_type=normal_cell_type,
+        )
+        top0 = tops[0]
+        c.cell_type = int(top0["cell_type"])
+        type_info = type_map.get(c.cell_type)
+        if type_info and isinstance(type_info, (tuple, list)):
+            c.cell_type_name = str(type_info[1])
+        c.class_confidence = float(top0["class_confidence"])
+        item: dict[str, Any] = {
+            "cell_xmin": c.cell_xmin,
+            "cell_ymin": c.cell_ymin,
+            "cell_xmax": c.cell_xmax,
+            "cell_ymax": c.cell_ymax,
+            "tops": tops,
+        }
+        if c.extra:
+            item["extra"] = c.extra
+        out.append(item)
+    return out
+
+
 def _infer_714756_bm_from_pipeline_json(
     res: dict[str, Any],
     smear_type: str,
@@ -1134,9 +1284,18 @@ def _infer_714756_bm_from_pipeline_json(
         rbc_cells = _cells_from_xywh_detections(
             rd, red_num, red_scores, 100005, "已分类红细胞", extra_builder=_red_extra,
         )
+        rbc_list = _finalize_abnormal_top5_cells(
+            rbc_cells,
+            smear_type,
+            type_map=CELL_TYPE_RBC,
+            normal_cell_type=500000,
+            priority_keys=_RED_TOP5_PRIORITY,
+            normal_label_ids=_RED_NORMAL_LABEL_IDS,
+            label_to_cell_type=_rbc_head_label_to_cell_type,
+        )
         cells.extend(rbc_cells)
         scores_out.extend([c.bbox_confidence for c in rbc_cells])
-        cell_list.extend(_cells_to_cell_list_single(rbc_cells, smear_type))
+        cell_list.extend(rbc_list)
 
     pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
     plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
@@ -1162,9 +1321,18 @@ def _infer_714756_bm_from_pipeline_json(
         plat_cells = _cells_from_xywh_detections(
             pd, plat_num, plat_scores, 100006, "血小板", extra_builder=_plat_extra,
         )
+        plat_list = _finalize_abnormal_top5_cells(
+            plat_cells,
+            smear_type,
+            type_map=CELL_TYPE_PLT,
+            normal_cell_type=600000,
+            priority_keys=_PLAT_TOP5_PRIORITY,
+            normal_label_ids=_PLAT_NORMAL_LABEL_IDS,
+            label_to_cell_type=_plat_head_label_to_cell_type,
+        )
         cells.extend(plat_cells)
         scores_out.extend([c.bbox_confidence for c in plat_cells])
-        cell_list.extend(_cells_to_cell_list_single(plat_cells, smear_type))
+        cell_list.extend(plat_list)
 
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
@@ -1420,9 +1588,7 @@ def infer(
         return result
 
     if model == MODEL_714756_BM:
-        tasks = ",".join(t.strip() for t in algorithm_types.lower().split(","))
-        if "rbc" in tasks:
-            tasks = tasks.replace("rbc", "red")
+        tasks = _714756_tasks_from_algorithm_types(algorithm_types)
         url = _multi_pipeline_infer_url("714756", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url,
@@ -1504,7 +1670,12 @@ if __name__ == "__main__":
         (144750, "PB", "WBC,RBC"),
         (357378, "BM", "MEG"),
         (357378, "BM", "WBC"),
+        (357378, "BM", "PLAT"),
+        (357378, "BM", "WBC,PLAT"),
+        (357378, "PB", "PLAT"),
+        (357378, "PB", "WBC,RBC,PLAT"),
         (714756, "BM", "WBC,RBC"),
+        (714756, "BM", "WBC,RBC,PLAT"),
         (35000, "CF", "WBC"),
         (71000, "CF", "WBC"),
         (40, "BM", "WBC,MEG"),
