@@ -14,8 +14,9 @@ DPI_OUT_OF_RANGE_WARNING_CF = "DPI out of valid range (35000/71000 ±10%)"
 VALID_COMBINATIONS = {
     (144750, "BM"): {"WBC", "MEG"},
     (144750, "PB"): {"WBC", "RBC"},
-    (357378, "BM"): {"WBC", "MEG"},
-    (357378, "PB"): {"WBC", "RBC"},
+    # 357378 允许 PLAT，推理走 714756 血小板模型（见 get_model_by_dpi）
+    (357378, "BM"): {"WBC", "RBC", "MEG", "PLAT"},
+    (357378, "PB"): {"WBC", "RBC", "MEG", "PLAT"},
     (714756, "BM"): {"WBC", "RBC", "MEG", "PLAT"},
     (714756, "PB"): {"WBC", "RBC", "MEG", "PLAT"},
     (35000, "CF"): {"WBC"},

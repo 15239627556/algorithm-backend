@@ -119,6 +119,52 @@ CELL_TYPE_CSF = {
     400011: ("Lymphoma_Cell", "淋巴瘤细胞"),
 }
 
+CELL_TYPE_RBC = {
+    500000: ("RBC", "正常成熟红细胞"),
+    500003: ("ERBC", "球形红细胞"),
+    500004: ("ERBC", "椭圆形红细胞"),
+    500005: ("ERBC", "靶形红细胞"),
+    500006: ("ERBC", "镰状红细胞"),
+    500007: ("ERBC", "泪滴形红细胞"),
+    500008: ("ERBC", "口形红细胞"),
+    500009: ("ERBC", "裂红细胞"),
+    500010: ("ERBC", "棘形红细胞"),
+    500011: ("ERBC", "皱缩红细胞"),
+    500012: ("ERBC", "咬痕红细胞"),
+    500013: ("ERBC", "水泡红细胞"),
+    500014: ("ERBC", "盔形红细胞"),
+    500015: ("ERBC", "新月形红细胞"),
+    500017: ("ERBC", "不规则红细胞"),
+    500019: ("ERBC", "大红细胞"),
+    500020: ("ERBC", "小红细胞"),
+    500021: ("ERBC", "巨大红细胞"),
+    500023: ("ERBC", "低色素"),
+    500024: ("ERBC", "高色素"),
+    500025: ("ERBC", "啫多色性红细胞"),
+    500027: ("ERBC", "啫碱性点彩红细胞"),
+    500028: ("ERBC", "豪-乔小体"),
+    500029: ("ERBC", "Heinz小体"),
+    500030: ("ERBC", "卡波环"),
+    500031: ("ERBC", "Pappenheimer小体"),
+    500032: ("ERBC", "寄生虫"),
+    500034: ("ERBC", "缗钱状红细胞"),
+    500035: ("ERBC", "凝集红细胞"),
+}
+
+CELL_TYPE_PLT = {
+    600000: ("PLAT", "正常成熟血小板"),
+    600001: ("EPLAT", "片状"),
+    600002: ("EPLAT", "小簇"),
+    600003: ("EPLAT", "大簇"),
+    600004: ("EFC", "杂质"),
+    600005: ("EPLAT", "畸形血小板"),
+    600006: ("EPLAT", "颗粒减少血小板"),
+    600007: ("EPLAT", "灰色血小板"),
+    600008: ("EPLAT", "大血小板"),
+    600009: ("EPLAT", "小血小板"),
+    600010: ("EPLAT", "巨大血小板"),
+}
+
 # 根据细胞ID返回计数类别
 # 不参与计数：Excluded from the count
 # 有核细胞：Nucleated_Cell
@@ -150,6 +196,10 @@ def get_counting_cell_type(cell_id, smear_type="BM"):
         if cell_id == 400007:
             return 'EFC'
         return "WBC"
+    elif cell_id in CELL_TYPE_RBC:
+        return CELL_TYPE_RBC[cell_id][0]
+    elif cell_id in CELL_TYPE_PLT:
+        return CELL_TYPE_PLT[cell_id][0]
     else:
         return "EFC"
 
