@@ -64,15 +64,26 @@ def build_valid_score_mask(
     if not np.any(valid):
         return valid
 
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, config.coast_close_ksize
-    )
-    valid = cv2.morphologyEx(
-        valid,
-        cv2.MORPH_CLOSE,
-        kernel,
-        iterations=max(1, int(config.coast_close_iters)),
-    )
+    if config.Smear_type.upper() == "PB":
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, config.coast_open_ksize_pb
+        )
+        valid = cv2.morphologyEx(
+            valid,
+            cv2.MORPH_OPEN,
+            kernel,
+            iterations=max(1, int(config.coast_open_iters_pb)),
+        )
+    else:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, config.coast_open_ksize_bm
+        )
+        valid = cv2.morphologyEx(
+            valid,
+            cv2.MORPH_OPEN,
+            kernel,
+            iterations=max(1, int(config.coast_open_iters_bm)),
+        )
 
     count, labels, stats, _ = cv2.connectedComponentsWithStats(
         valid, connectivity=8, ltype=cv2.CV_32S
@@ -85,12 +96,17 @@ def build_valid_score_mask(
 
 
 def get_valid_score_range(grid: HeatmapGrid, config: BM40Config) -> float:
-    """返回海岸惩罚前有效评分区的 max-min，供接近分候选判定。"""
+    """返回海岸惩罚前有效评分区的 max-min，供接近分候选判定。
+
+    仅统计 weights>0 的真实评分格；形态学 valid 掩码扩到无数据格时，
+    finalize 的 heatmap_penalty_value 填充分不参与范围计算。
+    """
     raw = grid.finalize(fill_value=config.heatmap_penalty_value)
     valid = build_valid_score_mask(grid, config, raw) > 0
-    if not np.any(valid):
+    scored = valid & (grid.weights > 0)
+    if not np.any(scored):
         return 0.0
-    valid_scores = raw[valid]
+    valid_scores = raw[scored]
     return float(np.max(valid_scores) - np.min(valid_scores))
 
 
@@ -199,18 +215,22 @@ def apply_coast_penalty(
         coast_penalty_drop = config.coast_penalty_drop_pb
         top_bottom_margin = config.top_bottom_margin_pb
         top_bottom_penalty_drop = config.top_bottom_penalty_drop_pb
+        coast_erode_ksize = config.coast_erode_ksize_pb
+        coast_erode_iters = config.coast_erode_iters_pb
     else:
         coast_penalty_drop = config.coast_penalty_drop_bm
         top_bottom_margin = config.top_bottom_margin_bm
         top_bottom_penalty_drop = config.top_bottom_penalty_drop_bm
+        coast_erode_ksize = config.coast_erode_ksize_bm
+        coast_erode_iters = config.coast_erode_iters_bm
 
     kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, config.coast_erode_ksize
+        cv2.MORPH_ELLIPSE, coast_erode_ksize
     )
     inland = cv2.erode(
         valid_mask,
         kernel,
-        iterations=max(1, int(config.coast_erode_iters)),
+        iterations=max(1, int(coast_erode_iters)),
         borderType=cv2.BORDER_CONSTANT,
         borderValue=0,
     )
@@ -527,22 +547,24 @@ def get_shape_priority(result: SelectionResult, config: BM40Config) -> int:
     return 0 if width > height else 2
 
 
-def sort_candidates_by_score_and_shape(
-    candidates: List[SelectionResult],
-    config: BM40Config,
-    score_range: float,
-) -> List[SelectionResult]:
-    """
-    先按分值降序；与最高分相差不超过有效热力图分值范围 5% 的候选，
-    再按横向、近正方形、纵向排序，同形状内仍按分值降序。
-    """
-    ordered = sorted(candidates, key=lambda item: item.area_score, reverse=True)
-    if len(ordered) <= 1:
-        return ordered
+def _score_close_tolerance(score_range: float, config: BM40Config) -> float:
+    return max(0.0, float(score_range)) * float(config.shape_score_close_ratio)
 
-    tolerance = max(0.0, float(score_range)) * float(
-        config.shape_score_close_ratio
-    )
+
+def _order_candidates_by_score(
+    candidates: List[SelectionResult],
+) -> List[SelectionResult]:
+    return sorted(candidates, key=lambda item: item.area_score, reverse=True)
+
+
+def _split_score_close_prefix(
+    ordered: List[SelectionResult],
+    tolerance: float,
+) -> Tuple[List[SelectionResult], List[SelectionResult]]:
+    """按与最高分的差值切分：前缀为接近分候选，后缀为明显低分候选。"""
+    if not ordered:
+        return [], []
+
     best_score = ordered[0].area_score
     close_count = 1
     while (
@@ -550,12 +572,41 @@ def sort_candidates_by_score_and_shape(
         and best_score - ordered[close_count].area_score <= tolerance
     ):
         close_count += 1
+    return ordered[:close_count], ordered[close_count:]
 
-    ordered[:close_count] = sorted(
-        ordered[:close_count],
+
+def sort_candidates_by_score_and_shape(
+    candidates: List[SelectionResult],
+    config: BM40Config,
+    score_range: float,
+) -> List[SelectionResult]:
+    """
+    先按分值降序；仅在“接近分”前缀内按形状重排（横向 > 近正方 > 纵向），
+    明显低分候选保持原分数序且不参与形状重排。
+    """
+    ordered = _order_candidates_by_score(candidates)
+    if len(ordered) <= 1:
+        return ordered
+
+    close_prefix, rest = _split_score_close_prefix(
+        ordered, _score_close_tolerance(score_range, config)
+    )
+    close_prefix = sorted(
+        close_prefix,
         key=lambda item: (get_shape_priority(item, config), -item.area_score),
     )
-    return ordered
+    return close_prefix + rest
+
+
+def _uniformity_score(
+    result: SelectionResult,
+    u_map: np.ndarray,
+) -> float:
+    mask = np.zeros(u_map.shape, dtype=np.uint8)
+    cv2.fillPoly(mask, [result.vertices_grid.astype(np.int32)], 1)
+    if not np.any(mask):
+        return -1.0
+    return float(np.mean(u_map[mask > 0]))
 
 
 def select_best_uniform_region(
@@ -566,31 +617,33 @@ def select_best_uniform_region(
 ) -> SelectionResult:
     """
     从候选选区中选出最佳。
+
+    决策链（仅对 filter_candidates 已筛出的候选）：
+    1. 按 area_score 降序；
+    2. 与最高分差 <= score_range * shape_score_close_ratio 的进入“接近分”子集；
+    3. 子集只有 1 个 → 直接返回（最高分胜出）；
+    4. 子集多个 → 比均匀性 u_score（选区内百倍窗细胞占用率均值）；
+    5. u_score 相同 → 形状优先（横向 > 近正方 > 纵向）；
+    6. 仍相同 → area_score 更高者。
     """
-    if not selected_results: raise ValueError("根据细胞数量目标筛选候选区域为空。")
-    if len(selected_results) == 1: return selected_results[0]
+    if not selected_results:
+        raise ValueError("根据细胞数量目标筛选候选区域为空。")
+    if len(selected_results) == 1:
+        return selected_results[0]
 
-    # 1. 预计算覆盖率图
+    ordered = _order_candidates_by_score(selected_results)
+    close_group, _ = _split_score_close_prefix(
+        ordered, _score_close_tolerance(score_range, config)
+    )
+    if len(close_group) == 1:
+        return close_group[0]
+
     u_map = prepare_uniformity_map(cell_matrix, config)
-    
-    # 2. 接近分候选先应用形状优先级，再取前三名做均匀性评价。
-    top_candidates = sort_candidates_by_score_and_shape(
-        selected_results, config, score_range
-    )[:3]
-    
-    best_res = None
-    max_u_score = -1.0
-
-    for res in top_candidates:
-        # 3. 计算该选区（多边形）在覆盖率图上的平均表现
-        mask = np.zeros(u_map.shape, dtype=np.uint8)
-        cv2.fillPoly(mask, [res.vertices_grid.astype(np.int32)], 1)
-        
-        # 选区覆盖率 = 选区内各点视野覆盖率的均值
-        u_score = np.mean(u_map[mask > 0])
-        
-        if u_score > max_u_score:
-            max_u_score = u_score
-            best_res = res
-            
-    return best_res
+    return min(
+        close_group,
+        key=lambda res: (
+            -_uniformity_score(res, u_map),
+            get_shape_priority(res, config),
+            -res.area_score,
+        ),
+    )

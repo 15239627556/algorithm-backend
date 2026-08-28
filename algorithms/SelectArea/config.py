@@ -59,11 +59,17 @@ class BM40Config:
    
     # --- 评分海岸线惩罚（尺寸均为 Python 热力图格数） ---
     coast_penalty_enabled: bool = field(default=True, init=False)
-    # coast_close_ksize: Tuple[int, int] = field(default=(45, 37), init=False)  # 闭运算核(w,h)
-    coast_close_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 闭运算核(w,h)
-    coast_close_iters: int = field(default=2, init=False)   # 闭运算迭代次数
-    coast_erode_ksize: Tuple[int, int] = field(default=(23, 19), init=False)  # 腐蚀核(w,h)
-    coast_erode_iters: int = field(default=2, init=False)   # 内陆区腐蚀迭代次数
+    # BM/PB：小核开运算去除盐噪，不向外连接低分背景。
+    coast_open_ksize_bm: Tuple[int, int] = field(default=(3, 3), init=False)
+    coast_open_iters_bm: int = field(default=2, init=False)
+    # PB：对齐 C++，仅用小核开运算去除盐噪，不向外连接低分背景。
+    coast_open_ksize_pb: Tuple[int, int] = field(default=(3, 3), init=False)
+    coast_open_iters_pb: int = field(default=1, init=False)
+    # BM/PB 腐蚀参数独立配置；暂时保持相同默认值，只拆开调参入口。
+    coast_erode_ksize_bm: Tuple[int, int] = field(default=(23, 19), init=False)
+    coast_erode_iters_bm: int = field(default=2, init=False)
+    coast_erode_ksize_pb: Tuple[int, int] = field(default=(35, 29), init=False)
+    coast_erode_iters_pb: int = field(default=2, init=False)
     coast_penalty_distance: float = field(default=20.0, init=False)  # 海岸惩罚渐变距离
 
     # BM 的 logPrior 约为 -2~-13，惩罚尺度参考 x40 gai25。
@@ -77,9 +83,9 @@ class BM40Config:
     top_bottom_margin_pb: int = field(default=91, init=False)  # 血片上下边缘带宽（加宽）
     top_bottom_penalty_drop_pb: float = field(default=2.0, init=False) # 血片顶部底部边缘惩罚降低系数   
 
-    # 候选平均分距最高分不超过原始有效热力图分值范围的 5% 时，
-    # 形状优先级：横向矩形 > 近正方形 > 纵向矩形。
-    shape_score_close_ratio: float = field(default=0.02, init=False) # 形状评分接近比例
+    # 候选平均分距最高分的差值 <= score_range * shape_score_close_ratio 时视为“接近分”。
+    # 最终决选仅在接近分子集内：先比均匀性 u_score，再比形状（横向 > 近正方 > 纵向），最后比 area_score。
+    shape_score_close_ratio: float = field(default=0.02, init=False) # 接近分容差比例（默认 2%）
     near_square_aspect_ratio: float = field(default=1.5, init=False) # 近正方形宽高比
 
     # --- 百倍视野选区覆盖算法参数 ---
