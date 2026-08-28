@@ -207,3 +207,193 @@ def get_counting_cell_type(cell_id, smear_type="BM"):
 dpi_list = [40, 50, 100]
 # 允许上传的图片格式
 allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
+
+# =============================================================================
+# 模型目录（新增模型直接在此追加）
+# dpi_range: (min, max) 或 None（不限制，分类模型）
+#   请求 DPI 落在区间内才允许，并可缩放到 actual_dpi；否则接口返回「DPI不合适」
+# output: bboxes=定位, tops=分类, scores=评分
+# vram_gb: 预估显存（GB）
+# camera=flir 时 DPIALL_BM_PB_WBC_classifier 会被替换为 DPIALL_FLIR_BM_PB_WBC_classifier
+# =============================================================================
+MODEL_TABLE = [
+    {
+        "name_zh": "5倍脑脊液有核细胞定位",
+        "name": "DPI35000_CSF_cell_detection",
+        "dpi_range": (31500, 38500),
+        "actual_dpi": 35000,
+        "targets": "WBC",
+        "smear_types": "CSF",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "10倍脑脊液有核细胞定位",
+        "name": "DPI71000_CSF_cell_detection",
+        "dpi_range": (63900, 78100),
+        "actual_dpi": 71000,
+        "targets": "WBC",
+        "smear_types": "CSF",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "低倍骨髓/外周血有核细胞定位",
+        "name": "DPI147246_BM_PB_WBC_cell_detection",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "WBC",
+        "smear_types": "BM/PB",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "低倍骨髓巨核细胞定位",
+        "name": "DPI147246_BM_PB_MEG_cell_detection",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "MEG",
+        "smear_types": "BM",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍巨核细胞定位",
+        "name": "DPI357378_BM_MEG_cell_detection",
+        "dpi_range": (321640, 750493),
+        "actual_dpi": 357378,
+        "targets": "MEG",
+        "smear_types": "BM",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍有核细胞定位",
+        "name": "DPI714756_BM_PB_CSF_WBC_detector",
+        "dpi_range": (321640, 750493),
+        "actual_dpi": 714756,
+        "targets": "WBC",
+        "smear_types": "BM/PB/CSF",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍红细胞定位",
+        "name": "DPI714756_BM_PB_RED_cell_detection",
+        "dpi_range": (321640, 750493),
+        "actual_dpi": 714756,
+        "targets": "RBC",
+        "smear_types": "PB",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍血小板定位",
+        "name": "DPI714756_BM_PB_PLAT_detection",
+        "dpi_range": (321640, 750493),
+        "actual_dpi": 714756,
+        "targets": "PLAT",
+        "smear_types": "PB",
+        "output": "bboxes",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍巨核细胞分类",
+        "name": "DPIALL_BM_MEG_cell_classifier",
+        "dpi_range": None,
+        "actual_dpi": 357378,
+        "targets": "MEG",
+        "smear_types": "BM",
+        "output": "tops",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍骨髓/外周血有核细胞分类",
+        "name": "DPIALL_BM_PB_WBC_classifier",
+        "dpi_range": None,
+        "actual_dpi": 714756,
+        "targets": "WBC",
+        "smear_types": "BM/PB",
+        "output": "tops",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍脑脊液有核细胞分类",
+        "name": "DPIALL_CSF_WBC_cell_classifier",
+        "dpi_range": None,
+        "actual_dpi": 714756,
+        "targets": "WBC",
+        "smear_types": "CSF",
+        "output": "tops",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍红细胞分类",
+        "name": "DPIALL_BM_PB_RED_cell_classifier",
+        "dpi_range": None,
+        "actual_dpi": 714756,
+        "targets": "RBC",
+        "smear_types": "PB",
+        "output": "tops",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "高倍血小板分类",
+        "name": "DPIALL_BM_PB_PLAT_classifier",
+        "dpi_range": None,
+        "actual_dpi": 714756,
+        "targets": "PLAT",
+        "smear_types": "PB",
+        "output": "tops",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "低倍骨髓区域评分",
+        "name": "DPI147246_BM_constituency_score",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "不限制",
+        "smear_types": "BM",
+        "output": "scores",
+        "vram_gb": 1.5,
+    },
+    {
+        "name_zh": "低倍血片区域评分",
+        "name": "DPI147246_PB_constituency_score",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "不限制",
+        "smear_types": "PB",
+        "output": "scores",
+        "vram_gb": 1.5,
+    },
+]
+
+_OUTPUT_KIND = {
+    "bboxes": "detection",
+    "tops": "classification",
+    "scores": "score",
+}
+
+DEFAULT_MODEL_VRAM_GB = 1.5
+DPI_NOT_SUITABLE = "DPI不合适"
+
+
+def model_dpi_ranges() -> dict[int, tuple[int, int]]:
+    """actual_dpi → 并集后的 DPI 适用范围。"""
+    ranges: dict[int, tuple[int, int]] = {}
+    for row in MODEL_TABLE:
+        dr = row.get("dpi_range")
+        if not dr or dr == "不限制":
+            continue
+        actual = int(row["actual_dpi"])
+        low, high = int(dr[0]), int(dr[1])
+        if actual in ranges:
+            lo, hi = ranges[actual]
+            ranges[actual] = (min(lo, low), max(hi, high))
+        else:
+            ranges[actual] = (low, high)
+    return ranges
+
+
+

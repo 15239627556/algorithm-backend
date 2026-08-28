@@ -5,155 +5,225 @@ import json
 import logging
 import os
 import threading
-import time
 import urllib.request
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 from config import (
     TRITON_ENDPOINTS,
     TRITON_HTTP_URL,
-    get_triton_endpoint,
-    next_triton_endpoint,
     camera,
-    rbc_switch,
-    plt_switch,
+    get_triton_endpoint,
+    max_memory,
+    next_triton_endpoint,
+    reserved_memory,
+)
+from backend.tools.MESSAGE_DICT import (
+    DEFAULT_MODEL_VRAM_GB,
+    MODEL_TABLE,
+    _OUTPUT_KIND,
+)
+from backend.tools.combo_validator import (
+    LEGACY_DPI_MAP,
+    _parse_cell_types,
+    normalize_smear_type,
 )
 
 logger = logging.getLogger(__name__)
 
 _logged_http_bases: set[str] = set()
-
-# 模型组：pipeline 名称 -> (组标识, [子模型..., pipeline])
-# 子模型先加载，pipeline 最后加载
-MODEL_GROUPS: Dict[str, Tuple[str, List[str]]] = {
-    "DPI147246_BM_pipeline": (
-        "DPI147246_BM",
-        [
-            "DPI147246_BM_PB_WBC_cell_detection",
-            "DPI147246_BM_PB_MEG_cell_detection",
-            "DPI147246_BM_constituency_score",
-        ],
-    ),
-    "DPI147246_PB_pipeline": (
-        "DPI147246_PB",
-        [
-            "DPI147246_BM_PB_WBC_cell_detection",
-            "DPI147246_BM_PB_MEG_cell_detection",
-            "DPI147246_PB_constituency_score",
-        ],
-    ),
-    "DPI357378_BM_MEG_pipeline": (
-        "DPI357378_BM_MEG",
-        [
-            "DPI357378_BM_MEG_cell_detection",
-            "DPI357378_BM_MEG_cell_classifier",
-        ],
-    ),
-    "DPI35000_CF_WBC_pipeline": (
-        "DPI35000_CF",
-        [
-            "DPI35000_CSF_cell_detection",
-        ],
-    ),
-    "DPI71000_CF_WBC_pipeline": (
-        "DPI71000_CF",
-        [
-            "DPI71000_CSF_cell_detection",
-        ],
-    ),
-    "DPI714756_BM_PB_pipeline": (
-        "DPI714756_BM_PB",
-        [
-            "DPI714756_BM_PB_WBC_detector",
-            "DPI714756_BM_PB_WBC_classifier"
-        ],
-    ),
-    "Image_enhance_pipeline": (
-        "Image_enhance",
-        [
-            "Image_enhance",
-        ],
-    ),
-}
-
-if camera == "flir":
-    MODEL_GROUPS['DPI714756_BM_PB_pipeline'] = (
-        "DPI714756_BM_PB",
-        [
-            "DPI714756_BM_PB_WBC_detector",
-            "DPI714756_FLIR_BM_PB_WBC_classifier"
-        ],
-    )
-if rbc_switch:
-    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_RED_cell_detection")
-    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_RED_cell_classifier")
-if plt_switch:
-    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_PLAT_detection")
-    MODEL_GROUPS['DPI714756_BM_PB_pipeline'][1].append("DPI714756_BM_PB_PLAT_classifier")
-# 常驻组（加载后不参与 LRU 淘汰）；亦为启动预热列表（当前预热已关闭，见 warmup_pinned_models_at_startup）
-STARTUP_WARMUP_PIPELINES: Tuple[str, ...] = (
-    "DPI357378_BM_MEG_pipeline",
-)
-
-
-def _pinned_group_keys() -> FrozenSet[str]:
-    keys: set[str] = set()
-    for pname in STARTUP_WARMUP_PIPELINES:
-        entry = MODEL_GROUPS.get(pname)
-        if entry:
-            keys.add(entry[0])
-    return frozenset(keys)
-
-
-PINNED_GROUP_KEYS: FrozenSet[str] = _pinned_group_keys()
-
-# 每组预估显存占用（GB），与 backend.tools.triton_client 注释一致；用于加载前测算是否需 LRU 淘汰
-GROUP_VRAM_GB: Dict[str, float] = {
-    "DPI147246_BM": 3.3,
-    "DPI147246_PB": 3.3,
-    "DPI357378_BM_MEG": 0.2,
-    "DPI35000_CF": 2.2,
-    "DPI71000_CF": 2.2,
-    "DPI714756_BM_PB": 3.1,
-    "Image_enhance": 1.6,
-}
-
-# 按 GPU 隔离的 LRU：gpu_id -> {group_key -> 最后访问时间戳}
-_group_last_used_by_gpu: Dict[int, Dict[str, float]] = {}
-# 本进程已确认 READY 的组/单模型（启动预热或成功 load 后写入；unload 时清除）
-# 热路径只查此缓存，避免每次请求在全局锁内打 Triton HTTP
-_ready_groups_by_gpu: Dict[int, set] = {}
-_ready_models_by_gpu: Dict[int, set] = {}
 _model_lock = threading.Lock()
+
+KIND_DETECTION = "detection"
+KIND_CLASSIFICATION = "classification"
+KIND_SCORE = "score"
+
+_IMAGE_ENHANCE_MODELS: Tuple[str, ...] = ("Image_enhance",)
+
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
-TRITON_GPU_VRAM_GB = float(os.environ.get("TRITON_GPU_VRAM_GB", "11"))
-TRITON_VRAM_RESERVE_GB = float(os.environ.get("TRITON_VRAM_RESERVE_GB", "3"))
-# 每张 GPU 显存中最多同时保留的模型组数（含常驻组；超限时 LRU 淘汰最久未用非常驻组）
-# 默认 3：允许 147246 + 714756 与常驻 357378 同时驻留（互斥不再强制卸 714756）
-MAX_LOADED_MODEL_GROUPS = int(os.environ.get("TRITON_MAX_LOADED_MODEL_GROUPS", "3"))
-# 互斥组：同 GPU 上不可共存，加载一侧时强制卸载同组其余模型
-# 注意：DPI714756_BM_PB 不在互斥内，可与 DPI147246_* 共存
-MUTEX_GROUP_KEYS: Tuple[FrozenSet[str], ...] = (
-    frozenset({
-        "DPI147246_BM",
-        "DPI147246_PB",
-        "DPI35000_CF",
-        "DPI71000_CF",
-    }),
-)
+
+_FLIR_WBC_CLASSIFIER = "DPIALL_FLIR_BM_PB_WBC_classifier"
+_DEFAULT_WBC_CLASSIFIER = "DPIALL_BM_PB_WBC_classifier"
 
 
-def _effective_vram_budget_gb() -> float:
-    """可用显存上限（总显存 − 预留，防碎片/峰值）"""
-    return max(0.5, TRITON_GPU_VRAM_GB - TRITON_VRAM_RESERVE_GB)
+@dataclass(frozen=True)
+class ModelSpec:
+    name: str
+    kind: str
+    actual_dpi: int
+    smear_types: frozenset[str]
+    targets: frozenset[str]
+    output: str
+    dpi_min: int | None = None
+    dpi_max: int | None = None
+    vram_gb: float = DEFAULT_MODEL_VRAM_GB
+
+    def dpi_matches(self, dpi: int) -> bool:
+        if self.dpi_min is None or self.dpi_max is None:
+            return True
+        return self.dpi_min <= dpi <= self.dpi_max
+
+    def smear_matches(self, smear_type: str) -> bool:
+        return smear_type in self.smear_types
+
+    def target_matches(self, types: set[str]) -> bool:
+        if not self.targets:
+            return True
+        if not types:
+            return False
+        return bool(self.targets & types)
 
 
-def _group_vram_gb(group_key: str) -> float:
-    return float(GROUP_VRAM_GB.get(group_key, 2.0))
+@dataclass
+class ResolvedModels:
+    detection: List[ModelSpec] = field(default_factory=list)
+    classification: List[ModelSpec] = field(default_factory=list)
+    score: List[ModelSpec] = field(default_factory=list)
+    warning: str | None = None
+    dpi_unsuitable: bool = False
+
+    @property
+    def names(self) -> List[str]:
+        ordered: dict[str, None] = {}
+        for spec in (*self.detection, *self.classification, *self.score):
+            ordered.setdefault(spec.name, None)
+        return list(ordered.keys())
+
+    @property
+    def specs(self) -> List[ModelSpec]:
+        ordered: dict[str, ModelSpec] = {}
+        for spec in (*self.detection, *self.classification, *self.score):
+            ordered.setdefault(spec.name, spec)
+        return list(ordered.values())
+
+    def has_classification(self) -> bool:
+        return bool(self.classification)
+
+    def has_classifier_for(self, target: str) -> bool:
+        key = (target or "").strip().upper()
+        return any(key in spec.targets for spec in self.classification)
 
 
-def _estimated_vram_for_groups(loaded_groups: set) -> float:
-    return sum(_group_vram_gb(g) for g in loaded_groups)
+def _row_to_spec(row: dict) -> ModelSpec:
+    kind = _OUTPUT_KIND.get(str(row.get("output") or "").strip().lower(), KIND_DETECTION)
+    smear_raw = str(row.get("smear_types") or "")
+    smear_types = frozenset(s.strip().upper() for s in smear_raw.split("/") if s.strip())
+    target_raw = row.get("targets")
+    if target_raw in (None, "", "不限制"):
+        targets: frozenset[str] = frozenset()
+    else:
+        targets = frozenset(t.strip().upper() for t in str(target_raw).split("/") if t.strip())
+    dr = row.get("dpi_range")
+    dpi_min = dpi_max = None
+    if dr and dr != "不限制":
+        dpi_min, dpi_max = int(dr[0]), int(dr[1])
+    vram = float(row.get("vram_gb") if row.get("vram_gb") is not None else DEFAULT_MODEL_VRAM_GB)
+    return ModelSpec(
+        name=str(row["name"]),
+        kind=kind,
+        actual_dpi=int(row["actual_dpi"]),
+        smear_types=smear_types,
+        targets=targets,
+        output=str(row.get("output") or ""),
+        dpi_min=dpi_min,
+        dpi_max=dpi_max,
+        vram_gb=vram,
+    )
+
+
+def _apply_camera_override(spec: ModelSpec) -> ModelSpec:
+    if camera == "flir" and spec.name == _DEFAULT_WBC_CLASSIFIER:
+        return ModelSpec(
+            name=_FLIR_WBC_CLASSIFIER,
+            kind=spec.kind,
+            actual_dpi=spec.actual_dpi,
+            smear_types=spec.smear_types,
+            targets=spec.targets,
+            output=spec.output,
+            dpi_min=spec.dpi_min,
+            dpi_max=spec.dpi_max,
+            vram_gb=spec.vram_gb,
+        )
+    return spec
+
+
+def get_model_catalog() -> Tuple[ModelSpec, ...]:
+    """从 MESSAGE_DICT.MODEL_TABLE 构建目录，并应用 camera 替换。"""
+    return tuple(_apply_camera_override(_row_to_spec(row)) for row in MODEL_TABLE)
+
+
+def _specs_by_name() -> dict[str, ModelSpec]:
+    return {spec.name: spec for spec in get_model_catalog()}
+
+
+def _effective_dpi(dpi: int) -> int:
+    return LEGACY_DPI_MAP.get(int(dpi), int(dpi))
+
+
+def resolve_models(
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+) -> ResolvedModels:
+    """
+    三步解析需加载的模型：
+    1. 按 DPI 区间 + 玻片类型 + 目标类型匹配定位模型
+    2. 按玻片类型 + 目标类型匹配分类模型（DPI 不限制，须与已命中定位模型的实际 DPI 对齐）
+    3. 按 DPI 区间 + 玻片类型匹配评分模型（目标不限制）
+    DPI 不在任何适用区间内时 dpi_unsuitable=True，不回退到最近模型。
+    """
+    catalog = get_model_catalog()
+    st = normalize_smear_type(smear_type)
+    types = _parse_cell_types(target_cell_types)
+    req_dpi = _effective_dpi(dpi)
+
+    smear_target_detections = [
+        spec
+        for spec in catalog
+        if spec.kind == KIND_DETECTION
+        and spec.smear_matches(st)
+        and spec.target_matches(types)
+    ]
+    detection = [spec for spec in smear_target_detections if spec.dpi_matches(req_dpi)]
+    if not detection and smear_target_detections:
+        return ResolvedModels(dpi_unsuitable=True)
+
+    detection_dpis = {spec.actual_dpi for spec in detection}
+    classification: List[ModelSpec] = []
+    for spec in catalog:
+        if spec.kind != KIND_CLASSIFICATION:
+            continue
+        if not spec.smear_matches(st) or not spec.target_matches(types):
+            continue
+        if spec.actual_dpi not in detection_dpis:
+            continue
+        if not any(spec.targets & det.targets and det.actual_dpi == spec.actual_dpi for det in detection):
+            continue
+        classification.append(spec)
+
+    score = [
+        spec
+        for spec in catalog
+        if spec.kind == KIND_SCORE
+        and spec.dpi_matches(req_dpi)
+        and spec.smear_matches(st)
+        and spec.target_matches(types)
+    ]
+
+    return ResolvedModels(
+        detection=detection,
+        classification=classification,
+        score=score,
+    )
+
+
+def resolve_required_models(
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+) -> List[str]:
+    """按玻片类型、DPI、目标检测类型解析需加载的 Triton 子模型列表。"""
+    return resolve_models(dpi, smear_type, target_cell_types).names
 
 
 def _normalize_gpu_id(gpu_id: Optional[int]) -> int:
@@ -166,7 +236,7 @@ def _normalize_gpu_id(gpu_id: Optional[int]) -> int:
 
 
 def _warmup_gpu_targets(gpu_id: Optional[int] = None, *, all_gpus: bool = False) -> List[int]:
-    """显式 gpu_id 时仅用该卡；all_gpus 时预热 TRITON_ENDPOINTS 全部端点；否则轮询单卡（与 infer 一致）。"""
+    """显式 gpu_id 时仅用该卡；all_gpus 时预热全部端点；否则轮询单卡。"""
     if gpu_id is not None:
         return [_normalize_gpu_id(gpu_id)]
     n = len(TRITON_ENDPOINTS)
@@ -177,7 +247,7 @@ def _warmup_gpu_targets(gpu_id: Optional[int] = None, *, all_gpus: bool = False)
 
 
 def _get_http_base_url(gpu_id: Optional[int] = None) -> str:
-    """取指定 GPU 的 Triton HTTP 基址。显式 gpu_id 时不使用单点 TRITON_HTTP_URL 覆盖。"""
+    """取指定 GPU 的 Triton HTTP 基址。"""
     if gpu_id is not None:
         base = (get_triton_endpoint(gpu_id).get("http_url") or TRITON_HTTP_URL).rstrip("/")
     else:
@@ -209,7 +279,7 @@ def _http_post(url: str, body: bytes = None, timeout: int = LOAD_TIMEOUT) -> Tup
 
 
 def get_loaded_models(gpu_id: Optional[int] = None) -> List[str]:
-    """获取指定 GPU 上已加载的模型列表（Triton repository index，state=READY）"""
+    """获取指定 GPU 上已加载的模型列表（Triton repository index，state=READY）。"""
     base = _get_http_base_url(gpu_id)
     url = f"{base}/v2/repository/index"
     body = json.dumps({"ready": True}).encode()
@@ -230,7 +300,7 @@ def load_model(
     timeout: int = LOAD_TIMEOUT,
     gpu_id: Optional[int] = None,
 ) -> Tuple[bool, str]:
-    """在指定 GPU 上加载单个模型"""
+    """在指定 GPU 上加载单个模型。"""
     base = _get_http_base_url(gpu_id)
     url = f"{base}/v2/repository/models/{model_name}/load"
     ok, msg = _http_post(url, b"{}", timeout=timeout)
@@ -246,7 +316,7 @@ def unload_model(
     timeout: int = 60,
     gpu_id: Optional[int] = None,
 ) -> Tuple[bool, str]:
-    """在指定 GPU 上卸载单个模型"""
+    """在指定 GPU 上卸载单个模型。"""
     base = _get_http_base_url(gpu_id)
     url = f"{base}/v2/repository/models/{model_name}/unload"
     ok, msg = _http_post(url, b"{}", timeout=timeout)
@@ -257,115 +327,153 @@ def unload_model(
     return ok, msg
 
 
-def _get_group_for_pipeline(pipeline_name: str) -> Tuple[str, List[str]] | None:
-    """根据 pipeline 名称获取所属组。若不在组内则返回 None。"""
-    return MODEL_GROUPS.get(pipeline_name)
+def _vram_budget_gb() -> float:
+    return max(0.5, float(max_memory) - float(reserved_memory))
 
 
-def _unload_group(group_key: str, models: List[str], gpu_id: Optional[int] = None) -> None:
-    """卸载整组模型（pipeline 先卸，子模型后卸）"""
-    for m in reversed(models):
-        unload_model(m, gpu_id=gpu_id)
+def _vram_of(name: str, by_name: dict[str, ModelSpec]) -> float:
+    spec = by_name.get(name)
+    return float(spec.vram_gb) if spec else DEFAULT_MODEL_VRAM_GB
 
 
-def _get_loaded_group_keys(actually_loaded: set) -> set:
-    """根据已加载的模型列表，反推出当前加载的组 key 集合"""
-    loaded_groups = set()
-    for _pn, (gk, ms) in MODEL_GROUPS.items():
-        if all(m in actually_loaded for m in ms):
-            loaded_groups.add(gk)
-    return loaded_groups
+def _actual_dpi_of(name: str, by_name: dict[str, ModelSpec]) -> int | None:
+    spec = by_name.get(name)
+    return spec.actual_dpi if spec else None
 
 
-def _evictable_group_keys(loaded_groups: set) -> set:
-    """可作为 LRU 淘汰候选的组。常驻组集合 PINNED_GROUP_KEYS 中的已加载项排除；无常驻集合时全部可淘汰。"""
-    if PINNED_GROUP_KEYS:
-        return loaded_groups - PINNED_GROUP_KEYS
-    return set(loaded_groups)
+def _estimated_vram(names: set[str], by_name: dict[str, ModelSpec]) -> float:
+    return sum(_vram_of(n, by_name) for n in names)
 
 
-def _mutex_groups_to_evict(group_key: str, loaded_groups: set) -> set:
-    """加载 group_key 时需强制卸载的互斥组（已在 loaded_groups 中）。"""
-    evict: set = set()
-    for pair in MUTEX_GROUP_KEYS:
-        if group_key in pair:
-            evict |= pair & loaded_groups - {group_key}
-    return evict
-
-
-def _mutex_partner_keys(group_key: str) -> set:
-    partners: set = set()
-    for pair in MUTEX_GROUP_KEYS:
-        if group_key in pair:
-            partners |= set(pair) - {group_key}
-    return partners
-
-
-def _group_fully_loaded_on_triton(models: List[str], actually_loaded: set) -> bool:
-    return all(m in actually_loaded for m in models)
-
-
-def _evict_mutex_partners_for_load(
-    group_key: str,
-    gid: int,
-    *,
-    loaded_groups: set,
-    ready_groups: set,
-    last_used: Dict[str, float],
-    reason: str,
+def _evict_other_dpi_models(
+    needed: List[ModelSpec],
+    gpu_id: int,
 ) -> None:
-    """加载 group_key 前：卸载 Triton 上的互斥组，并清除仅存在于 ready 缓存的互斥组标记。"""
-    for partner in sorted(_mutex_partner_keys(group_key)):
-        if partner in loaded_groups:
-            _evict_group_on_gpu(
-                partner,
-                gid,
-                ready_groups=ready_groups,
-                last_used=last_used,
-                loaded_groups=loaded_groups,
-                reason=reason,
-            )
-        elif partner in ready_groups:
-            logger.info(
-                "Clearing stale ready cache for mutex group %s on gpu=%s (loading %s)",
-                partner,
-                gid,
-                group_key,
-            )
-            ready_groups.discard(partner)
-            last_used.pop(partner, None)
-
-
-def _models_for_group_key(group_key: str) -> List[str] | None:
-    for _pn, (gk, ms) in MODEL_GROUPS.items():
-        if gk == group_key:
-            return ms
-    return None
-
-
-def _evict_group_on_gpu(
-    group_key: str,
-    gid: int,
-    *,
-    ready_groups: set,
-    last_used: Dict[str, float],
-    loaded_groups: set,
-    reason: str,
-) -> None:
-    models = _models_for_group_key(group_key)
-    if not models:
+    """显存不够时卸载其它 actual_dpi 层级的已加载模型。"""
+    by_name = _specs_by_name()
+    needed_names = {spec.name for spec in needed}
+    needed_dpis = {spec.actual_dpi for spec in needed}
+    budget = _vram_budget_gb()
+    loaded = set(get_loaded_models(gpu_id=gpu_id))
+    future = loaded | needed_names
+    if _estimated_vram(future, by_name) <= budget + 1e-6:
         return
-    logger.info(
-        "Evicting model group %s (~%.1fGB) on gpu=%s; reason=%s",
-        group_key,
-        _group_vram_gb(group_key),
-        gid,
-        reason,
-    )
-    _unload_group(group_key, models, gpu_id=gid)
-    loaded_groups.discard(group_key)
-    ready_groups.discard(group_key)
-    last_used.pop(group_key, None)
+
+    other = [
+        name
+        for name in loaded
+        if name not in needed_names
+        and _actual_dpi_of(name, by_name) not in needed_dpis
+    ]
+    if other:
+        logger.info(
+            "VRAM not enough (need ~%.1fGB, budget %.1fGB); "
+            "unloading other DPI-level models on gpu=%s: %s",
+            _estimated_vram(future, by_name),
+            budget,
+            gpu_id,
+            other,
+        )
+        for name in other:
+            unload_model(name, gpu_id=gpu_id)
+
+    loaded = set(get_loaded_models(gpu_id=gpu_id))
+    future = loaded | needed_names
+    used = _estimated_vram(future, by_name)
+    if used <= budget + 1e-6:
+        return
+
+    extra_same_dpi = [
+        name
+        for name in loaded
+        if name not in needed_names
+        and _actual_dpi_of(name, by_name) in needed_dpis
+    ]
+    if extra_same_dpi:
+        logger.info(
+            "VRAM still not enough (~%.1fGB / %.1fGB); "
+            "unloading extra same-DPI models on gpu=%s: %s",
+            used,
+            budget,
+            gpu_id,
+            extra_same_dpi,
+        )
+        for name in extra_same_dpi:
+            unload_model(name, gpu_id=gpu_id)
+
+
+def load_models(
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+    *,
+    gpu_id: Optional[int] = None,
+    all_gpus: bool = False,
+) -> Tuple[bool, str, List[str]]:
+    """
+    按需加载模型：参数为玻片类型、DPI、目标检测类型。
+    加载前按 max_memory-reserved_memory 判断显存；不够则卸载其它 DPI 层级模型。
+    """
+    resolved = resolve_models(dpi, smear_type, target_cell_types)
+    if resolved.dpi_unsuitable:
+        return False, "DPI不合适", []
+    needed = resolved.specs
+    models = [spec.name for spec in needed]
+    if not models:
+        return True, "", []
+
+    last_msg = ""
+    with _model_lock:
+        for gid in _warmup_gpu_targets(gpu_id, all_gpus=all_gpus):
+            _evict_other_dpi_models(needed, gid)
+            by_name = _specs_by_name()
+            loaded = set(get_loaded_models(gpu_id=gid))
+            future = loaded | set(models)
+            used = _estimated_vram(future, by_name)
+            budget = _vram_budget_gb()
+            if used > budget + 1e-6:
+                msg = (
+                    f"VRAM not enough on gpu={gid}: need ~{used:.1f}GB, "
+                    f"budget {budget:.1f}GB (max_memory={max_memory}, "
+                    f"reserved_memory={reserved_memory})"
+                )
+                logger.warning(msg)
+                return False, msg, models
+            for model_name in models:
+                if model_name in loaded:
+                    continue
+                ok, msg = load_model(model_name, gpu_id=gid)
+                if not ok:
+                    return False, msg, models
+                loaded.add(model_name)
+                last_msg = msg
+    return True, last_msg, models
+
+
+def unload_models(
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+    *,
+    gpu_id: Optional[int] = None,
+    all_gpus: bool = False,
+) -> Tuple[bool, str, List[str]]:
+    """
+    按需卸载模型：参数为玻片类型、DPI、目标检测类型。
+    不检查是否已加载，直接调用 Triton unload。
+    """
+    models = resolve_required_models(dpi, smear_type, target_cell_types)
+    if not models:
+        return True, "", []
+
+    last_msg = ""
+    for gid in _warmup_gpu_targets(gpu_id, all_gpus=all_gpus):
+        for model_name in reversed(models):
+            ok, msg = unload_model(model_name, gpu_id=gid)
+            if not ok:
+                return False, msg, models
+            last_msg = msg
+    return True, last_msg, models
 
 
 def ensure_model_loaded(
@@ -374,181 +482,41 @@ def ensure_model_loaded(
     max_groups: Optional[int] = None,
     gpu_id: Optional[int] = None,
 ) -> Tuple[bool, str]:
+    """
+    兼容滤镜等单模型/pipeline 加载；细胞检测请用 load_models。
+    max_models / max_groups 保留签名兼容，已不再使用。
+    """
+    del max_models, max_groups
+    if model_name == "Image_enhance_pipeline":
+        models = list(_IMAGE_ENHANCE_MODELS)
+    else:
+        models = [model_name]
+
     gid = _normalize_gpu_id(gpu_id)
-    if max_groups is None and max_models is None:
-        max_groups = MAX_LOADED_MODEL_GROUPS
-    use_count_cap = max_groups is not None or max_models is not None
-    count_cap = max_groups if max_groups is not None else max_models
-
-    group_info = _get_group_for_pipeline(model_name)
-    if not group_info:
-        # 不在预定义组内，退化为单模型加载
-        with _model_lock:
-            if model_name in _ready_models_by_gpu.get(gid, ()):
-                return True, ""
-            actually_loaded = set(get_loaded_models(gpu_id=gid))
-            if model_name in actually_loaded:
-                _ready_models_by_gpu.setdefault(gid, set()).add(model_name)
-                return True, ""
-            ok, msg = load_model(model_name, gpu_id=gid)
-            if ok:
-                _ready_models_by_gpu.setdefault(gid, set()).add(model_name)
-            return ok, msg
-
-    group_key, models = group_info
-    now = time.time()
-
-    with _model_lock:
-        last_used = _group_last_used_by_gpu.setdefault(gid, {})
-        ready_groups = _ready_groups_by_gpu.setdefault(gid, set())
-
-        # 热路径：ready 缓存命中且 Triton 上子模型齐全、无互斥组占用时才跳过 load
-        if group_key in ready_groups:
-            actually_loaded = set(get_loaded_models(gpu_id=gid))
-            loaded_groups = _get_loaded_group_keys(actually_loaded)
-            if (
-                _group_fully_loaded_on_triton(models, actually_loaded)
-                and not _mutex_groups_to_evict(group_key, loaded_groups)
-            ):
-                last_used[group_key] = now
-                return True, ""
-            logger.info(
-                "Stale ready cache for group %s on gpu=%s; reloading",
-                group_key,
-                gid,
-            )
-            ready_groups.discard(group_key)
-            last_used.pop(group_key, None)
-
-        actually_loaded = set(get_loaded_models(gpu_id=gid))
-
-        if all(m in actually_loaded for m in models):
-            last_used[group_key] = now
-            ready_groups.add(group_key)
-            return True, ""
-
-        loaded_groups = _get_loaded_group_keys(actually_loaded)
-        budget = _effective_vram_budget_gb()
-        new_gb = _group_vram_gb(group_key)
-
-        _evict_mutex_partners_for_load(
-            group_key,
-            gid,
-            loaded_groups=loaded_groups,
-            ready_groups=ready_groups,
-            last_used=last_used,
-            reason=f"mutex with {group_key}",
+    enhance_specs = [
+        ModelSpec(
+            name=name,
+            kind="filter",
+            actual_dpi=0,
+            smear_types=frozenset(),
+            targets=frozenset(),
+            output="",
+            vram_gb=DEFAULT_MODEL_VRAM_GB,
         )
-        actually_loaded = set(get_loaded_models(gpu_id=gid))
-        loaded_groups = _get_loaded_group_keys(actually_loaded)
-
-        def _over_vram() -> bool:
-            return _estimated_vram_for_groups(loaded_groups) + new_gb > budget + 1e-6
-
-        def _over_count() -> bool:
-            if not use_count_cap or count_cap is None:
-                return False
-            if group_key in loaded_groups:
-                return False
-            return len(loaded_groups) >= int(count_cap) and bool(loaded_groups)
-
-        while (_over_vram() or _over_count()) and loaded_groups:
-            evictable = _evictable_group_keys(loaded_groups)
-            if not evictable:
-                logger.warning(
-                    "Cannot load group %s on gpu=%s: loaded=%d cap=%d, "
-                    "need ~%.1fGB budget %.1fGB, no evictable non-pinned group",
-                    group_key,
-                    gid,
-                    len(loaded_groups),
-                    count_cap,
-                    _estimated_vram_for_groups(loaded_groups) + new_gb,
-                    budget,
-                )
-                return (
-                    False,
-                    f"Model group capacity full on gpu={gid}: "
-                    f"loaded {len(loaded_groups)} groups, cap {count_cap} "
-                    f"(pinned group not evictable)",
-                )
-            lru_group = min(evictable, key=lambda g: last_used.get(g, 0))
-            lru_info = None
-            for _pn, (_gk, _ms) in MODEL_GROUPS.items():
-                if _gk == lru_group:
-                    lru_info = (_gk, _ms)
-                    break
-            if lru_info:
-                logger.info(
-                    "Evicting LRU model group %s (~%.1fGB) on gpu=%s to load %s (~%.1fGB); "
-                    "loaded=%d cap=%d budget=%.1fGB",
-                    lru_group,
-                    _group_vram_gb(lru_group),
-                    gid,
-                    group_key,
-                    new_gb,
-                    len(loaded_groups),
-                    count_cap,
-                    budget,
-                )
-                _evict_group_on_gpu(
-                    lru_group,
-                    gid,
-                    ready_groups=ready_groups,
-                    last_used=last_used,
-                    loaded_groups=loaded_groups,
-                    reason=f"LRU to load {group_key}",
-                )
-            actually_loaded = set(get_loaded_models(gpu_id=gid))
-            loaded_groups = _get_loaded_group_keys(actually_loaded)
-
-        if _over_vram() or _over_count():
-            return (
-                False,
-                f"Model group capacity full on gpu={gid}: "
-                f"loaded {len(loaded_groups)} groups, cap {count_cap}, "
-                f"need ~{_estimated_vram_for_groups(loaded_groups) + new_gb:.1f}GB, budget {budget:.1f}GB",
-            )
-
-        for m in models:
-            if m in actually_loaded:
-                continue
-            ok, msg = load_model(m, gpu_id=gid)
+        for name in models
+    ]
+    with _model_lock:
+        _evict_other_dpi_models(enhance_specs, gid)
+        for name in models:
+            ok, msg = load_model(name, gpu_id=gid)
             if not ok:
                 return False, msg
-            actually_loaded.add(m)
-
-        last_used[group_key] = now
-        ready_groups.add(group_key)
-        return True, ""
+    return True, ""
 
 
 def warmup_pinned_models_at_startup() -> None:
-    """预热常驻 pipeline；轮询时双容器均预热，定点时仅 TRITON_GPU_ID。（暂时关闭）"""
-    logger.info("Startup warmup disabled; models load on demand via warmup_model/LRU.")
-    return
-    # loaded_any = False
-    # for gpu_id in _warmup_gpu_targets():
-    #     ep = get_triton_endpoint(gpu_id)
-    #     logger.info("Startup warmup on %s (gpu_id=%s)", ep.get("name"), gpu_id)
-    #     for pname in STARTUP_WARMUP_PIPELINES:
-    #         if pname not in MODEL_GROUPS:
-    #             logger.warning("Startup warmup: pipeline %r 不在 MODEL_GROUPS 中，已跳过。", pname)
-    #             continue
-    #         ok, msg = ensure_model_loaded(pname, gpu_id=gpu_id)
-    #         if not ok:
-    #             logger.error(
-    #                 "Startup warmup: pipeline %s failed on gpu=%s: %s",
-    #                 pname,
-    #                 gpu_id,
-    #                 msg,
-    #             )
-    #         else:
-    #             loaded_any = True
-    #             logger.info("Startup warmup: pipeline %s loaded on gpu=%s.", pname, gpu_id)
-    # if not loaded_any:
-    #     logger.warning(
-    #         "启动预加载未成功加载任何 pipeline（请检查 MODEL_GROUPS 与 Triton）；请求仍将走动态加载/LRU。"
-    #     )
+    """启动预热（暂时关闭，模型按需经 load_models 加载）。"""
+    logger.info("Startup warmup disabled; models load on demand via load_models.")
 
 
 def warmup_model(
@@ -560,30 +528,34 @@ def warmup_model(
     all_gpus: bool = False,
 ) -> Tuple[str, Optional[str]]:
     """
-    预热模型：get_model_by_dpi + ensure_model_loaded（互斥/LRU，与 get_task_result_x100 一致）。
-    - all_gpus=True：预热 TRITON_ENDPOINTS 全部端点（平扫 create_task 串行场景）。
-    - 否则：显式 gpu_id 定点，未指定时经 next_triton_endpoint 轮询单卡（与 infer 一致）。
-    返回 (model_name, dpi_warning)。
+    预热模型：三步解析 + load_models。
+    返回 (MODEL_TABLE 命中的模型名逗号串, dpi_warning)。
     """
-    from backend.tools.triton_client import get_model_by_dpi
-
-    model_name, warning = get_model_by_dpi(
+    resolved = resolve_models(int(dpi), smear_type, algorithm_types)
+    model_names = ",".join(resolved.names)
+    ok, msg, loaded = load_models(
         int(dpi),
-        smear_type=smear_type,
-        algorithm_types=algorithm_types,
-        return_warning=True,
+        smear_type,
+        algorithm_types,
+        gpu_id=gpu_id,
+        all_gpus=all_gpus,
     )
-    targets = _warmup_gpu_targets(gpu_id, all_gpus=all_gpus)
-    for gid in targets:
-        ok, msg = ensure_model_loaded(model_name, gpu_id=gid)
-        if not ok:
-            logger.warning("Model warmup failed for %s on gpu=%s: %s", model_name, gid, msg)
-        else:
-            ep = get_triton_endpoint(gid)
-            logger.info(
-                "Model warmup ok: %s on gpu=%s (%s)",
-                model_name,
-                gid,
-                ep.get("name"),
-            )
-    return model_name, warning
+    if not ok:
+        logger.warning(
+            "Model warmup failed for %s models=%s: %s",
+            model_names,
+            loaded,
+            msg,
+        )
+        if msg == "DPI不合适":
+            return model_names, msg
+    else:
+        targets = _warmup_gpu_targets(gpu_id, all_gpus=all_gpus)
+        logger.info(
+            "Model warmup ok: detection=%s classification=%s score=%s gpus=%s",
+            [s.name for s in resolved.detection],
+            [s.name for s in resolved.classification],
+            [s.name for s in resolved.score],
+            targets,
+        )
+    return model_names, resolved.warning

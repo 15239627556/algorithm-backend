@@ -148,6 +148,18 @@ class AnalyzeSlideBody(BaseModel):
     analyze_names: list[Any] = Field(default_factory=list)
 
 
+class ModelControlBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    smear_type: str = Field(default="BM", description="涂片类型: BM/PB/CSF（CF 视为 CSF）")
+    dpi: int = Field(..., description="DPI，如 714756/357378/147246/35000")
+    target_cell_types: str = Field(
+        ...,
+        description="目标检测类型，如 WBC,RBC / WBC,MEG / WBC,PLAT",
+    )
+    gpu_id: Optional[int] = Field(default=None, description="指定 GPU，默认轮询单卡")
+    all_gpus: bool = Field(default=False, description="是否对所有 Triton 端点操作")
+
+
 ALLOWED_ANALYZE_NAMES = {"cellularity"}
 
 
@@ -337,6 +349,90 @@ def analyze_slide(body: AnalyzeSlideBody):
         }
     result = taskService.analyze_slide(task_id, analyze_names)
     return result
+
+
+@task.post("/load_models", summary="按需加载模型")
+def load_models_api(body: ModelControlBody):
+    from backend.tools.combo_validator import validate_combo
+    from backend.tools.model_control import load_models, resolve_models
+
+    ok_combo, err = validate_combo(body.dpi, body.smear_type, body.target_cell_types)
+    if not ok_combo:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": err,
+            "reason": err,
+        }
+    resolved = resolve_models(body.dpi, body.smear_type, body.target_cell_types)
+    models = resolved.names
+    ok, msg, _ = load_models(
+        body.dpi,
+        body.smear_type,
+        body.target_cell_types,
+        gpu_id=body.gpu_id,
+        all_gpus=body.all_gpus,
+    )
+    if not ok:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": msg,
+            "reason": msg,
+            "models": models,
+            "detection": [s.name for s in resolved.detection],
+            "classification": [s.name for s in resolved.classification],
+            "score": [s.name for s in resolved.score],
+        }
+    return {
+        "ret_code": RetCode.API_SUCCESS.value,
+        "ret_desc": RetDesc.API_SUCCESS.value,
+        "models": models,
+        "detection": [s.name for s in resolved.detection],
+        "classification": [s.name for s in resolved.classification],
+        "score": [s.name for s in resolved.score],
+        "warning": err or resolved.warning,
+    }
+
+
+@task.post("/unload_models", summary="按需卸载模型")
+def unload_models_api(body: ModelControlBody):
+    from backend.tools.combo_validator import validate_combo
+    from backend.tools.model_control import resolve_models, unload_models
+
+    ok_combo, err = validate_combo(body.dpi, body.smear_type, body.target_cell_types)
+    if not ok_combo:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": err,
+            "reason": err,
+        }
+    resolved = resolve_models(body.dpi, body.smear_type, body.target_cell_types)
+    models = resolved.names
+    ok, msg, _ = unload_models(
+        body.dpi,
+        body.smear_type,
+        body.target_cell_types,
+        gpu_id=body.gpu_id,
+        all_gpus=body.all_gpus,
+    )
+    if not ok:
+        return {
+            "ret_code": RetCode.CLIENT_ERROR.value,
+            "ret_desc": msg,
+            "reason": msg,
+            "models": models,
+            "detection": [s.name for s in resolved.detection],
+            "classification": [s.name for s in resolved.classification],
+            "score": [s.name for s in resolved.score],
+        }
+    return {
+        "ret_code": RetCode.API_SUCCESS.value,
+        "ret_desc": RetDesc.API_SUCCESS.value,
+        "models": models,
+        "detection": [s.name for s in resolved.detection],
+        "classification": [s.name for s in resolved.classification],
+        "score": [s.name for s in resolved.score],
+        "warning": err or resolved.warning,
+    }
 
 
 @task.post(

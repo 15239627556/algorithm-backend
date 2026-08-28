@@ -3,76 +3,65 @@
 from __future__ import annotations
 
 import logging
-import re
+import time
 from dataclasses import replace
+from io import BytesIO
 from typing import Any
 
 import cv2
 import numpy as np
+from PIL import Image
 
-from backend.tools.combo_validator import TOLERANCE
+from backend.tools.MESSAGE_DICT import DPI_NOT_SUITABLE, model_dpi_ranges
+from backend.tools.combo_validator import LEGACY_DPI_MAP, _parse_cell_types, normalize_smear_type
 from backend.tools.image_tiling import (
     DEFAULT_TILE_OVERLAP,
     tile_ranges_1d,
 )
-from backend.tools.triton_client import (
-    MODEL_144750_BM,
-    MODEL_144750_PB,
-    MODEL_357378,
-    MODEL_714756_BM,
-    MODEL_35000_CF,
-    MODEL_71000_CF,
-    infer,
+from backend.tools.triton_client import infer, resolve_triton_route
+from backend.tools.filter_edge_incomplete_cells import (
+    filter_cell_dicts_edge_elongated_1pct,
+    filter_cell_dicts_edge_incomplete,
+    filter_cell_dicts_small_wbc_714756,
 )
+from backend.tools.model_control import load_models, resolve_models
 from project.cells import Cell
 from project.tiles import Tile
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
 logger = logging.getLogger(__name__)
 
-_MODEL_TILE_LIMITS: dict[str, tuple[int, int, int, int] | None] = {
-    # (max_w, max_h, min_w, min_h)；None 表示无尺寸限制（CF 模型）
-    MODEL_144750_BM: (3200, 2200, 2448, 2048),
-    MODEL_144750_PB: (3200, 2200, 2448, 2048),
-    MODEL_357378: (2448, 2048, 2448, 2048),
-    MODEL_714756_BM: (4896, 4896, 2048, 1536),
-    MODEL_35000_CF: None,
-    MODEL_71000_CF: None,
+# 切块限制按 MODEL_TABLE 的 actual_dpi 索引；(max_w, max_h, min_w, min_h)
+# None 表示无尺寸限制（CSF 定位）
+_DPI_TILE_LIMITS: dict[int, tuple[int, int, int, int] | None] = {
+    147246: (3200, 2200, 2448, 2048),
+    357378: (2448, 2048, 2448, 2048),
+    714756: (4896, 4896, 2048, 1536),
+    35000: None,
+    71000: None,
 }
 
 
-def extract_model_dpi(model_name: str) -> int:
-    """从 model_name 提取模型对应 DPI（147246 映射为 144750）。"""
-    m = re.search(r"DPI(\d+)", model_name)
-    if not m:
-        raise ValueError(f"cannot extract DPI from model name: {model_name}")
-    val = int(m.group(1))
-    if val == 147246:
-        return 144750
-    return val
-
-
-def model_tile_limits(model_name: str) -> tuple[int, int, int, int] | None:
-    """返回 (max_w, max_h, min_w, min_h)；None 表示该模型无尺寸限制。"""
-    if model_name in _MODEL_TILE_LIMITS:
-        return _MODEL_TILE_LIMITS[model_name]
-    model_dpi = extract_model_dpi(model_name)
-    if model_dpi in (35000, 71000):
+def model_tile_limits(actual_dpi: int) -> tuple[int, int, int, int] | None:
+    """返回 (max_w, max_h, min_w, min_h)；None 表示该 DPI 无尺寸限制。"""
+    dpi = int(actual_dpi)
+    if dpi in _DPI_TILE_LIMITS:
+        return _DPI_TILE_LIMITS[dpi]
+    if dpi in (35000, 71000):
         return None
-    fallback = MODEL_714756_BM if model_dpi == 714756 else MODEL_357378
-    return _MODEL_TILE_LIMITS.get(fallback)
+    return _DPI_TILE_LIMITS.get(714756 if dpi >= 500000 else 357378)
 
 
-def model_tile_max_limits(model_name: str) -> tuple[int, int] | None:
-    limits = model_tile_limits(model_name)
+def model_tile_max_limits(actual_dpi: int) -> tuple[int, int] | None:
+    limits = model_tile_limits(actual_dpi)
     if limits is None:
         return None
     max_w, max_h, _, _ = limits
     return max_w, max_h
 
 
-def model_tile_min_limits(model_name: str) -> tuple[int, int] | None:
-    limits = model_tile_limits(model_name)
+def model_tile_min_limits(actual_dpi: int) -> tuple[int, int] | None:
+    limits = model_tile_limits(actual_dpi)
     if limits is None:
         return None
     _, _, min_w, min_h = limits
@@ -80,13 +69,17 @@ def model_tile_min_limits(model_name: str) -> tuple[int, int] | None:
 
 
 def dpi_needs_scale(input_dpi: int, model_dpi: int) -> bool:
-    low = int(model_dpi * (1 - TOLERANCE))
-    high = int(model_dpi * (1 + TOLERANCE))
-    return not (low <= input_dpi <= high)
+    """区间内且与实际模型 DPI 不同时需要缩放；区间外由校验层直接拒绝。"""
+    req = LEGACY_DPI_MAP.get(int(input_dpi), int(input_dpi))
+    ranges = model_dpi_ranges()
+    rng = ranges.get(int(model_dpi))
+    if rng is not None and not (rng[0] <= req <= rng[1]):
+        return False
+    return req != int(model_dpi)
 
 
 def compute_dpi_scale_ratio(input_dpi: int, model_dpi: int) -> float:
-    """DPI 超出 ±10% 时返回 model_dpi/input_dpi，否则返回 1.0。"""
+    """DPI 在适用区间内时可缩放到实际模型 DPI。"""
     if not dpi_needs_scale(input_dpi, model_dpi):
         return 1.0
     return model_dpi / input_dpi
@@ -102,6 +95,35 @@ def encode_bgr_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes:
 def decode_image_bgr(image_bytes: bytes) -> np.ndarray | None:
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
+def peek_image_size(image_bytes: bytes) -> tuple[int, int] | None:
+    """只读图片头拿宽高，避免平扫热路径整图解码。"""
+    try:
+        with Image.open(BytesIO(image_bytes)) as im:
+            w, h = im.size
+            return int(w), int(h)
+    except Exception:
+        return None
+
+
+def infer_needs_decode(
+    orig_w: int,
+    orig_h: int,
+    scale_ratio: float,
+    max_w: int,
+    max_h: int,
+    min_w: int,
+    min_h: int,
+) -> bool:
+    """需要缩放、填充或切块时才解码；否则原图字节可直送 Triton。"""
+    if abs(scale_ratio - 1.0) >= 1e-9:
+        return True
+    if min_w > 0 and min_h > 0 and (orig_w < min_w or orig_h < min_h):
+        return True
+    if max_w > 0 and max_h > 0 and (orig_w > max_w or orig_h > max_h):
+        return True
+    return False
 
 
 def scale_bgr(bgr: np.ndarray, scale_ratio: float) -> np.ndarray:
@@ -421,6 +443,9 @@ def infer_x100_on_bgr(
 
     cell_lists: dict[tuple[int, int, int, int], list[dict[str, Any]]] = {}
     warning: str | None = None
+    scores_out: list[Any] = []
+    wbc_pixel_count = 0
+    red_pixel_count = 0
     for y0, y1 in ys:
         for x0, x1 in xs:
             crop = bgr[y0:y1, x0:x1]
@@ -435,6 +460,18 @@ def infer_x100_on_bgr(
             if not cl and cells:
                 cl = _cells_to_cell_list(cells)
             cell_lists[(y0, y1, x0, x1)] = cl
+            wbc_pixel_count += int(part.get("wbc_pixel_count") or 0)
+            red_pixel_count += int(part.get("red_pixel_count") or 0)
+            for row in part.get("scores") or []:
+                if isinstance(row, (list, tuple)) and len(row) >= 4:
+                    mapped = list(row)
+                    mapped[0] = float(mapped[0]) + x0
+                    mapped[1] = float(mapped[1]) + y0
+                    mapped[2] = float(mapped[2]) + x0
+                    mapped[3] = float(mapped[3]) + y0
+                    scores_out.append(mapped)
+                else:
+                    scores_out.append(row)
 
     merged_list = dedup_tiled_x100_results(
         ys, xs, cell_lists, tile_w=max_w, tile_h=max_h,
@@ -442,7 +479,10 @@ def infer_x100_on_bgr(
 
     result: dict[str, Any] = {
         "cell_list": merged_list,
-        "cells": [],
+        "cells": [_cell_dict_to_cell(d) for d in merged_list if isinstance(d, dict)],
+        "scores": scores_out,
+        "wbc_pixel_count": wbc_pixel_count,
+        "red_pixel_count": red_pixel_count,
     }
     if warning:
         result["warning"] = warning
@@ -452,14 +492,16 @@ def infer_x100_on_bgr(
 def prepare_x100_bgr(
     image_bytes: bytes,
     input_dpi: int,
-    model_name: str,
+    actual_dpi: int,
+    *,
+    allow_dpi_scale: bool = True,
 ) -> tuple[np.ndarray, int, int, float, int, int, int, int, int]:
     """
     解码、按 DPI 比值缩放，并在必要时黑底居中填充至模型最小尺寸。
     返回 (bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y)。
     """
-    model_dpi = extract_model_dpi(model_name)
-    limits = model_tile_limits(model_name)
+    model_dpi = int(actual_dpi)
+    limits = model_tile_limits(model_dpi)
     if limits is None:
         max_w, max_h = 0, 0
     else:
@@ -470,7 +512,7 @@ def prepare_x100_bgr(
         raise ValueError("cannot decode image")
 
     orig_h, orig_w = int(bgr.shape[0]), int(bgr.shape[1])
-    scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi)
+    scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
     if scale_ratio != 1.0:
         bgr = scale_bgr(bgr, scale_ratio)
         logger.info(
@@ -492,3 +534,210 @@ def prepare_x100_bgr(
             )
 
     return bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y
+
+
+def _bbox_key(d: dict[str, Any]) -> tuple[int, int, int, int]:
+    return (
+        int(d["cell_xmin"]),
+        int(d["cell_ymin"]),
+        int(d["cell_xmax"]),
+        int(d["cell_ymax"]),
+    )
+
+
+def _sync_cells_and_cell_list(
+    cells: list[Cell],
+    cell_list: list[dict[str, Any]],
+) -> tuple[list[Cell], list[dict[str, Any]]]:
+    if not cell_list and cells:
+        cell_list = _cells_to_cell_list(cells)
+    if not cells and cell_list:
+        cells = [_cell_dict_to_cell(d) for d in cell_list if isinstance(d, dict)]
+    return cells, cell_list
+
+
+def _apply_post_filters(
+    cell_list: list[dict[str, Any]],
+    *,
+    orig_w: int,
+    orig_h: int,
+    input_dpi: int,
+    use_714756_filter: bool,
+    edge_cell_filter: bool,
+) -> list[dict[str, Any]]:
+    if not cell_list:
+        return cell_list
+    if use_714756_filter:
+        try:
+            cell_list = filter_cell_dicts_edge_elongated_1pct(cell_list, orig_w, orig_h)
+            cell_list = filter_cell_dicts_small_wbc_714756(cell_list, input_dpi)
+        except Exception as e:
+            logger.warning("714756 cell filter skipped: %s", e)
+        return cell_list
+    if edge_cell_filter:
+        try:
+            cell_list = filter_cell_dicts_edge_incomplete(cell_list, orig_w, orig_h)
+        except Exception as e:
+            logger.warning("edge_cell_filter skipped: %s", e)
+    return cell_list
+
+
+def run_cell_image_infer(
+    image_bytes: bytes,
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+    filename: str = "image.jpg",
+    *,
+    edge_cell_filter: bool = True,
+    gpu_id: int | None = None,
+    ensure_loaded: bool = True,
+    allow_dpi_scale: bool = True,
+) -> dict[str, Any]:
+    """
+    平扫 upload_image 与单张 get_task_result_x100 共用：
+    选模型 → 缩放/填充 → 加载 → 推理（大图切块）→ 坐标回映射 → 过滤。
+    成功 ok=True；失败 ok=False 且 error 为原因。
+
+    ensure_loaded: 平扫 create_task 已预热时传 False，避免每张图再打 Triton /load。
+    allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
+    """
+    t0 = time.perf_counter()
+    input_dpi = int(dpi)
+    smear_type = smear_type or "BM"
+    target_cell_types = target_cell_types or ""
+
+    resolved = resolve_models(input_dpi, smear_type, target_cell_types)
+    if resolved.dpi_unsuitable:
+        return {"ok": False, "error": DPI_NOT_SUITABLE}
+    requested = _parse_cell_types(target_cell_types)
+    if not requested:
+        return {"ok": False, "error": "target_cell_types cannot be empty"}
+    covered: set[str] = set()
+    for spec in resolved.detection:
+        covered |= spec.targets
+    missing = requested - covered
+    if missing:
+        st = normalize_smear_type(smear_type)
+        return {
+            "ok": False,
+            "error": (
+                f"Invalid combo: DPI={input_dpi} smear_type={st} has no detection model for "
+                f"{sorted(missing)}"
+            ),
+        }
+    if not resolved.detection:
+        return {"ok": False, "error": DPI_NOT_SUITABLE}
+
+    model_names = ",".join(spec.name for spec in resolved.detection)
+    model_dpi = int(resolved.detection[0].actual_dpi)
+    model_warning = resolved.warning
+    limits = model_tile_limits(model_dpi)
+    if limits is None:
+        max_w, max_h, min_w, min_h = 0, 0, 0, 0
+    else:
+        max_w, max_h, min_w, min_h = limits
+
+    scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
+    peeked = peek_image_size(image_bytes)
+    use_original_bytes = False
+    pad_x, pad_y = 0, 0
+    orig_w = orig_h = 0
+    bgr: np.ndarray | None = None
+    if peeked is not None:
+        orig_w, orig_h = peeked
+        use_original_bytes = not infer_needs_decode(
+            orig_w, orig_h, scale_ratio, max_w, max_h, min_w, min_h,
+        )
+
+    if not use_original_bytes:
+        try:
+            bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y = prepare_x100_bgr(
+                image_bytes, input_dpi, model_dpi, allow_dpi_scale=allow_dpi_scale,
+            )
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+    infer_dpi = model_dpi if scale_ratio != 1.0 else input_dpi
+    use_714756_filter = any(spec.actual_dpi == 714756 for spec in resolved.detection)
+
+    if gpu_id is None:
+        gpu_id, _ = resolve_triton_route()
+    if ensure_loaded:
+        ok, load_err, _ = load_models(
+            input_dpi,
+            smear_type,
+            target_cell_types,
+            gpu_id=gpu_id,
+        )
+        if not ok:
+            return {"ok": False, "error": load_err}
+
+    try:
+        if use_original_bytes:
+            result = infer(
+                image_bytes,
+                dpi=infer_dpi,
+                smear_type=smear_type,
+                algorithm_types=target_cell_types,
+                filename=filename,
+                gpu_id=gpu_id,
+            )
+            infer_path = "original_bytes"
+        else:
+            result = infer_x100_on_bgr(
+                bgr,
+                infer_dpi=infer_dpi,
+                smear_type=smear_type,
+                target_cell_types=target_cell_types,
+                filename=filename,
+                gpu_id=gpu_id,
+                max_w=max_w,
+                max_h=max_h,
+            )
+            infer_path = "decode_scale_tile"
+    except Exception as e:
+        logger.exception("Triton infer failed: %s", e)
+        return {"ok": False, "error": str(e)}
+
+    cells = list(result.get("cells") or [])
+    cell_list = [x for x in (result.get("cell_list") or []) if isinstance(x, dict)]
+    if pad_x or pad_y:
+        cells = map_cells_from_pad(cells, pad_x, pad_y)
+        cell_list = map_cell_list_from_pad(cell_list, pad_x, pad_y)
+    if scale_ratio != 1.0:
+        cells = map_cells_from_scaled(cells, scale_ratio)
+        cell_list = map_cell_list_from_scaled(cell_list, scale_ratio)
+    cells, cell_list = _sync_cells_and_cell_list(cells, cell_list)
+    cell_list = _apply_post_filters(
+        cell_list,
+        orig_w=orig_w,
+        orig_h=orig_h,
+        input_dpi=input_dpi,
+        use_714756_filter=use_714756_filter,
+        edge_cell_filter=False if use_714756_filter else edge_cell_filter,
+    )
+    keep = {_bbox_key(d) for d in cell_list}
+    cells = [
+        c for c in cells
+        if (int(c.cell_xmin), int(c.cell_ymin), int(c.cell_xmax), int(c.cell_ymax)) in keep
+    ]
+
+    warning = model_warning or result.get("warning")
+    logger.info(
+        "run_cell_image_infer path=%s %dx%d scale=%.4f loaded=%s dpi_scale=%s infer_ms=%.1f",
+        infer_path, orig_w, orig_h, scale_ratio, ensure_loaded, allow_dpi_scale,
+        (time.perf_counter() - t0) * 1000,
+    )
+    return {
+        "ok": True,
+        "cells": cells,
+        "cell_list": cell_list,
+        "scores": result.get("scores") or [],
+        "wbc_pixel_count": int(result.get("wbc_pixel_count") or 0),
+        "red_pixel_count": int(result.get("red_pixel_count") or 0),
+        "orig_w": orig_w,
+        "orig_h": orig_h,
+        "warning": warning,
+        "model_name": model_names,
+    }

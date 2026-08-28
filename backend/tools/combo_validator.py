@@ -2,49 +2,31 @@
 """DPI + smear_type + target_cell_types 有效组合校验"""
 from __future__ import annotations
 
-# BM/PB DPI ±10%: 144750(130275-159225), 357378(321640-393116), 714756(643280-786232)
-# CF DPI ±10%: 35000(31500-38500), 71000(63900-78100)
-BM_PB_DPI_BASES = (144750, 357378, 714756)
-CF_DPI_BASES = (35000, 71000)
-VALID_DPI_BASES = BM_PB_DPI_BASES  # 兼容旧引用
+from backend.tools.MESSAGE_DICT import DPI_NOT_SUITABLE, model_dpi_ranges
+
 DPI_35000 = 35000
 DPI_71000 = 71000
-DPI_OUT_OF_RANGE_WARNING_BM_PB = "DPI out of valid range (144750/357378/714756 ±10%)"
-DPI_OUT_OF_RANGE_WARNING_CF = "DPI out of valid range (35000/71000 ±10%)"
-VALID_COMBINATIONS = {
-    (144750, "BM"): {"WBC", "MEG"},
-    (144750, "PB"): {"WBC", "RBC"},
-    # 357378 允许 PLAT，推理走 714756 血小板模型（见 get_model_by_dpi）
-    (357378, "BM"): {"WBC", "RBC", "MEG", "PLAT"},
-    (357378, "PB"): {"WBC", "RBC", "MEG", "PLAT"},
-    (714756, "BM"): {"WBC", "RBC", "MEG", "PLAT"},
-    (714756, "PB"): {"WBC", "RBC", "MEG", "PLAT"},
-    (35000, "CF"): {"WBC"},
-    (71000, "CF"): {"WBC"},
-}
+DPI_147246 = 147246
+DPI_357378 = 357378
+DPI_714756 = 714756
+DPI_144750 = 144750
+BM_PB_DPI_BASES = (147246, 357378, 714756)
+CF_DPI_BASES = (35000, 71000)
+VALID_DPI_BASES = BM_PB_DPI_BASES
+DPI_OUT_OF_RANGE_WARNING_BM_PB = DPI_NOT_SUITABLE
+DPI_OUT_OF_RANGE_WARNING_CF = DPI_NOT_SUITABLE
 TOLERANCE = 0.1
 
-# 遗留倍率 -> DPI（仅 BM/PB）
-LEGACY_DPI_MAP = {40: 144750, 50: 357378, 100: 714756}
+# 遗留倍率 -> 实际模型 DPI
+LEGACY_DPI_MAP = {40: 147246, 50: 357378, 100: 714756}
+
+_SMEAR_ALIASES = {"CF": "CSF"}
+_TARGET_ALIASES = {"RED": "RBC", "PLT": "PLAT"}
 
 
-def _get_dpi_bucket(dpi: int, smear_type: str | None = None) -> tuple[int, str | None]:
-    """根据 DPI 与涂片类型返回所属 bucket；超出范围时返回最近 bucket 和告警。"""
-    st = (smear_type or "").strip().upper()
-    if st == "CF":
-        bases = CF_DPI_BASES
-        warning_msg = DPI_OUT_OF_RANGE_WARNING_CF
-    else:
-        bases = BM_PB_DPI_BASES
-        warning_msg = DPI_OUT_OF_RANGE_WARNING_BM_PB
-        if dpi in LEGACY_DPI_MAP:
-            return LEGACY_DPI_MAP[dpi], None
-    for base in bases:
-        low = int(base * (1 - TOLERANCE))
-        high = int(base * (1 + TOLERANCE))
-        if low <= dpi <= high:
-            return base, None
-    return min(bases, key=lambda base: abs(dpi - base)), warning_msg
+def normalize_smear_type(smear_type: str | None) -> str:
+    st = (smear_type or "BM").strip().upper()
+    return _SMEAR_ALIASES.get(st, st)
 
 
 def _parse_cell_types(s: str) -> set[str]:
@@ -56,14 +38,25 @@ def _parse_cell_types(s: str) -> set[str]:
         part = part.strip().upper()
         if not part:
             continue
-        # BM_WBC -> WBC, RBC/PLAT 保持
         if "_" in part:
             part = part.split("_")[-1]
-        # RED -> RBC
-        if part == "RED":
-            part = "RBC"
+        part = _TARGET_ALIASES.get(part, part)
         result.add(part)
     return result
+
+
+def _get_dpi_bucket(dpi: int, smear_type: str | None = None) -> tuple[int | None, str | None]:
+    """
+    DPI 落在 MODEL_TABLE 区间内则返回对应 actual_dpi；
+    否则返回 (None, 'DPI不合适')，不允许回退到最近模型。
+    """
+    del smear_type
+    req = LEGACY_DPI_MAP.get(int(dpi), int(dpi))
+    ranges = model_dpi_ranges()
+    for actual, (low, high) in ranges.items():
+        if low <= req <= high:
+            return actual, None
+    return None, DPI_NOT_SUITABLE
 
 
 def validate_combo(
@@ -74,28 +67,35 @@ def validate_combo(
     allow_empty_types: bool = False,
 ) -> tuple[bool, str | None]:
     """
-    校验 (dpi, smear_type, target_cell_types) 是否为有效组合。
-    返回 (True, None)、(True, "告警描述") 或 (False, "错误描述")。
-    allow_empty_types: create_task 时 target_cell_types 可为空，后续 upload 再校验。
+    校验 (dpi, smear_type, target_cell_types) 是否能命中定位模型。
+    DPI 不在适用区间内时返回 (False, 'DPI不合适')。
     """
-    st = (smear_type or "BM").strip().upper()
-    bucket, warning = _get_dpi_bucket(dpi, smear_type=st)
+    from backend.tools.model_control import resolve_models
 
-    key = (bucket, st)
-    if key not in VALID_COMBINATIONS:
-        valid_st = sorted({k[1] for k in VALID_COMBINATIONS if k[0] == bucket})
-        return False, f"Invalid combo: DPI={bucket} smear_type must be one of {valid_st}, got {st}"
+    st = normalize_smear_type(smear_type)
+    if st not in {"BM", "PB", "CSF"}:
+        return False, f"Invalid smear_type: must be BM/PB/CSF, got {st}"
 
     requested = _parse_cell_types(target_cell_types)
+    resolved = resolve_models(int(dpi), st, target_cell_types)
+    if resolved.dpi_unsuitable:
+        return False, DPI_NOT_SUITABLE
+
     if allow_empty_types and not requested:
-        return True, warning
+        return True, None
 
-    allowed = VALID_COMBINATIONS[key]
-    invalid = requested - allowed
-    if invalid:
+    if not requested:
+        return False, "target_cell_types cannot be empty"
+
+    covered: set[str] = set()
+    for spec in resolved.detection:
+        covered |= spec.targets
+    missing = requested - covered
+    if missing:
         return False, (
-            f"Invalid combo: DPI={bucket} smear_type={st} target_cell_types must be "
-            f"subset of {sorted(allowed)}, got invalid {sorted(invalid)}"
+            f"Invalid combo: DPI={dpi} smear_type={st} has no detection model for "
+            f"{sorted(missing)}"
         )
-
-    return True, warning
+    if not resolved.detection:
+        return False, DPI_NOT_SUITABLE
+    return True, None

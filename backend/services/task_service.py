@@ -13,29 +13,15 @@ import orjson
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
-from backend.tools.combo_validator import validate_combo, _get_dpi_bucket, _parse_cell_types
+from backend.tools.combo_validator import validate_combo
 from backend.tools.json_safe_writer import serialize_non_json_fields
-from backend.tools.filter_edge_incomplete_cells import (
-    filter_cell_dicts_edge_incomplete,
-    filter_cell_dicts_edge_elongated_1pct,
-    filter_cell_dicts_small_wbc_714756,
-    filter_edge_incomplete_cells,
-)
 from PIL import Image
 
 from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
-from backend.tools.triton_client import infer, get_model_by_dpi, resolve_triton_route
-from backend.tools.x100_image_infer import (
-    infer_x100_on_bgr,
-    map_cell_list_from_pad,
-    map_cell_list_from_scaled,
-    map_cells_from_pad,
-    map_cells_from_scaled,
-    prepare_x100_bgr,
-)
-from backend.tools.model_control import warmup_model, ensure_model_loaded
+from backend.tools.x100_image_infer import run_cell_image_infer
+from backend.tools.model_control import warmup_model
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.main_rbc import *
@@ -239,15 +225,6 @@ def _cells_to_dicts(cells) -> list[dict]:
         elif isinstance(c, dict):
             out.append(c)
     return out
-
-
-def _bbox_key(d: dict) -> tuple[int, int, int, int]:
-    return (
-        int(d["cell_xmin"]),
-        int(d["cell_ymin"]),
-        int(d["cell_xmax"]),
-        int(d["cell_ymax"]),
-    )
 
 
 def _parse_edge_cell_filter_flag(value) -> bool:
@@ -500,7 +477,7 @@ class TaskService:
         os.makedirs(_task_tiles_dir(task_id), exist_ok=True)
         _save_task_info(task_id, task_info)
 
-        # 40 倍平扫：创建时经 ensure_model_loaded 预热全部 Triton 端点（互斥/LRU）
+        # 40 倍平扫：创建时按需 load_models 预热全部 Triton 端点
         model_name, model_warning = warmup_model(
             dpi,
             smear_type=task_info.get('smear_type', 'BM'),
@@ -661,52 +638,40 @@ class TaskService:
         smear_type = info.get('smear_type', 'BM')
         target_cell_types = info.get('target_cell_types', '')
 
-        try:
-            result = infer(
-                image_bytes,
-                dpi=dpi,
-                smear_type=smear_type,
-                algorithm_types=target_cell_types,
-                filename=filename,
-            )
-            cells = result.get("cells") or []
-            scores = _ensure_json_serializable(result.get("scores", []))
-            cell_list = result.get("cell_list") or []
-            if not cell_list and cells:
-                cell_list = [{
-                    'cell_xmin': c.cell_xmin, 'cell_ymin': c.cell_ymin,
-                    'cell_xmax': c.cell_xmax, 'cell_ymax': c.cell_ymax,
-                    'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
-                              'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
-                } for c in cells]
-            tile_w = int(info.get('tile_width', 2448))
-            tile_h = int(info.get('tile_height', 2048))
-            cell_list = filter_cell_dicts_edge_elongated_1pct(
-                cell_list, tile_w, tile_h
-            )
-            keep_bboxes = {_bbox_key(d) for d in cell_list}
-            cells_payload = [
-                d for d in _cells_to_dicts(cells) if _bbox_key(d) in keep_bboxes
-            ]
-            payload = {
-                'cells': cells_payload,
-                'scores': scores,
-                'wbc_pixel_count': int(result.get("wbc_pixel_count") or 0),
-                'red_pixel_count': int(result.get("red_pixel_count") or 0),
-            }
-            _write_tile_result(task_id, row_index, col_index, payload)
-            return {
-                'ret_code': RetCode.API_SUCCESS.value,
-                'ret_desc': RetDesc.API_SUCCESS.value,
-                'cell_list': cell_list,
-            }
-        except Exception as e:
-            logger.exception("Triton inference failed for task %s: %s", task_id, e)
+        result = run_cell_image_infer(
+            image_bytes,
+            dpi,
+            smear_type,
+            target_cell_types or "",
+            filename=filename,
+            edge_cell_filter=False,
+            ensure_loaded=False,
+            allow_dpi_scale=False,
+        )
+        if not result.get("ok"):
+            err = result.get("error") or "infer failed"
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': str(e),
-                'reason': str(e),
+                'ret_desc': err,
+                'reason': err,
             }
+        cell_list = result.get("cell_list") or []
+        cells_payload = _cells_to_dicts(result.get("cells") or [])
+        payload = {
+            'cells': cells_payload,
+            'scores': _ensure_json_serializable(result.get("scores", [])),
+            'wbc_pixel_count': int(result.get("wbc_pixel_count") or 0),
+            'red_pixel_count': int(result.get("red_pixel_count") or 0),
+        }
+        _write_tile_result(task_id, row_index, col_index, payload)
+        response = {
+            'ret_code': RetCode.API_SUCCESS.value,
+            'ret_desc': RetDesc.API_SUCCESS.value,
+            'cell_list': cell_list,
+        }
+        if result.get("warning"):
+            response['warning'] = result["warning"]
+        return response
 
     def _finish_task_impl(self, task_id: str, project: SmearProject, info: dict) -> None:
         """去重、过滤、落盘为大 JSON + 更新 info（后台可跑，不依赖内存任务表）。"""
@@ -1214,114 +1179,29 @@ class TaskService:
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
         image_bytes = image_file.read()
-        edge_cell_filter = _parse_edge_cell_filter_flag(edge_cell_filter)
-
-        ok, err = validate_combo(int(dpi), smear_type, target_cell_types or "")
-        if not ok:
+        filename = getattr(image_file, "filename", None) or "image.jpg"
+        result = run_cell_image_infer(
+            image_bytes,
+            int(dpi),
+            smear_type or "BM",
+            target_cell_types or "",
+            filename=filename,
+            edge_cell_filter=_parse_edge_cell_filter_flag(edge_cell_filter),
+        )
+        if not result.get("ok"):
+            err = result.get("error") or "infer failed"
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
                 "ret_desc": err,
                 "reason": err,
             }
-
-        model_name, model_warning = get_model_by_dpi(
-            int(dpi),
-            smear_type=smear_type,
-            algorithm_types=target_cell_types or "",
-            return_warning=True,
-        )
-        warning = err or model_warning
-
-        input_dpi = int(dpi)
-        try:
-            bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y = prepare_x100_bgr(
-                image_bytes, input_dpi, model_name,
-            )
-        except ValueError as e:
-            return {
-                "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": str(e),
-                "reason": str(e),
-            }
-
-        infer_dpi = model_dpi if scale_ratio != 1.0 else input_dpi
-        dpi_bucket, _ = _get_dpi_bucket(input_dpi, smear_type=smear_type)
-
-        gpu_id, _ = resolve_triton_route()
-        ok, load_err = ensure_model_loaded(model_name, gpu_id=gpu_id)
-        if not ok:
-            return {
-                "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": load_err,
-                "reason": load_err,
-            }
-
-        try:
-            result = infer_x100_on_bgr(
-                bgr,
-                infer_dpi=infer_dpi,
-                smear_type=smear_type,
-                target_cell_types=target_cell_types or "",
-                filename=image_file.filename,
-                gpu_id=gpu_id,
-                max_w=max_w,
-                max_h=max_h,
-            )
-        except Exception as e:
-            logger.exception("Triton infer failed: %s", e)
-            return {
-                "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": str(e),
-                "reason": str(e),
-            }
-
-        warning = warning or result.get("warning")
-        cells = result.get("cells", [])
-        cell_list = result.get("cell_list", [])
-        if pad_x or pad_y:
-            cells = map_cells_from_pad(cells, pad_x, pad_y)
-            cell_list = map_cell_list_from_pad(cell_list, pad_x, pad_y)
-        if scale_ratio != 1.0:
-            cells = map_cells_from_scaled(cells, scale_ratio)
-            cell_list = map_cell_list_from_scaled(cell_list, scale_ratio)
-        if not cell_list and cells:
-            cell_list = [{
-                'cell_xmin': c.cell_xmin, 'cell_ymin': c.cell_ymin,
-                'cell_xmax': c.cell_xmax, 'cell_ymax': c.cell_ymax,
-                'tops': [{'cell_type': c.cell_type, 'cell_type_name': c.cell_type_name,
-                          'class_confidence': c.class_confidence, 'bbox_confidence': c.bbox_confidence}]
-            } for c in cells]
-        if dpi_bucket == 714756:
-            edge_cell_filter = False
-            if cell_list:
-                try:
-                    cell_list = filter_cell_dicts_edge_elongated_1pct(
-                        cell_list, orig_w, orig_h
-                    )
-                    cell_list = filter_cell_dicts_small_wbc_714756(
-                        cell_list, input_dpi
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "get_task_result_x100: 714756 cell filter skipped: %s",
-                        e,
-                    )
-        if edge_cell_filter and cell_list:
-            try:
-                cell_list = filter_cell_dicts_edge_incomplete(
-                    cell_list, orig_w, orig_h
-                )
-            except Exception as e:
-                logger.warning(
-                    "get_task_result_x100: edge_cell_filter skipped (image decode failed): %s",
-                    e,
-                )
+        cell_list = result.get("cell_list") or []
         response = {
             "ret_code": RetCode.API_SUCCESS.value,
-            'ret_desc': RetDesc.API_SUCCESS.value,
-            'cell_count': len(cell_list),
-            'cell_list': cell_list
+            "ret_desc": RetDesc.API_SUCCESS.value,
+            "cell_count": len(cell_list),
+            "cell_list": cell_list,
         }
-        if warning:
-            response['warning'] = warning
+        if result.get("warning"):
+            response["warning"] = result["warning"]
         return response

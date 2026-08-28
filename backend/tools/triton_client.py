@@ -30,36 +30,37 @@ from backend.tools.MESSAGE_DICT import (
     CELL_TYPES_X40,
     CELL_TYPES_X100,
     CELL_TYPES_MEG,
+    CELL_TYPE_CSF,
     CELL_TYPE_RBC,
     CELL_TYPE_PLT,
     get_counting_cell_type,
 )
-from backend.tools.combo_validator import _get_dpi_bucket, _parse_cell_types, DPI_35000, DPI_71000
+from backend.tools.combo_validator import normalize_smear_type
 from config import next_triton_endpoint, get_triton_endpoint
-from backend.tools.model_control import ensure_model_loaded
+from backend.tools.model_control import (
+    ensure_model_loaded,
+    resolve_models,
+    ResolvedModels,
+)
 from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
 
 logger = logging.getLogger(__name__)
 
-# DPI 基准值（±10% 容差），仅以 DPI 选择模型，不再使用倍率缩写
-DPI_144750 = 144750  # 有核细胞/巨核细胞/红细胞/血小板定位
-DPI_357378 = 357378  # 巨核细胞定位分类
-DPI_714756 = 714756  # 有核细胞/成熟红细胞
+# 细胞检测走 multi_pipeline_server：POST /{actual_dpi}/infer。
+# actual_dpi 来自 MODEL_TABLE 命中的定位模型，不是 Triton pipeline 名。
+DPI_147246 = 147246
+DPI_357378 = 357378
+DPI_714756 = 714756
+DPI_35000 = 35000
+DPI_71000 = 71000
+DPI_144750 = 144750  # 遗留请求值，落在 147246 区间
 
-# 模型名称常量（各组预估显存须与 model_control.GROUP_VRAM_GB 一致；357378 为常驻组）
-MODEL_144750_BM = "DPI147246_BM_pipeline"  # 144750 骨髓  预估显存占用 3.3G（LRU）
-MODEL_144750_PB = "DPI147246_PB_pipeline"  # 144750 血片  预估显存占用 3.3G（LRU）
-MODELS_144750 = frozenset({MODEL_144750_BM, MODEL_144750_PB})
-MODEL_357378 = "DPI357378_BM_MEG_pipeline"  # 357378: BM 巨核细胞  预估显存占用 0.2G（常驻）
-MODEL_714756_BM = "DPI714756_BM_PB_pipeline"  # 714756: BM/PB  预估显存占用 3.1G（LRU）
-MODEL_35000_CF = "DPI35000_CF_WBC_pipeline"  # 35000: CF  预估显存占用 2.2G（LRU）
-MODEL_71000_CF = "DPI71000_CF_WBC_pipeline"  # 71000: CF  预估显存占用 2.2G（LRU）
-# CF 检测 pipeline 统一输出未分类脑脊液细胞
+# CF 检测统一输出未分类脑脊液细胞
 CSF_UNCLASSIFIED_CELL_TYPE = 100007
-# 图片增强/滤镜 pipeline（x40 超分辨率滤镜深度学习模式）
-MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"  # 预估显存占用 1.6G（LRU）
+# 图片增强/滤镜（x40 超分辨率滤镜深度学习模式）
+MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 
-# 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756|35000|71000}/infer（multipart）。
+# 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756|35000|71000}/infer。
 _MULTI_PIPELINE_TARGETS = frozenset({"147246", "357378", "714756", "35000", "71000"})
 _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 _PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
@@ -257,7 +258,7 @@ def _post_filter_pipeline_infer(
 
 def _ensure_filter_model_loaded(endpoint: dict, gpu_id: int, target: str) -> None:
     """
-    推理前经 model_control 加载滤镜模型（参与 LRU，与检测模型共用组数上限）。
+    推理前经 model_control 加载滤镜模型。
     opencv_enhance 纯 CPU，无需加载 Triton 模型。
     """
     if target != "image_enhance":
@@ -402,6 +403,17 @@ _triton_clients: dict[int, Any] = {}
 _triton_client_lock = threading.Lock()
 
 
+def _infer_route_dpi(resolved: ResolvedModels) -> int | None:
+    """从 MODEL_TABLE 命中的定位模型取 HTTP 推理路由（/{actual_dpi}/infer）。"""
+    actuals = {spec.actual_dpi for spec in resolved.detection}
+    if not actuals:
+        return None
+    for dpi in (DPI_147246, DPI_35000, DPI_71000, DPI_357378, DPI_714756):
+        if dpi in actuals:
+            return dpi
+    return next(iter(actuals))
+
+
 def get_model_by_dpi(
     dpi: int,
     smear_type: str = "BM",
@@ -409,41 +421,12 @@ def get_model_by_dpi(
     *,
     return_warning: bool = False,
 ) -> str | tuple[str, str | None]:
-    """
-    仅根据 DPI 选择 Triton 模型（与 smear_type、target_cell_types 组合见下方有效表）。
-
-    有效组合:
-    - 144750 ± 10%: BM(WBC,MEG) → MODEL_144750_BM；PB(WBC,RBC) → MODEL_144750_PB
-    - 357378 ± 10%: BM(MEG) → MODEL_357378；BM/PB 的 WBC/RBC/PLAT 走 MODEL_714756_BM
-    - 714756 ± 10%: BM/PB(WBC,RBC,PLAT) → MODEL_714756_BM；含 MEG 时 → MODEL_357378
-    - 35000 ± 10%: CF(WBC) → MODEL_35000_CF
-    - 71000 ± 10%: CF(WBC) → MODEL_71000_CF
-    超出范围时使用绝对差最小的 DPI bucket，并可通过 return_warning 返回告警。
-    """
-    st = smear_type.strip().upper()
-    at = algorithm_types.strip().upper()
-    types = _parse_cell_types(at)
-    bucket, warning = _get_dpi_bucket(dpi, smear_type=st)
-
-    if st == "CF":
-        model = MODEL_35000_CF if bucket == DPI_35000 else MODEL_71000_CF
-    elif bucket == DPI_144750:
-        model = MODEL_144750_PB if st == "PB" else MODEL_144750_BM
-    elif bucket == DPI_357378:
-        uses_714756 = bool(types & {"WBC", "RBC", "PLAT"})
-        uses_meg = "MEG" in types
-        if uses_714756 and not uses_meg:
-            model = MODEL_714756_BM
-        else:
-            model = MODEL_357378
-    elif "MEG" in types:
-        model = MODEL_357378
-    else:
-        model = MODEL_714756_BM
-
+    """返回 MODEL_TABLE 命中的定位模型名（逗号拼接）。"""
+    resolved = resolve_models(dpi, smear_type, algorithm_types)
+    names = ",".join(spec.name for spec in resolved.detection)
     if return_warning:
-        return model, warning
-    return model
+        return names, resolved.warning
+    return names
 
 
 def _714756_tasks_from_algorithm_types(algorithm_types: str) -> str:
@@ -554,7 +537,7 @@ def _post_multipart_pipeline_infer(
     timeout_s: float,
     extra_form: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 task_mode；147246 为 enable_meg、slide_type）。"""
+    """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 tasks、slide_type；147246 为 enable_meg、slide_type）。"""
     if not url.lower().startswith("http"):
         url = f"http://{url}"
 
@@ -1179,6 +1162,7 @@ def _infer_714756_bm_from_pipeline_json(
     smear_type: str,
     *,
     dpi: int = DPI_714756,
+    resolved: Optional[ResolvedModels] = None,
 ) -> dict[str, Any]:
     # logger.info("714756_bm pipeline 原始返回:\n%s", res)
     if res.get("error"):
@@ -1232,8 +1216,12 @@ def _infer_714756_bm_from_pipeline_json(
     scores_out: List[float] = []
     cell_list: List[Any] = []
 
+    st = normalize_smear_type(smear_type)
+    classify_wbc = resolved.has_classifier_for("WBC") if resolved is not None else True
+    classify_rbc = resolved.has_classifier_for("RBC") if resolved is not None else True
+    classify_plat = resolved.has_classifier_for("PLAT") if resolved is not None else True
+
     if wbc_num > 0 and boxes is not None:
-        wbc_names = [CELL_TYPES_X100.get(200000 + i, ("?", f"cell_{i}"))[1] for i in range(35)]
         b = boxes[:wbc_num]
         s = scores[:wbc_num] if scores is not None and scores.size >= wbc_num else np.ones(wbc_num)
         c = (
@@ -1249,14 +1237,42 @@ def _infer_714756_bm_from_pipeline_json(
             if cprobs_raw is not None
             else None
         )
-        wbc_cells = _boxes_xyxy_to_cells(b, s, c, 200000, wbc_names, CELL_TYPES_X100, class_probs=cprobs_arr)
-        cells.extend(wbc_cells)
-        scores_out.extend(np.asarray(s).flatten().tolist())
-        cids_arr = np.asarray(c, dtype=np.int32).reshape(wbc_num, -1)
-        cprobs_for_top5 = cprobs_arr if cprobs_arr is not None else np.ones((wbc_num, 5))
-        cell_list.extend(
-            _cells_to_cell_list_top5(wbc_cells, cids_arr, cprobs_for_top5, 200000, CELL_TYPES_X100, wbc_names, smear_type)
-        )
+        if classify_wbc and st == "CSF":
+            csf_names = [CELL_TYPE_CSF.get(400000 + i, ("?", f"cell_{i}"))[1] for i in range(12)]
+            wbc_cells = _boxes_xyxy_to_cells(
+                b, s, c, 400000, csf_names, CELL_TYPE_CSF, class_probs=cprobs_arr
+            )
+            cells.extend(wbc_cells)
+            scores_out.extend(np.asarray(s).flatten().tolist())
+            cids_arr = np.asarray(c, dtype=np.int32).reshape(wbc_num, -1)
+            cprobs_for_top5 = cprobs_arr if cprobs_arr is not None else np.ones((wbc_num, 5))
+            cell_list.extend(
+                _cells_to_cell_list_top5(
+                    wbc_cells, cids_arr, cprobs_for_top5, 400000, CELL_TYPE_CSF, csf_names, smear_type
+                )
+            )
+        elif classify_wbc:
+            wbc_names = [CELL_TYPES_X100.get(200000 + i, ("?", f"cell_{i}"))[1] for i in range(35)]
+            wbc_cells = _boxes_xyxy_to_cells(
+                b, s, c, 200000, wbc_names, CELL_TYPES_X100, class_probs=cprobs_arr
+            )
+            cells.extend(wbc_cells)
+            scores_out.extend(np.asarray(s).flatten().tolist())
+            cids_arr = np.asarray(c, dtype=np.int32).reshape(wbc_num, -1)
+            cprobs_for_top5 = cprobs_arr if cprobs_arr is not None else np.ones((wbc_num, 5))
+            cell_list.extend(
+                _cells_to_cell_list_top5(
+                    wbc_cells, cids_arr, cprobs_for_top5, 200000, CELL_TYPES_X100, wbc_names, smear_type
+                )
+            )
+        else:
+            uncls_type = 100007 if st == "CSF" else 100000
+            wbc_cells = _boxes_xyxy_to_cells(
+                b, s, np.zeros(wbc_num, dtype=np.int32), uncls_type, ["unclassified"], CELL_TYPES_X40
+            )
+            cells.extend(wbc_cells)
+            scores_out.extend(np.asarray(s).flatten().tolist())
+            cell_list.extend(_cells_to_cell_list_single(wbc_cells, smear_type))
 
     rd, red_num = _prepare_xywh_detections(_res_get(res, "red_detections", "RED_DETECTIONS"), red_num)
     red_scores = _flatten_det_scores(_res_get(res, "red_det_scores", "RED_DET_SCORES"))
@@ -1281,21 +1297,29 @@ def _infer_714756_bm_from_pipeline_json(
                 dpi=dpi,
             )
 
-        rbc_cells = _cells_from_xywh_detections(
-            rd, red_num, red_scores, 100005, "已分类红细胞", extra_builder=_red_extra,
-        )
-        rbc_list = _finalize_abnormal_top5_cells(
-            rbc_cells,
-            smear_type,
-            type_map=CELL_TYPE_RBC,
-            normal_cell_type=500000,
-            priority_keys=_RED_TOP5_PRIORITY,
-            normal_label_ids=_RED_NORMAL_LABEL_IDS,
-            label_to_cell_type=_rbc_head_label_to_cell_type,
-        )
-        cells.extend(rbc_cells)
-        scores_out.extend([c.bbox_confidence for c in rbc_cells])
-        cell_list.extend(rbc_list)
+        if classify_rbc:
+            rbc_cells = _cells_from_xywh_detections(
+                rd, red_num, red_scores, 100005, "已分类红细胞", extra_builder=_red_extra,
+            )
+            rbc_list = _finalize_abnormal_top5_cells(
+                rbc_cells,
+                smear_type,
+                type_map=CELL_TYPE_RBC,
+                normal_cell_type=500000,
+                priority_keys=_RED_TOP5_PRIORITY,
+                normal_label_ids=_RED_NORMAL_LABEL_IDS,
+                label_to_cell_type=_rbc_head_label_to_cell_type,
+            )
+            cells.extend(rbc_cells)
+            scores_out.extend([c.bbox_confidence for c in rbc_cells])
+            cell_list.extend(rbc_list)
+        else:
+            rbc_cells = _cells_from_xywh_detections(
+                rd, red_num, red_scores, 100002, "未分类红细胞",
+            )
+            cells.extend(rbc_cells)
+            scores_out.extend([c.bbox_confidence for c in rbc_cells])
+            cell_list.extend(_cells_to_cell_list_single(rbc_cells, smear_type))
 
     pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
     plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
@@ -1318,21 +1342,29 @@ def _infer_714756_bm_from_pipeline_json(
                 dpi=dpi,
             )
 
-        plat_cells = _cells_from_xywh_detections(
-            pd, plat_num, plat_scores, 100006, "血小板", extra_builder=_plat_extra,
-        )
-        plat_list = _finalize_abnormal_top5_cells(
-            plat_cells,
-            smear_type,
-            type_map=CELL_TYPE_PLT,
-            normal_cell_type=600000,
-            priority_keys=_PLAT_TOP5_PRIORITY,
-            normal_label_ids=_PLAT_NORMAL_LABEL_IDS,
-            label_to_cell_type=_plat_head_label_to_cell_type,
-        )
-        cells.extend(plat_cells)
-        scores_out.extend([c.bbox_confidence for c in plat_cells])
-        cell_list.extend(plat_list)
+        if classify_plat:
+            plat_cells = _cells_from_xywh_detections(
+                pd, plat_num, plat_scores, 100006, "血小板", extra_builder=_plat_extra,
+            )
+            plat_list = _finalize_abnormal_top5_cells(
+                plat_cells,
+                smear_type,
+                type_map=CELL_TYPE_PLT,
+                normal_cell_type=600000,
+                priority_keys=_PLAT_TOP5_PRIORITY,
+                normal_label_ids=_PLAT_NORMAL_LABEL_IDS,
+                label_to_cell_type=_plat_head_label_to_cell_type,
+            )
+            cells.extend(plat_cells)
+            scores_out.extend([c.bbox_confidence for c in plat_cells])
+            cell_list.extend(plat_list)
+        else:
+            plat_cells = _cells_from_xywh_detections(
+                pd, plat_num, plat_scores, 100004, "未分类血小板",
+            )
+            cells.extend(plat_cells)
+            scores_out.extend([c.bbox_confidence for c in plat_cells])
+            cell_list.extend(_cells_to_cell_list_single(plat_cells, smear_type))
 
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
 
@@ -1538,23 +1570,19 @@ def infer(
     gpu_id: Optional[int] = None,
 ) -> dict:
     """
-    细胞检测推理，仅根据 DPI 选择模型。单图识别与任务模式均使用此接口。
+    细胞检测推理。先 resolve_models 查 MODEL_TABLE，再按定位模型 actual_dpi
+    POST /{actual_dpi}/infer。返回 {"cells", "scores", "cell_list"}。
 
-    有效组合见 get_model_by_dpi。返回: {"cells": List[Cell], "scores": List[float] (如有)}
-
-    144750 → target 147246；357378 → 357378；714756(BM/PB) → 714756；
-    35000/71000(CF) → 35000/71000。
-    平扫 upload_image 依赖 create_task 的 warmup_model（ensure_model_loaded + 互斥/LRU），不在此做 ensure；百倍见 get_task_result_x100。
+    平扫 upload_image 依赖 create_task 的 warmup_model（load_models）；
+    单张识别见 get_task_result_x100。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     """
-    model, warning = get_model_by_dpi(
-        dpi,
-        smear_type=smear_type,
-        algorithm_types=algorithm_types,
-        return_warning=True,
-    )
+    resolved = resolve_models(dpi, smear_type, algorithm_types)
+    warning = resolved.warning
+    route_dpi = _infer_route_dpi(resolved)
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
-    if model in MODELS_144750:
+
+    if route_dpi == DPI_147246:
         enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
         slide_type = smear_type.strip().upper() or "BM"
         url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
@@ -1577,7 +1605,7 @@ def infer(
             result["warning"] = warning
         return result
 
-    if model == MODEL_357378:
+    if route_dpi == DPI_357378:
         url = _multi_pipeline_infer_url("357378", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
@@ -1587,7 +1615,7 @@ def infer(
             result["warning"] = warning
         return result
 
-    if model == MODEL_714756_BM:
+    if route_dpi == DPI_714756:
         tasks = _714756_tasks_from_algorithm_types(algorithm_types)
         url = _multi_pipeline_infer_url("714756", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
@@ -1595,14 +1623,19 @@ def infer(
             image_bytes,
             filename,
             PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={"tasks": tasks},
+            extra_form={
+                "tasks": tasks,
+                "slide_type": normalize_smear_type(smear_type),
+            },
         )
-        result = _infer_714756_bm_from_pipeline_json(res_json, smear_type, dpi=dpi)
+        result = _infer_714756_bm_from_pipeline_json(
+            res_json, smear_type, dpi=dpi, resolved=resolved
+        )
         if warning:
             result["warning"] = warning
         return result
 
-    if model == MODEL_35000_CF:
+    if route_dpi == DPI_35000:
         url = _multi_pipeline_infer_url("35000", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
@@ -1612,7 +1645,7 @@ def infer(
             result["warning"] = warning
         return result
 
-    if model == MODEL_71000_CF:
+    if route_dpi == DPI_71000:
         url = _multi_pipeline_infer_url("71000", endpoint=endpoint)
         res_json = _post_multipart_pipeline_infer(
             url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
@@ -1664,10 +1697,11 @@ def infer_opencv_enhance(image_bytes: bytes) -> tuple[bytes, str]:
 
 if __name__ == "__main__":
     # 需在项目根目录执行: python -m backend.tools.triton_client
-    print("get_model_by_dpi 测试:")
+    print("MODEL_TABLE 定位模型解析:")
     for dpi, smear_type, algorithm_types in [
         (144750, "BM", "WBC,MEG"),
-        (144750, "PB", "WBC,RBC"),
+        (144750, "PB", "WBC"),
+        (147246, "BM", "WBC,MEG"),
         (357378, "BM", "MEG"),
         (357378, "BM", "WBC"),
         (357378, "BM", "PLAT"),
