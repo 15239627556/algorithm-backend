@@ -23,7 +23,6 @@ import numpy as np
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from datetime import datetime
 
 from project.cells import Cell
 from backend.tools.MESSAGE_DICT import (
@@ -544,8 +543,6 @@ def _post_multipart_pipeline_infer(
     # requests 自动生成 boundary 并设置 Content-Type；普通字段走 data，文件走 files。
     data = {name: str(value) for name, value in extra_form.items()} if extra_form else None
     files = {"image": (filename, image_bytes, "image/jpeg")}
-    # 记录日志，task_id,file_name,发送请求的时间
-    logger.info("file_name=%s, 发送请求的时间：%s", filename, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
     try:
         resp = _get_pipeline_session().post(
             url,

@@ -157,7 +157,7 @@ class ModelControlBody(BaseModel):
         description="目标检测类型，如 WBC,RBC / WBC,MEG / WBC,PLAT",
     )
     gpu_id: Optional[int] = Field(default=None, description="指定 GPU，默认轮询单卡")
-    all_gpus: bool = Field(default=False, description="是否对所有 Triton 端点操作")
+    all_gpus: bool = Field(default=True, description="是否对所有 Triton 端点操作")
 
 
 ALLOWED_ANALYZE_NAMES = {"cellularity"}

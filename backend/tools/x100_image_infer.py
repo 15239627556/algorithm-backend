@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import replace
 from io import BytesIO
 from typing import Any
@@ -515,23 +514,11 @@ def prepare_x100_bgr(
     scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
     if scale_ratio != 1.0:
         bgr = scale_bgr(bgr, scale_ratio)
-        logger.info(
-            "x100 dpi scale: input=%d model=%d ratio=%.6f %dx%d -> %dx%d",
-            input_dpi, model_dpi, scale_ratio,
-            orig_w, orig_h, int(bgr.shape[1]), int(bgr.shape[0]),
-        )
 
     pad_x, pad_y = 0, 0
     if limits is not None:
         _, _, min_w, min_h = limits
-        pre_pad_h, pre_pad_w = int(bgr.shape[0]), int(bgr.shape[1])
         bgr, pad_x, pad_y = pad_bgr_to_min(bgr, min_w, min_h)
-        if pad_x or pad_y:
-            logger.info(
-                "x100 min pad: %dx%d -> %dx%d pad=(%d,%d) min=%dx%d",
-                pre_pad_w, pre_pad_h, int(bgr.shape[1]), int(bgr.shape[0]),
-                pad_x, pad_y, min_w, min_h,
-            )
 
     return bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y
 
@@ -602,7 +589,6 @@ def run_cell_image_infer(
     ensure_loaded: 平扫 create_task 已预热时传 False，避免每张图再打 Triton /load。
     allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
     """
-    t0 = time.perf_counter()
     input_dpi = int(dpi)
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or ""
@@ -683,7 +669,6 @@ def run_cell_image_infer(
                 filename=filename,
                 gpu_id=gpu_id,
             )
-            infer_path = "original_bytes"
         else:
             result = infer_x100_on_bgr(
                 bgr,
@@ -695,7 +680,6 @@ def run_cell_image_infer(
                 max_w=max_w,
                 max_h=max_h,
             )
-            infer_path = "decode_scale_tile"
     except Exception as e:
         logger.exception("Triton infer failed: %s", e)
         return {"ok": False, "error": str(e)}
@@ -724,11 +708,6 @@ def run_cell_image_infer(
     ]
 
     warning = model_warning or result.get("warning")
-    logger.info(
-        "run_cell_image_infer path=%s %dx%d scale=%.4f loaded=%s dpi_scale=%s infer_ms=%.1f",
-        infer_path, orig_w, orig_h, scale_ratio, ensure_loaded, allow_dpi_scale,
-        (time.perf_counter() - t0) * 1000,
-    )
     return {
         "ok": True,
         "cells": cells,
