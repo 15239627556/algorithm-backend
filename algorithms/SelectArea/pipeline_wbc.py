@@ -19,6 +19,7 @@ from .selection import (
     filter_candidates, 
     get_valid_score_range,
     select_best_uniform_region,
+    expand_selection_to_target,
 )
 from .task_region_extraction import (
     build_forbidden_mask, 
@@ -233,6 +234,15 @@ class WBCSamplingPipeline:
                 config=self.cfg,
                 score_range=get_valid_score_range(self.grid, self.cfg),
             )
+
+        # 7.5 细胞不足：围着最终选区按行/列外扩，后续 Initial/补拍覆盖扩大后的选区
+        self.best_res = expand_selection_to_target(
+            best_res=self.best_res,
+            cell_matrix=self.cell_matrix,
+            grid=self.grid,
+            config=self.cfg,
+            user_search_mask=self.user_search_mask,
+        )
 
         # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）
         self.task_rects = generate_initial_and_extra_tasks(

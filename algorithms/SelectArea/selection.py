@@ -520,6 +520,170 @@ def filter_candidates(
     return selected
 
 
+def _selection_from_grid_rect(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    cell_matrix: np.ndarray,
+    score_map: np.ndarray,
+    area_score_fallback: float,
+) -> SelectionResult:
+    """用轴对齐网格矩形重建选区结果。"""
+    rows, cols = cell_matrix.shape
+    x = max(0, min(cols, int(x)))
+    y = max(0, min(rows, int(y)))
+    w = max(0, min(cols - x, int(w)))
+    h = max(0, min(rows - y, int(h)))
+    x2, y2 = x + w, y + h
+    sub_cells = cell_matrix[y:y2, x:x2]
+    sub_scores = score_map[y:y2, x:x2]
+    finite = np.isfinite(sub_scores)
+    if np.any(finite):
+        area_score = float(np.nanmean(sub_scores[finite]))
+    else:
+        area_score = float(area_score_fallback)
+    return SelectionResult(
+        area_score=area_score,
+        cell_count=int(np.sum(sub_cells)),
+        angle=0,
+        center_grid=((x + x2) // 2, (y + y2) // 2),
+        rect_size_grid=(w, h),
+        vertices_grid=np.array(
+            [[x, y], [x2, y], [x2, y2], [x, y2]],
+            dtype=np.float32,
+        ),
+    )
+
+
+def expand_selection_to_target(
+    best_res: SelectionResult,
+    cell_matrix: np.ndarray,
+    grid: HeatmapGrid,
+    config: BM40Config,
+    user_search_mask: Optional[np.ndarray] = None,
+) -> SelectionResult:
+    """
+    最终选区细胞数不足目标时，按补拍方式围着选区一次扩一行/一列。
+
+    优先扩进新细胞更多的方向；当前圈没有细胞时，朝选区外仍有细胞的半平面走。
+    受图像边界、用户框和有效评分区约束，不把空玻片吃进去。
+    """
+    target_num = config.target_cell_num_WBC * config.target_ratio
+    if best_res is None or best_res.cell_count >= target_num:
+        return best_res
+
+    rows, cols = cell_matrix.shape
+    if rows <= 0 or cols <= 0:
+        return best_res
+
+    score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
+    allow_mask = (build_valid_score_mask(grid, config, score_map) > 0).astype(np.uint8)
+    if user_search_mask is not None:
+        allow_mask = cv2.bitwise_and(allow_mask, (user_search_mask > 0).astype(np.uint8))
+
+    selection_mask = np.zeros((rows, cols), dtype=np.uint8)
+    cv2.fillPoly(selection_mask, [best_res.vertices_grid.astype(np.int32)], 1)
+    ys, xs = np.where(selection_mask > 0)
+    if xs.size == 0:
+        return best_res
+
+    cur_x, cur_y = int(xs.min()), int(ys.min())
+    cur_w, cur_h = int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)
+    start_count = int(np.sum(cell_matrix[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w]))
+    if start_count >= target_num:
+        return best_res
+
+    start_covered = np.zeros((rows, cols), dtype=np.uint8)
+    start_covered[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w] = 1
+    if not np.any((cell_matrix > 0) & (allow_mask > 0) & (start_covered == 0)):
+        return best_res
+
+    print(
+        f"[INFO] 最终选区细胞数 {start_count} < 目标 {target_num:.0f}，"
+        f"按行/列外扩补足。"
+    )
+
+    max_iter = rows + cols
+    steps = 0
+    while steps < max_iter:
+        covered = np.zeros((rows, cols), dtype=np.uint8)
+        covered[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w] = 1
+        current_count = int(np.sum(cell_matrix[covered > 0]))
+        if current_count >= target_num:
+            break
+
+        remaining_cells = (cell_matrix > 0) & (allow_mask > 0) & (covered == 0)
+        if not np.any(remaining_cells):
+            break
+
+        directions = [
+            ("top", cur_x, cur_y - 1, cur_w, 1),
+            ("bottom", cur_x, cur_y + cur_h, cur_w, 1),
+            ("left", cur_x - 1, cur_y, 1, cur_h),
+            ("right", cur_x + cur_w, cur_y, 1, cur_h),
+        ]
+        best_dir = None
+        best_new_cells = -1
+        best_halfplane_cells = -1
+        best_allow_hits = -1
+
+        for _, dx, dy, dw, dh in directions:
+            if dx < 0 or dy < 0 or dx + dw > cols or dy + dh > rows:
+                continue
+            strip_allow = allow_mask[dy:dy + dh, dx:dx + dw]
+            strip_covered = covered[dy:dy + dh, dx:dx + dw]
+            new_area = (strip_allow > 0) & (strip_covered == 0)
+            allow_hits = int(np.count_nonzero(new_area))
+            if allow_hits <= 0:
+                continue
+
+            new_cells = int(np.sum(cell_matrix[dy:dy + dh, dx:dx + dw][new_area]))
+            if dy == cur_y - 1:
+                halfplane = int(np.sum(cell_matrix[:cur_y, :][remaining_cells[:cur_y, :]]))
+            elif dy == cur_y + cur_h:
+                halfplane = int(np.sum(cell_matrix[cur_y + cur_h:, :][remaining_cells[cur_y + cur_h:, :]]))
+            elif dx == cur_x - 1:
+                halfplane = int(np.sum(cell_matrix[:, :cur_x][remaining_cells[:, :cur_x]]))
+            else:
+                halfplane = int(np.sum(cell_matrix[:, cur_x + cur_w:][remaining_cells[:, cur_x + cur_w:]]))
+
+            key = (new_cells, halfplane, allow_hits)
+            best_key = (best_new_cells, best_halfplane_cells, best_allow_hits)
+            if key > best_key:
+                best_new_cells, best_halfplane_cells, best_allow_hits = key
+                best_dir = (dx, dy, dw, dh)
+
+        if best_dir is None:
+            break
+        if best_new_cells <= 0 and best_halfplane_cells <= 0:
+            break
+
+        bx, by, bw, bh = best_dir
+        x1, y1 = min(cur_x, bx), min(cur_y, by)
+        x2, y2 = max(cur_x + cur_w, bx + bw), max(cur_y + cur_h, by + bh)
+        cur_x, cur_y, cur_w, cur_h = x1, y1, x2 - x1, y2 - y1
+        steps += 1
+
+    if steps <= 0:
+        return best_res
+
+    expanded = _selection_from_grid_rect(
+        cur_x,
+        cur_y,
+        cur_w,
+        cur_h,
+        cell_matrix,
+        score_map,
+        best_res.area_score,
+    )
+    print(
+        f"[INFO] 选区外扩完成: 细胞 {start_count} -> {expanded.cell_count}，"
+        f"包围盒=({cur_x}, {cur_y}, {cur_w}, {cur_h})，步数={steps}。"
+    )
+    return expanded
+
+
 def prepare_uniformity_map(cell_matrix: np.ndarray, config: BM40Config) -> np.ndarray:
     """
     预计算全局均匀性底图（覆盖率图）。
