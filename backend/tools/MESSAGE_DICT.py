@@ -220,7 +220,7 @@ MODEL_TABLE = [
     {
         "name_zh": "5倍脑脊液有核细胞定位",
         "name": "DPI35000_CSF_cell_detection",
-        "dpi_range": (31500, 38500),
+        "dpi_range": (30000, 45000),
         "actual_dpi": 35000,
         "targets": "WBC",
         "smear_types": "CSF",
@@ -230,7 +230,7 @@ MODEL_TABLE = [
     {
         "name_zh": "10倍脑脊液有核细胞定位",
         "name": "DPI71000_CSF_cell_detection",
-        "dpi_range": (63900, 78100),
+        "dpi_range": (45001, 90000),
         "actual_dpi": 71000,
         "targets": "WBC",
         "smear_types": "CSF",
