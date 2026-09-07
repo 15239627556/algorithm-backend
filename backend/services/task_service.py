@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_FILE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 _CELLULARITY_TARGET_CELL_TYPES = "CELLULARITY"
+_CELLULARITY_DPI = 147246
+_CELLULARITY_RECT_FILES_DIR = "rect0_files"
+_CELLULARITY_TILE_SIZE = 2048
 
 # 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
 _task_info_cache: dict[str, dict] = {}
@@ -465,6 +468,13 @@ class TaskService:
         dpi = task_info.get('dpi')
         smear_type = task_info.get('smear_type')
         target_cell_types = task_info.get('target_cell_types')
+        slide_no = str(task_info.get('slide_no') or '').strip()
+        if not slide_no:
+            return {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'slide_no cannot be empty',
+                'reason': 'slide_no cannot be empty',
+            }
         ok, err = validate_combo(dpi, smear_type, target_cell_types, allow_empty_types=False)
         if not ok:
             return {
@@ -473,6 +483,8 @@ class TaskService:
                 'reason': err,
             }
         task_id = uuid.uuid4().hex
+        task_info['task_id'] = task_id
+        task_info['slide_no'] = slide_no
         task_info['smear_type'] = task_info.get('smear_type', 'BM')
         task_info['task_status'] = RetCode.TASK_RUNNING.value
         task_info['heatmap_orientation'] = int(task_info.get('heatmap_orientation', -1))
@@ -783,12 +795,54 @@ class TaskService:
             'task_status': info.get('task_status')
         }
 
-    def _iter_image_paths(self, folder_path: str) -> list[str]:
+    def _cellularity_rect_key(self, rect: dict | None) -> tuple[int, int, int, int] | None:
+        if not isinstance(rect, dict):
+            return None
+        try:
+            return (
+                int(round(float(rect["view_xmin"]))),
+                int(round(float(rect["view_ymin"]))),
+                int(round(float(rect["view_xmax"]))),
+                int(round(float(rect["view_ymax"]))),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _cellularity_tile_intersects_rect(self, image_path: str, rect: dict | None) -> bool:
+        rect_key = self._cellularity_rect_key(rect)
+        if rect_key is None:
+            return True
+        stem = os.path.splitext(os.path.basename(image_path))[0]
+        parts = stem.split("_")
+        if len(parts) < 2:
+            return False
+        try:
+            col = int(parts[0])
+            row = int(parts[1])
+        except ValueError:
+            return False
+
+        tile_xmin = col * _CELLULARITY_TILE_SIZE
+        tile_ymin = row * _CELLULARITY_TILE_SIZE
+        tile_xmax = tile_xmin + _CELLULARITY_TILE_SIZE
+        tile_ymax = tile_ymin + _CELLULARITY_TILE_SIZE
+        rect_xmin, rect_ymin, rect_xmax, rect_ymax = rect_key
+        return (
+            tile_xmin <= rect_xmax
+            and tile_xmax >= rect_xmin
+            and tile_ymin <= rect_ymax
+            and tile_ymax >= rect_ymin
+        )
+
+    def _iter_image_paths(self, folder_path: str, largest_task_rect: dict | None = None) -> list[str]:
         image_paths: list[str] = []
         for root, _, files in os.walk(folder_path):
             for name in files:
-                if os.path.splitext(name)[1].lower() in _IMAGE_FILE_EXTS:
-                    image_paths.append(os.path.join(root, name))
+                if os.path.splitext(name)[1].lower() not in _IMAGE_FILE_EXTS:
+                    continue
+                image_path = os.path.join(root, name)
+                if self._cellularity_tile_intersects_rect(image_path, largest_task_rect):
+                    image_paths.append(image_path)
         image_paths.sort()
         return image_paths
 
@@ -813,6 +867,43 @@ class TaskService:
             return os.path.normpath(raw_path)
         return os.path.normpath(os.path.join(prefix, raw_path.lstrip("/\\")))
 
+    def _latest_cellularity_folder_path(self, info: dict) -> tuple[str | None, dict | None]:
+        slide_no = str(info.get('slide_no') or '').strip().strip("/\\")
+        if not slide_no:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'slide_no cannot be empty',
+                'reason': 'slide_no cannot be empty',
+                'result': {},
+            }
+
+        base_dir = os.path.normpath(os.path.join(
+            str(cellularity_file_path_prefix or "").strip(),
+            slide_no,
+            _CELLULARITY_RECT_FILES_DIR,
+        ))
+        if not os.path.isdir(base_dir):
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': f'cellularity rect0_files directory not found: {base_dir}',
+                'reason': f'cellularity rect0_files directory not found: {base_dir}',
+                'result': {},
+            }
+
+        numeric_dirs: list[tuple[int, str]] = []
+        with os.scandir(base_dir) as entries:
+            for entry in entries:
+                if entry.is_dir() and entry.name.isdigit():
+                    numeric_dirs.append((int(entry.name), entry.path))
+        if not numeric_dirs:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': f'No numeric directory found under: {base_dir}',
+                'reason': f'No numeric directory found under: {base_dir}',
+                'result': {},
+            }
+        return os.path.normpath(max(numeric_dirs, key=lambda item: item[0])[1]), None
+
     def _calculate_cellularity_pixels(
         self,
         task_id: str,
@@ -820,6 +911,7 @@ class TaskService:
         folder_path: str,
         dpi: int,
         smear_type: str,
+        largest_task_rect: dict | None,
     ) -> tuple[dict | None, dict | None]:
         request_folder_path = str(folder_path)
         resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
@@ -832,13 +924,14 @@ class TaskService:
                 'result': {},
             }
 
-        image_paths = self._iter_image_paths(resolved_folder_path)
+        image_paths = self._iter_image_paths(resolved_folder_path, largest_task_rect)
         if not image_paths:
             return None, {
                 'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': f'No image files found in folder_path: {resolved_folder_path}',
-                'reason': f'No image files found in folder_path: {resolved_folder_path}',
+                'ret_desc': f'No image files matched largest_task_rect in folder_path: {resolved_folder_path}',
+                'reason': f'No image files matched largest_task_rect in folder_path: {resolved_folder_path}',
                 'request_folder_path': request_folder_path,
+                'largest_task_rect': largest_task_rect,
                 'result': {},
             }
 
@@ -909,6 +1002,7 @@ class TaskService:
         info['cellularity_failed_images'] = failed_images
         info['cellularity_request_folder_path'] = request_folder_path
         info['cellularity_folder_path'] = resolved_folder_path
+        info['cellularity_largest_task_rect'] = largest_task_rect
         info['cellularity_analyzed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _save_task_info(task_id, info)
         logger.info(
@@ -923,7 +1017,12 @@ class TaskService:
         )
         return info, None
 
-    def _has_cached_cellularity_pixels(self, info: dict, folder_path: str) -> bool:
+    def _has_cached_cellularity_pixels(
+        self,
+        info: dict,
+        folder_path: str,
+        largest_task_rect: dict | None,
+    ) -> bool:
         request_folder_path = str(folder_path)
         resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
         cached_request_path = str(info.get('cellularity_request_folder_path') or "")
@@ -936,21 +1035,56 @@ class TaskService:
                 == os.path.normcase(os.path.normpath(resolved_folder_path))
             )
         )
+        same_rect = (
+            self._cellularity_rect_key(info.get('cellularity_largest_task_rect'))
+            == self._cellularity_rect_key(largest_task_rect)
+        )
         return (
             same_path
+            and same_rect
             and 'wbc_pixel_count' in info
             and 'red_pixel_count' in info
             and info.get('cellularity_image_count') is not None
         )
 
+    def _ensure_largest_task_rect(
+        self,
+        task_id: str,
+        info: dict,
+    ) -> tuple[dict | None, dict, dict | None]:
+        largest_task_rect = info.get('largest_task_rect')
+        if largest_task_rect:
+            return largest_task_rect, info, None
+
+        info_task_id = str(info.get('task_id') or task_id).strip()
+        selection_result = self.get_task_list_x100(
+            task_id=info_task_id,
+            task_type="WBC_MEG",
+            user_choice_area=None,
+            view_width=384,
+            view_height=283,
+            kwargs={},
+            required_num={"WBC": 200, "MEG": 30},
+        )
+        if selection_result.get('ret_code') != RetCode.API_SUCCESS.value:
+            err = dict(selection_result)
+            err.setdefault('result', {})
+            return None, info, err
+
+        refreshed_info = _load_task_info_from_disk(info_task_id) or info
+        largest_task_rect = (
+            refreshed_info.get('largest_task_rect')
+            or selection_result.get('largest_task_rect')
+        )
+        if largest_task_rect and not refreshed_info.get('largest_task_rect'):
+            refreshed_info['largest_task_rect'] = largest_task_rect
+            _save_task_info(info_task_id, refreshed_info)
+        return largest_task_rect, refreshed_info, None
+
     def analyze_slide(
         self,
         task_id: str,
         analyze_names: list,
-        *,
-        folder_path: str | None = None,
-        dpi: int = 147246,
-        smear_type: str | None = None,
     ) -> dict:
         """
         玻片分析（骨髓玻片增生分析等）。
@@ -961,28 +1095,31 @@ class TaskService:
             err = dict(err)
             err['result'] = {}
             return err
+        largest_task_rect, info, rect_err = self._ensure_largest_task_rect(task_id, info)
+        if rect_err:
+            return rect_err
         cache_hit = False
-        if folder_path and 'cellularity' in analyze_names:
-            if self._has_cached_cellularity_pixels(info, folder_path):
+        cellularity_folder_path = None
+        if 'cellularity' in analyze_names:
+            cellularity_folder_path, path_err = self._latest_cellularity_folder_path(info)
+            # 打印日志
+            logger.info("cellularity_folder_path=%s", cellularity_folder_path)
+            if path_err:
+                return path_err
+            if self._has_cached_cellularity_pixels(info, cellularity_folder_path, largest_task_rect):
                 cache_hit = True
             else:
                 info, calc_err = self._calculate_cellularity_pixels(
                     task_id,
                     info,
-                    folder_path,
-                    int(dpi),
-                    smear_type or info.get('smear_type', 'BM'),
+                    cellularity_folder_path,
+                    _CELLULARITY_DPI,
+                    info.get('smear_type', 'BM'),
+                    largest_task_rect,
                 )
                 if calc_err:
                     return calc_err
 
-        if not folder_path and not info.get('finished', False):
-            return {
-                'ret_code': RetCode.CLIENT_ERROR.value,
-                'ret_desc': 'Task not completed',
-                'reason': 'Task not completed',
-                'result': {},
-            }
         result = {}
         if 'cellularity' in analyze_names:
             wbc = info.get('wbc_pixel_count', 0) or 0
@@ -993,10 +1130,11 @@ class TaskService:
                 result['cellularity'] = round(red / wbc, 2)
             result['wbc_pixel_count'] = int(wbc)
             result['red_pixel_count'] = int(red)
-            if folder_path:
-                result['image_count'] = int(info.get('cellularity_image_count') or 0)
-                result['failed_count'] = int(info.get('cellularity_failed_count') or 0)
-                result['cache_hit'] = cache_hit
+            result['image_count'] = int(info.get('cellularity_image_count') or 0)
+            result['failed_count'] = int(info.get('cellularity_failed_count') or 0)
+            result['folder_path'] = cellularity_folder_path
+            result['cache_hit'] = cache_hit
+            result['largest_task_rect'] = largest_task_rect
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
@@ -1040,6 +1178,55 @@ class TaskService:
             "cell_count": total,
             "cell_list": page_dicts,
             "index_offset": offset,
+        }
+
+    def _largest_task_rect(self, task_list: list[dict]) -> dict | None:
+        xs1: list[float] = []
+        ys1: list[float] = []
+        xs2: list[float] = []
+        ys2: list[float] = []
+        for task in task_list or []:
+            if not isinstance(task, dict):
+                continue
+            try:
+                if all(k in task for k in ("view_xmin", "view_ymin", "view_xmax", "view_ymax")):
+                    x1 = float(task["view_xmin"])
+                    y1 = float(task["view_ymin"])
+                    x2 = float(task["view_xmax"])
+                    y2 = float(task["view_ymax"])
+                elif all(k in task for k in ("x", "y", "w", "h")):
+                    x1 = float(task["x"])
+                    y1 = float(task["y"])
+                    x2 = x1 + float(task["w"])
+                    y2 = y1 + float(task["h"])
+                else:
+                    continue
+            except (TypeError, ValueError):
+                continue
+
+            xs1.append(min(x1, x2))
+            ys1.append(min(y1, y2))
+            xs2.append(max(x1, x2))
+            ys2.append(max(y1, y2))
+
+        if not xs1:
+            return None
+
+        x1 = min(xs1)
+        y1 = min(ys1)
+        x2 = max(xs2)
+        y2 = max(ys2)
+        width = max(0.0, x2 - x1)
+        height = max(0.0, y2 - y1)
+        return {
+            "view_xmin": int(round(x1)),
+            "view_ymin": int(round(y1)),
+            "view_xmax": int(round(x2)),
+            "view_ymax": int(round(y2)),
+            "width": int(round(width)),
+            "height": int(round(height)),
+            "area": int(round(width * height)),
+            "task_count": len(xs1),
         }
 
     def get_task_list_x100(
@@ -1283,12 +1470,16 @@ class TaskService:
                 "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
                 "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
             }
+        largest_task_rect = self._largest_task_rect(final_task_list)
+        info['largest_task_rect'] = largest_task_rect
+        _save_task_info(task_id, info)
         logger.info("roi_selection finished task_id=%s, task_list=%s", task_id, str(final_task_list))
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
             "task_list_num": len(final_task_list),
             "task_list": final_task_list,
+            "largest_task_rect": largest_task_rect,
         }
 
     def generate_views(

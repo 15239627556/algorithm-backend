@@ -41,7 +41,7 @@ TRITON_IPS = [
 ]
 
 # 骨髓增生原图路径前缀
-cellularity_file_path_prefix = "/mnt/d/"
+cellularity_file_path_prefix = "/mnt/d/data/reslut"
 
 # flir相机   "camera": "flir"
 # 其它相机 "camera": "default"
