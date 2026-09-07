@@ -403,8 +403,10 @@ _triton_client_lock = threading.Lock()
 
 
 def _infer_route_dpi(resolved: ResolvedModels) -> int | None:
-    """从 MODEL_TABLE 命中的定位模型取 HTTP 推理路由（/{actual_dpi}/infer）。"""
+    """从 MODEL_TABLE 命中的模型取 HTTP 推理路由（/{actual_dpi}/infer）。"""
     actuals = {spec.actual_dpi for spec in resolved.detection}
+    if not actuals:
+        actuals = {spec.actual_dpi for spec in resolved.score}
     if not actuals:
         return None
     for dpi in (DPI_147246, DPI_35000, DPI_71000, DPI_357378, DPI_714756):

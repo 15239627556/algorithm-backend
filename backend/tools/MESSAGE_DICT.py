@@ -367,12 +367,23 @@ MODEL_TABLE = [
         "output": "scores",
         "vram_gb": 1.5,
     },
+    {
+        "name_zh": "骨髓增生程度计算",
+        "name": "DPI147246_BM_PB_cell_analysis",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "CELLULARITY",
+        "smear_types": "BM/PB",
+        "output": "result",
+        "vram_gb": 1.5,
+    }
 ]
 
 _OUTPUT_KIND = {
     "bboxes": "detection",
     "tops": "classification",
     "scores": "score",
+    "result": "score",
 }
 
 DEFAULT_MODEL_VRAM_GB = 1.5

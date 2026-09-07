@@ -146,6 +146,12 @@ class AnalyzeSlideBody(BaseModel):
     model_config = ConfigDict(extra="allow")
     task_id: Optional[str] = None
     analyze_names: list[Any] = Field(default_factory=list)
+    folder_path: Optional[str] = Field(
+        default=None,
+        description="需要计算增生程度时传入的本地图像文件夹路径",
+    )
+    dpi: int = Field(default=147246, description="增生程度计算默认使用 147246 模型")
+    smear_type: Optional[str] = Field(default=None, description="玻片类型：BM/PB，默认从任务信息读取")
 
 
 class ModelControlBody(BaseModel):
@@ -347,7 +353,13 @@ def analyze_slide(body: AnalyzeSlideBody):
             "ret_desc": f"Unsupported analyze item: {invalid}, only supported: {list(ALLOWED_ANALYZE_NAMES)}",
             "result": {},
         }
-    result = taskService.analyze_slide(task_id, analyze_names)
+    result = taskService.analyze_slide(
+        task_id,
+        analyze_names,
+        folder_path=body.folder_path,
+        dpi=body.dpi,
+        smear_type=body.smear_type,
+    )
     return result
 
 

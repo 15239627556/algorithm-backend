@@ -40,6 +40,9 @@ TRITON_IPS = [
     # "triton_gpu1",
 ]
 
+# 骨髓增生原图路径前缀
+cellularity_file_path_prefix = "/mnt/d/"
+
 # flir相机   "camera": "flir"
 # 其它相机 "camera": "default"
 camera = "flir"

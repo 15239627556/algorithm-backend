@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 
 import numpy as np
 import orjson
+from config import cellularity_file_path_prefix
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
@@ -21,7 +22,8 @@ from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
 from backend.tools.x100_image_infer import run_cell_image_infer
-from backend.tools.model_control import warmup_model
+from backend.tools.model_control import warmup_model, load_models
+from backend.tools.triton_client import resolve_triton_route
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.main_rbc import *
@@ -30,6 +32,9 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 
 logger = logging.getLogger(__name__)
+
+_IMAGE_FILE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+_CELLULARITY_TARGET_CELL_TYPES = "CELLULARITY"
 
 # 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
 _task_info_cache: dict[str, dict] = {}
@@ -778,7 +783,175 @@ class TaskService:
             'task_status': info.get('task_status')
         }
 
-    def analyze_slide(self, task_id: str, analyze_names: list) -> dict:
+    def _iter_image_paths(self, folder_path: str) -> list[str]:
+        image_paths: list[str] = []
+        for root, _, files in os.walk(folder_path):
+            for name in files:
+                if os.path.splitext(name)[1].lower() in _IMAGE_FILE_EXTS:
+                    image_paths.append(os.path.join(root, name))
+        image_paths.sort()
+        return image_paths
+
+    def _resolve_cellularity_folder_path(self, folder_path: str) -> str:
+        raw_path = os.path.expanduser(str(folder_path).strip())
+        prefix = str(cellularity_file_path_prefix or "").strip()
+        if not raw_path or not prefix:
+            return os.path.normpath(raw_path)
+
+        normalized_raw = raw_path.replace("\\", "/")
+        normalized_prefix = prefix.rstrip("/\\").replace("\\", "/")
+        is_windows_abs = (
+            len(raw_path) >= 3
+            and raw_path[1] == ":"
+            and raw_path[2] in ("/", "\\")
+        ) or raw_path.startswith("\\\\")
+        already_prefixed = (
+            normalized_raw == normalized_prefix
+            or normalized_raw.startswith(f"{normalized_prefix}/")
+        )
+        if is_windows_abs or already_prefixed:
+            return os.path.normpath(raw_path)
+        return os.path.normpath(os.path.join(prefix, raw_path.lstrip("/\\")))
+
+    def _calculate_cellularity_pixels(
+        self,
+        task_id: str,
+        info: dict,
+        folder_path: str,
+        dpi: int,
+        smear_type: str,
+    ) -> tuple[dict | None, dict | None]:
+        request_folder_path = str(folder_path)
+        resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
+        if not os.path.isdir(resolved_folder_path):
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': f'folder_path not found or not a directory: {resolved_folder_path}',
+                'reason': f'folder_path not found or not a directory: {resolved_folder_path}',
+                'request_folder_path': request_folder_path,
+                'result': {},
+            }
+
+        image_paths = self._iter_image_paths(resolved_folder_path)
+        if not image_paths:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': f'No image files found in folder_path: {resolved_folder_path}',
+                'reason': f'No image files found in folder_path: {resolved_folder_path}',
+                'request_folder_path': request_folder_path,
+                'result': {},
+            }
+
+        gpu_id, _ = resolve_triton_route()
+        ok, load_err, models = load_models(
+            int(dpi),
+            smear_type,
+            _CELLULARITY_TARGET_CELL_TYPES,
+            gpu_id=gpu_id,
+            all_gpus=False,
+        )
+        if not ok:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': load_err,
+                'reason': load_err,
+                'models': models,
+                'result': {},
+            }
+
+        wbc_pixel_count = 0
+        red_pixel_count = 0
+        failed_images: list[dict] = []
+        success_count = 0
+        t0 = time.time()
+
+        for image_path in image_paths:
+            try:
+                with open(image_path, "rb") as f:
+                    image_bytes = f.read()
+                result = run_cell_image_infer(
+                    image_bytes,
+                    int(dpi),
+                    smear_type,
+                    _CELLULARITY_TARGET_CELL_TYPES,
+                    filename=os.path.basename(image_path),
+                    edge_cell_filter=False,
+                    gpu_id=gpu_id,
+                    ensure_loaded=False,
+                    allow_dpi_scale=False,
+                )
+                if not result.get("ok"):
+                    failed_images.append({
+                        "image_path": image_path,
+                        "reason": result.get("error") or "infer failed",
+                    })
+                    continue
+                wbc_pixel_count += int(result.get("wbc_pixel_count") or 0)
+                red_pixel_count += int(result.get("red_pixel_count") or 0)
+                success_count += 1
+            except Exception as e:
+                logger.exception("cellularity infer failed task_id=%s image=%s", task_id[:8], image_path)
+                failed_images.append({"image_path": image_path, "reason": str(e)})
+
+        if success_count <= 0:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': 'All images failed to infer cellularity pixels',
+                'reason': 'All images failed to infer cellularity pixels',
+                'failed_images': failed_images,
+                'result': {},
+            }
+
+        info['wbc_pixel_count'] = wbc_pixel_count
+        info['red_pixel_count'] = red_pixel_count
+        info['cellularity_image_count'] = success_count
+        info['cellularity_failed_count'] = len(failed_images)
+        info['cellularity_failed_images'] = failed_images
+        info['cellularity_request_folder_path'] = request_folder_path
+        info['cellularity_folder_path'] = resolved_folder_path
+        info['cellularity_analyzed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _save_task_info(task_id, info)
+        logger.info(
+            "analyze_slide cellularity task_id=%s images=%d ok=%d failed=%d wbc=%d red=%d ms=%.2f",
+            task_id[:8],
+            len(image_paths),
+            success_count,
+            len(failed_images),
+            wbc_pixel_count,
+            red_pixel_count,
+            (time.time() - t0) * 1000,
+        )
+        return info, None
+
+    def _has_cached_cellularity_pixels(self, info: dict, folder_path: str) -> bool:
+        request_folder_path = str(folder_path)
+        resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
+        cached_request_path = str(info.get('cellularity_request_folder_path') or "")
+        cached_resolved_path = str(info.get('cellularity_folder_path') or "")
+        same_path = (
+            cached_request_path == request_folder_path
+            or (
+                cached_resolved_path
+                and os.path.normcase(os.path.normpath(cached_resolved_path))
+                == os.path.normcase(os.path.normpath(resolved_folder_path))
+            )
+        )
+        return (
+            same_path
+            and 'wbc_pixel_count' in info
+            and 'red_pixel_count' in info
+            and info.get('cellularity_image_count') is not None
+        )
+
+    def analyze_slide(
+        self,
+        task_id: str,
+        analyze_names: list,
+        *,
+        folder_path: str | None = None,
+        dpi: int = 147246,
+        smear_type: str | None = None,
+    ) -> dict:
         """
         玻片分析（骨髓玻片增生分析等）。
         cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
@@ -788,7 +961,22 @@ class TaskService:
             err = dict(err)
             err['result'] = {}
             return err
-        if not info.get('finished', False):
+        cache_hit = False
+        if folder_path and 'cellularity' in analyze_names:
+            if self._has_cached_cellularity_pixels(info, folder_path):
+                cache_hit = True
+            else:
+                info, calc_err = self._calculate_cellularity_pixels(
+                    task_id,
+                    info,
+                    folder_path,
+                    int(dpi),
+                    smear_type or info.get('smear_type', 'BM'),
+                )
+                if calc_err:
+                    return calc_err
+
+        if not folder_path and not info.get('finished', False):
             return {
                 'ret_code': RetCode.CLIENT_ERROR.value,
                 'ret_desc': 'Task not completed',
@@ -803,6 +991,12 @@ class TaskService:
                 result['cellularity'] = None
             else:
                 result['cellularity'] = round(red / wbc, 2)
+            result['wbc_pixel_count'] = int(wbc)
+            result['red_pixel_count'] = int(red)
+            if folder_path:
+                result['image_count'] = int(info.get('cellularity_image_count') or 0)
+                result['failed_count'] = int(info.get('cellularity_failed_count') or 0)
+                result['cache_hit'] = cache_hit
         return {
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,

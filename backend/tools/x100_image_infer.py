@@ -602,6 +602,8 @@ def run_cell_image_infer(
     covered: set[str] = set()
     for spec in resolved.detection:
         covered |= spec.targets
+    for spec in resolved.score:
+        covered |= spec.targets
     missing = requested - covered
     if missing:
         st = normalize_smear_type(smear_type)
@@ -612,11 +614,12 @@ def run_cell_image_infer(
                 f"{sorted(missing)}"
             ),
         }
-    if not resolved.detection:
+    route_specs = resolved.detection or resolved.score
+    if not route_specs:
         return {"ok": False, "error": DPI_NOT_SUITABLE}
 
-    model_names = ",".join(spec.name for spec in resolved.detection)
-    model_dpi = int(resolved.detection[0].actual_dpi)
+    model_names = ",".join(spec.name for spec in resolved.specs)
+    model_dpi = int(route_specs[0].actual_dpi)
     model_warning = resolved.warning
     limits = model_tile_limits(model_dpi)
     if limits is None:
