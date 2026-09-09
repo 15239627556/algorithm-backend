@@ -188,6 +188,16 @@ def _multi_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
     return f"{bs.rstrip('/')}/{target}/infer"
 
 
+def _multi_pipeline_ca_infer_url(endpoint: dict | None = None) -> str:
+    """细胞分析独立路径：POST /147246/infer_ca（裸流），只需 cell_analysis 模型。"""
+    infer_url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
+    if infer_url.endswith("/infer"):
+        return f"{infer_url}_ca"
+    if infer_url.endswith("/infer/"):
+        return f"{infer_url.rstrip('/')}_ca"
+    return f"{infer_url.rstrip('/')}/147246/infer_ca"
+
+
 def _filter_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
     """滤镜接口：POST /{image_enhance|opencv_enhance}/infer（裸流，响应为图片字节）。"""
     if target not in _FILTER_PIPELINE_TARGETS:
@@ -461,7 +471,7 @@ def _post_raw_pipeline_infer(
         url = f"http://{url}"
 
     # 将原先的表单参数整理好，准备放到 URL 后面
-    params = {name: value for name, value in extra_form.items()} if extra_form else None
+    params = {name: value for name, value in extra_form.items()} if extra_form else {}
 
     # 把filename也放在params中
     params["filename"] = filename
@@ -1658,6 +1668,55 @@ def infer(
     if warning:
         result["warning"] = warning
     return result
+
+
+def infer_cellularity(
+    image_bytes: bytes,
+    filename: str = "tile.jpg",
+    gpu_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """
+    骨髓增生程度：multi_pipeline_server POST /147246/infer_ca。
+    只依赖 DPI147246_BM_PB_cell_analysis，不走定位/评分完整 pipeline。
+    模型已兼容任意尺寸，直接送原图。
+    """
+    if not image_bytes:
+        return {"ok": False, "error": "empty image payload", "infer_ms": 0.0}
+    gpu_id, endpoint = _resolve_triton_route(gpu_id)
+    url = _multi_pipeline_ca_infer_url(endpoint=endpoint)
+    try:
+        t_infer0 = time.perf_counter()
+        res_json = _post_raw_pipeline_infer(
+            url,
+            image_bytes,
+            filename,
+            PIPELINE_HTTP_TIMEOUT_S,
+        )
+        infer_ms = (time.perf_counter() - t_infer0) * 1000.0
+    except Exception as e:
+        return {"ok": False, "error": str(e), "infer_ms": 0.0}
+    if res_json.get("error"):
+        return {
+            "ok": False,
+            "error": str(res_json.get("error")),
+            "infer_ms": infer_ms,
+        }
+    return {
+        "ok": True,
+        "wbc_pixel_count": _scalar_int(
+            res_json,
+            "cell_analysis_wbc_pixel_count",
+            "wbc_pixel_count",
+            "CELL_ANALYSIS_WBC_PIXEL_COUNT",
+        ),
+        "red_pixel_count": _scalar_int(
+            res_json,
+            "cell_analysis_red_pixel_count",
+            "red_pixel_count",
+            "CELL_ANALYSIS_RED_PIXEL_COUNT",
+        ),
+        "infer_ms": infer_ms,
+    }
 
 
 def infer_image_enhance(image_bytes: bytes) -> tuple[bytes, str]:
