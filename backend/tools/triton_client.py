@@ -16,11 +16,13 @@ import json
 import logging
 import threading
 import time
+from io import BytesIO
 from urllib.parse import quote, urlparse
 from typing import Any, Callable, List, Optional
 
 import numpy as np
 import requests
+from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -65,6 +67,11 @@ _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 _PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
 
 PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
+
+# cell_analysis 模型固定输入尺寸；不足时居中补 RGB(230,230,230)
+_CELL_ANALYSIS_TARGET_W = 2448
+_CELL_ANALYSIS_TARGET_H = 2048
+_CELL_ANALYSIS_PAD_RGB = (230, 230, 230)
 
 # 连接建立阶段的超时（秒）。读取阶段用 PIPELINE_HTTP_TIMEOUT_S，推理耗时较长故单独区分。
 PIPELINE_HTTP_CONNECT_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_CONNECT_TIMEOUT_S", "10"))
@@ -1670,6 +1677,39 @@ def infer(
     return result
 
 
+def _pad_image_bytes_to_cell_analysis_size(image_bytes: bytes) -> bytes:
+    """
+    读取图片尺寸，居中补边至 2448(宽)x2048(高)，填充色 RGB(230, 230, 230)。
+    已是目标尺寸则原样返回；任一边超出则先居中裁剪再补边。
+    """
+    with Image.open(BytesIO(image_bytes)) as im:
+        im = im.convert("RGB")
+        w, h = im.size
+        if w == _CELL_ANALYSIS_TARGET_W and h == _CELL_ANALYSIS_TARGET_H:
+            return image_bytes
+
+        if w > _CELL_ANALYSIS_TARGET_W or h > _CELL_ANALYSIS_TARGET_H:
+            left = max(0, (w - _CELL_ANALYSIS_TARGET_W) // 2)
+            top = max(0, (h - _CELL_ANALYSIS_TARGET_H) // 2)
+            right = left + min(w, _CELL_ANALYSIS_TARGET_W)
+            bottom = top + min(h, _CELL_ANALYSIS_TARGET_H)
+            im = im.crop((left, top, right, bottom))
+            w, h = im.size
+
+        canvas = Image.new(
+            "RGB",
+            (_CELL_ANALYSIS_TARGET_W, _CELL_ANALYSIS_TARGET_H),
+            _CELL_ANALYSIS_PAD_RGB,
+        )
+        offset_x = (_CELL_ANALYSIS_TARGET_W - w) // 2
+        offset_y = (_CELL_ANALYSIS_TARGET_H - h) // 2
+        canvas.paste(im, (offset_x, offset_y))
+
+        buf = BytesIO()
+        canvas.save(buf, format="JPEG", quality=95)
+        return buf.getvalue()
+
+
 def infer_cellularity(
     image_bytes: bytes,
     filename: str = "tile.jpg",
@@ -1678,10 +1718,21 @@ def infer_cellularity(
     """
     骨髓增生程度：multi_pipeline_server POST /147246/infer_ca。
     只依赖 DPI147246_BM_PB_cell_analysis，不走定位/评分完整 pipeline。
-    模型已兼容任意尺寸，直接送原图。
+    传图前居中补边至固定尺寸 2448x2048。
     """
     if not image_bytes:
-        return {"ok": False, "error": "empty image payload", "infer_ms": 0.0}
+        return {"ok": False, "error": "empty image payload", "infer_ms": 0.0, "pad_ms": 0.0}
+    t_pad0 = time.perf_counter()
+    try:
+        image_bytes = _pad_image_bytes_to_cell_analysis_size(image_bytes)
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"pad image failed: {e}",
+            "infer_ms": 0.0,
+            "pad_ms": (time.perf_counter() - t_pad0) * 1000.0,
+        }
+    pad_ms = (time.perf_counter() - t_pad0) * 1000.0
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
     url = _multi_pipeline_ca_infer_url(endpoint=endpoint)
     try:
@@ -1694,12 +1745,13 @@ def infer_cellularity(
         )
         infer_ms = (time.perf_counter() - t_infer0) * 1000.0
     except Exception as e:
-        return {"ok": False, "error": str(e), "infer_ms": 0.0}
+        return {"ok": False, "error": str(e), "infer_ms": 0.0, "pad_ms": pad_ms}
     if res_json.get("error"):
         return {
             "ok": False,
             "error": str(res_json.get("error")),
             "infer_ms": infer_ms,
+            "pad_ms": pad_ms,
         }
     return {
         "ok": True,
@@ -1716,6 +1768,7 @@ def infer_cellularity(
             "CELL_ANALYSIS_RED_PIXEL_COUNT",
         ),
         "infer_ms": infer_ms,
+        "pad_ms": pad_ms,
     }
 
 

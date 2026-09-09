@@ -43,7 +43,6 @@ _CELLULARITY_TILE_SIZE = 2048
 _CELLULARITY_ANALYSIS_WIDTH_MM = 10.0
 _CELLULARITY_ANALYSIS_HEIGHT_MM = 7.0
 _CELLULARITY_MAX_IMAGES = 100
-_CELLULARITY_LOG_BATCH = 30
 _CELLULARITY_MAX_WORKERS = 6
 
 # 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
@@ -874,20 +873,10 @@ class TaskService:
         rect_key = self._cellularity_rect_key(rect)
         if rect_key is None:
             return True
-        stem = os.path.splitext(os.path.basename(image_path))[0]
-        parts = stem.split("_")
-        if len(parts) < 2:
+        tile = self._cellularity_tile_bounds(image_path)
+        if tile is None:
             return False
-        try:
-            col = int(parts[0])
-            row = int(parts[1])
-        except ValueError:
-            return False
-
-        tile_xmin = col * _CELLULARITY_TILE_SIZE
-        tile_ymin = row * _CELLULARITY_TILE_SIZE
-        tile_xmax = tile_xmin + _CELLULARITY_TILE_SIZE
-        tile_ymax = tile_ymin + _CELLULARITY_TILE_SIZE
+        tile_xmin, tile_ymin, tile_xmax, tile_ymax = tile
         rect_xmin, rect_ymin, rect_xmax, rect_ymax = rect_key
         return (
             tile_xmin <= rect_xmax
@@ -895,6 +884,75 @@ class TaskService:
             and tile_ymin <= rect_ymax
             and tile_ymax >= rect_ymin
         )
+
+    def _cellularity_tile_bounds(
+        self,
+        image_path: str,
+    ) -> tuple[int, int, int, int] | None:
+        """从文件名 col_row 解析 tile 全局像素范围。"""
+        stem = os.path.splitext(os.path.basename(image_path))[0]
+        parts = stem.split("_")
+        if len(parts) < 2:
+            return None
+        try:
+            col = int(parts[0])
+            row = int(parts[1])
+        except ValueError:
+            return None
+        tile_xmin = col * _CELLULARITY_TILE_SIZE
+        tile_ymin = row * _CELLULARITY_TILE_SIZE
+        return (
+            tile_xmin,
+            tile_ymin,
+            tile_xmin + _CELLULARITY_TILE_SIZE,
+            tile_ymin + _CELLULARITY_TILE_SIZE,
+        )
+
+    def _select_central_cellularity_images(
+        self,
+        image_paths: list[str],
+        analysis_rect: dict | None,
+        max_images: int = _CELLULARITY_MAX_IMAGES,
+    ) -> list[str]:
+        """按距分析框中心的距离取最中心的 max_images 张；不足则全取。"""
+        if len(image_paths) <= max_images:
+            return list(image_paths)
+
+        rect_key = self._cellularity_rect_key(analysis_rect)
+        if isinstance(analysis_rect, dict):
+            try:
+                cx = float(analysis_rect.get("center_x"))
+                cy = float(analysis_rect.get("center_y"))
+            except (TypeError, ValueError):
+                cx = cy = None
+        else:
+            cx = cy = None
+        if cx is None or cy is None:
+            if rect_key is None:
+                return image_paths[:max_images]
+            xmin, ymin, xmax, ymax = rect_key
+            cx = (xmin + xmax) / 2.0
+            cy = (ymin + ymax) / 2.0
+
+        scored: list[tuple[float, str]] = []
+        fallback: list[str] = []
+        half = _CELLULARITY_TILE_SIZE / 2.0
+        for path in image_paths:
+            bounds = self._cellularity_tile_bounds(path)
+            if bounds is None:
+                fallback.append(path)
+                continue
+            tile_xmin, tile_ymin, _, _ = bounds
+            dx = (tile_xmin + half) - cx
+            dy = (tile_ymin + half) - cy
+            scored.append((dx * dx + dy * dy, path))
+
+        scored.sort(key=lambda item: (item[0], item[1]))
+        selected = [path for _, path in scored[:max_images]]
+        if len(selected) < max_images and fallback:
+            need = max_images - len(selected)
+            selected.extend(fallback[:need])
+        return selected
 
     def _iter_image_paths(self, folder_path: str, largest_task_rect: dict | None = None) -> list[str]:
         image_paths: list[str] = []
@@ -972,7 +1030,8 @@ class TaskService:
         info: dict,
         folder_path: str,
         analysis_rect: dict | None,
-    ) -> tuple[dict | None, dict | None]:
+    ) -> tuple[dict | None, dict | None, dict]:
+        timings = {"pad_ms": 0.0, "infer_ms": 0.0}
         request_folder_path = str(folder_path)
         resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
         if not os.path.isdir(resolved_folder_path):
@@ -982,7 +1041,7 @@ class TaskService:
                 'reason': f'folder_path not found or not a directory: {resolved_folder_path}',
                 'request_folder_path': request_folder_path,
                 'result': {},
-            }
+            }, timings
 
         image_paths = self._iter_image_paths(resolved_folder_path, analysis_rect)
         if not image_paths:
@@ -993,9 +1052,13 @@ class TaskService:
                 'request_folder_path': request_folder_path,
                 'analysis_rect': analysis_rect,
                 'result': {},
-            }
+            }, timings
         matched_count = len(image_paths)
-        image_paths = image_paths[:_CELLULARITY_MAX_IMAGES]
+        image_paths = self._select_central_cellularity_images(
+            image_paths,
+            analysis_rect,
+            max_images=_CELLULARITY_MAX_IMAGES,
+        )
 
         gpu_id, _ = resolve_triton_route()
         loaded = set(get_loaded_models(gpu_id=gpu_id))
@@ -1008,17 +1071,14 @@ class TaskService:
                     'reason': load_err,
                     'models': [_CELLULARITY_MODEL_NAME],
                     'result': {},
-                }
+                }, timings
 
         wbc_pixel_count = 0
         red_pixel_count = 0
         failed_images: list[dict] = []
         success_count = 0
-        t0 = time.time()
-        batch_infer_ms = 0.0
-        batch_count = 0
         total_infer_ms = 0.0
-        done_count = 0
+        total_pad_ms = 0.0
 
         def _infer_one(image_path: str) -> tuple[str, dict]:
             with open(image_path, "rb") as f:
@@ -1037,13 +1097,10 @@ class TaskService:
             }
             for fut in as_completed(futures):
                 image_path = futures[fut]
-                done_count += 1
                 try:
                     _, result = fut.result()
-                    infer_ms = float(result.get("infer_ms") or 0.0)
-                    batch_infer_ms += infer_ms
-                    total_infer_ms += infer_ms
-                    batch_count += 1
+                    total_infer_ms += float(result.get("infer_ms") or 0.0)
+                    total_pad_ms += float(result.get("pad_ms") or 0.0)
                     if not result.get("ok"):
                         failed_images.append({
                             "image_path": image_path,
@@ -1060,23 +1117,8 @@ class TaskService:
                         image_path,
                     )
                     failed_images.append({"image_path": image_path, "reason": str(e)})
-                    batch_count += 1
 
-                if batch_count >= _CELLULARITY_LOG_BATCH or done_count == len(image_paths):
-                    logger.info(
-                        "analyze_slide cellularity batch task_id=%s progress=%d/%d "
-                        "batch=%d workers=%d infer_ms=%.2f avg_infer_ms=%.2f",
-                        task_id[:8],
-                        done_count,
-                        len(image_paths),
-                        batch_count,
-                        _CELLULARITY_MAX_WORKERS,
-                        batch_infer_ms,
-                        (batch_infer_ms / batch_count) if batch_count else 0.0,
-                    )
-                    batch_infer_ms = 0.0
-                    batch_count = 0
-
+        timings = {"pad_ms": total_pad_ms, "infer_ms": total_infer_ms}
         if success_count <= 0:
             return None, {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -1084,7 +1126,7 @@ class TaskService:
                 'reason': 'All images failed to infer cellularity pixels',
                 'failed_images': failed_images,
                 'result': {},
-            }
+            }, timings
 
         info['wbc_pixel_count'] = wbc_pixel_count
         info['red_pixel_count'] = red_pixel_count
@@ -1097,21 +1139,7 @@ class TaskService:
         info['cellularity_analysis_rect'] = analysis_rect
         info['cellularity_analyzed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _save_task_info(task_id, info)
-        logger.info(
-            "analyze_slide cellularity task_id=%s matched=%d used=%d ok=%d failed=%d "
-            "wbc=%d red=%d workers=%d total_ms=%.2f infer_ms=%.2f",
-            task_id[:8],
-            matched_count,
-            len(image_paths),
-            success_count,
-            len(failed_images),
-            wbc_pixel_count,
-            red_pixel_count,
-            _CELLULARITY_MAX_WORKERS,
-            (time.time() - t0) * 1000,
-            total_infer_ms,
-        )
-        return info, None
+        return info, None, timings
 
     def _has_cached_cellularity_pixels(
         self,
@@ -1147,14 +1175,10 @@ class TaskService:
         self,
         task_id: str,
         info: dict,
-    ) -> tuple[dict | None, dict, dict | None]:
+    ) -> tuple[dict | None, dict, dict | None, float]:
         largest_task_rect = info.get('largest_task_rect')
         if largest_task_rect:
-            logger.info(
-                "analyze_slide roi_selection cache_hit task_id=%s ms=0.00",
-                task_id[:8],
-            )
-            return largest_task_rect, info, None
+            return largest_task_rect, info, None, 0.0
 
         info_task_id = str(info.get('task_id') or task_id).strip()
         t0 = time.perf_counter()
@@ -1168,17 +1192,10 @@ class TaskService:
             required_num={"WBC": 30},
         )
         roi_ms = (time.perf_counter() - t0) * 1000.0
-        logger.info(
-            "analyze_slide roi_selection task_id=%s ret_code=%s task_list_num=%s ms=%.2f",
-            task_id[:8],
-            selection_result.get('ret_code'),
-            selection_result.get('task_list_num'),
-            roi_ms,
-        )
         if selection_result.get('ret_code') != RetCode.API_SUCCESS.value:
             err = dict(selection_result)
             err.setdefault('result', {})
-            return None, info, err
+            return None, info, err, roi_ms
 
         refreshed_info = _load_task_info_from_disk(info_task_id) or info
         largest_task_rect = (
@@ -1188,7 +1205,7 @@ class TaskService:
         if largest_task_rect and not refreshed_info.get('largest_task_rect'):
             refreshed_info['largest_task_rect'] = largest_task_rect
             _save_task_info(info_task_id, refreshed_info)
-        return largest_task_rect, refreshed_info, None
+        return largest_task_rect, refreshed_info, None, roi_ms
 
     def analyze_slide(
         self,
@@ -1199,43 +1216,62 @@ class TaskService:
         玻片分析（骨髓玻片增生分析等）。
         cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
         """
+        t0 = time.perf_counter()
+        logger.info(
+            "analyze_slide start task_id=%s analyze_names=%s",
+            task_id[:8],
+            analyze_names,
+        )
+        pad_ms = 0.0
+        infer_ms = 0.0
+        roi_ms = 0.0
+
+        def _finish(payload: dict) -> dict:
+            logger.info(
+                "analyze_slide done task_id=%s ret_code=%s total_ms=%.2f "
+                "pad_ms=%.2f infer_ms=%.2f roi_ms=%.2f",
+                task_id[:8],
+                payload.get("ret_code"),
+                (time.perf_counter() - t0) * 1000.0,
+                pad_ms,
+                infer_ms,
+                roi_ms,
+            )
+            return payload
+
         info, err = _require_task_info(task_id)
         if err:
             err = dict(err)
             err['result'] = {}
-            return err
-        largest_task_rect, info, rect_err = self._ensure_largest_task_rect(task_id, info)
+            return _finish(err)
+        largest_task_rect, info, rect_err, roi_ms = self._ensure_largest_task_rect(task_id, info)
         if rect_err:
-            return rect_err
+            return _finish(rect_err)
         analysis_rect, analysis_err = self._build_cellularity_analysis_rect(
             largest_task_rect,
             info.get('dpi'),
         )
         if analysis_err:
-            return analysis_err
+            return _finish(analysis_err)
         cache_hit = False
         cellularity_folder_path = None
         if 'cellularity' in analyze_names:
             cellularity_folder_path, path_err = self._latest_cellularity_folder_path(info)
-            # 打印日志
-            logger.info(
-                "cellularity_folder_path=%s analysis_rect=%s",
-                cellularity_folder_path,
-                analysis_rect,
-            )
             if path_err:
-                return path_err
+                return _finish(path_err)
             if self._has_cached_cellularity_pixels(info, cellularity_folder_path, analysis_rect):
                 cache_hit = True
             else:
-                info, calc_err = self._calculate_cellularity_pixels(
+                info, calc_err, timings = self._calculate_cellularity_pixels(
                     task_id,
                     info,
                     cellularity_folder_path,
                     analysis_rect,
                 )
+                pad_ms = float(timings.get("pad_ms") or 0.0)
+                infer_ms = float(timings.get("infer_ms") or 0.0)
                 if calc_err:
-                    return calc_err
+                    return _finish(calc_err)
 
         result = {}
         if 'cellularity' in analyze_names:
@@ -1254,11 +1290,11 @@ class TaskService:
             result['cache_hit'] = cache_hit
             result['largest_task_rect'] = largest_task_rect
             result['analysis_rect'] = analysis_rect
-        return {
+        return _finish({
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,
             'result': result,
-        }
+        })
 
     def get_result(self, task_id, roi_xmin, roi_ymin, roi_xmax, roi_ymax, index_offset, request_task_num):
         roi, info, err = _require_roi_dataset(task_id)
