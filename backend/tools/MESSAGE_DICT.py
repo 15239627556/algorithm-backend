@@ -225,7 +225,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "10倍脑脊液有核细胞定位",
@@ -235,7 +235,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "低倍骨髓/外周血有核细胞定位",
@@ -245,7 +245,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "低倍骨髓巨核细胞定位",
@@ -255,7 +255,7 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍巨核细胞定位",
@@ -265,7 +265,7 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 0.2,
     },
     {
         "name_zh": "高倍有核细胞定位",
@@ -275,7 +275,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB/CSF",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍红细胞定位",
@@ -285,7 +285,7 @@ MODEL_TABLE = [
         "targets": "RBC",
         "smear_types": "PB",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍血小板定位",
@@ -295,7 +295,7 @@ MODEL_TABLE = [
         "targets": "PLAT",
         "smear_types": "PB",
         "output": "bboxes",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍巨核细胞分类",
@@ -305,7 +305,7 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "tops",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍骨髓/外周血有核细胞分类",
@@ -315,7 +315,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB",
         "output": "tops",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍脑脊液有核细胞分类",
@@ -325,7 +325,7 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "tops",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍红细胞分类",
@@ -335,7 +335,7 @@ MODEL_TABLE = [
         "targets": "RBC",
         "smear_types": "PB",
         "output": "tops",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "高倍血小板分类",
@@ -345,7 +345,7 @@ MODEL_TABLE = [
         "targets": "PLAT",
         "smear_types": "PB",
         "output": "tops",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "低倍骨髓区域评分",
@@ -355,7 +355,7 @@ MODEL_TABLE = [
         "targets": "不限制",
         "smear_types": "BM",
         "output": "scores",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "低倍血片区域评分",
@@ -365,7 +365,7 @@ MODEL_TABLE = [
         "targets": "不限制",
         "smear_types": "PB",
         "output": "scores",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     },
     {
         "name_zh": "骨髓增生程度计算",
@@ -375,7 +375,7 @@ MODEL_TABLE = [
         "targets": "CELLULARITY",
         "smear_types": "BM/PB",
         "output": "result",
-        "vram_gb": 1.5,
+        "vram_gb": 1,
     }
 ]
 
