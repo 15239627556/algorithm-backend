@@ -41,28 +41,37 @@ TRITON_IPS = [
 ]
 
 # 骨髓增生原图路径前缀
-cellularity_file_path_prefix = "/mnt/d/data/result"
+cellularity_file_path_prefix = os.environ.get("CELLULARITY_FILE_PATH_PREFIX", "/mnt/d/data/result")
 
 # flir相机   "camera": "flir"
 # 其它相机 "camera": "default"
-camera = "flir"
+camera = os.environ.get("CAMERA", "flir")
 
-# 红细胞开关
-rbc_switch = False
-# 血小板开关
-plt_switch = False
+# 红细胞开关（环境变量 RBC_SWITCH: 1/true/on/yes 开启，0/false/no/off 关闭，默认 False）
+_rbc_switch_raw = os.environ.get("RBC_SWITCH")
+if _rbc_switch_raw is None:
+    rbc_switch = False
+else:
+    rbc_switch = _rbc_switch_raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+# 血小板开关（环境变量 PLT_SWITCH: 同上，默认 False）
+_plt_switch_raw = os.environ.get("PLT_SWITCH")
+if _plt_switch_raw is None:
+    plt_switch = False
+else:
+    plt_switch = _plt_switch_raw.strip().lower() not in ("0", "false", "no", "off", "")
 
 # 最大显存（GB）；可用预算 = max_memory - reserved_memory
-max_memory = 11
+max_memory = int(os.environ.get("MAX_MEMORY", "11"))
 
 # 预留显存（GB）
-reserved_memory = 1
+reserved_memory = int(os.environ.get("RESERVED_MEMORY", "1"))
 
 # 各端点共用端口：8000(HTTP)、8001(gRPC)、8002(Metrics)、9000(multi_pipeline)
-TRITON_HTTP_PORT = 8000
-TRITON_GRPC_PORT = 8001
-TRITON_METRICS_PORT = 8002
-MULTI_PIPELINE_PORT = 9000
+TRITON_HTTP_PORT = int(os.environ.get("TRITON_HTTP_PORT", "8000"))
+TRITON_GRPC_PORT = int(os.environ.get("TRITON_GRPC_PORT", "8001"))
+TRITON_METRICS_PORT = int(os.environ.get("TRITON_METRICS_PORT", "8002"))
+MULTI_PIPELINE_PORT = int(os.environ.get("MULTI_PIPELINE_PORT", "9000"))
 
 TRITON_ENDPOINTS = [
     _endpoint(
