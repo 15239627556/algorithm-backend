@@ -23,7 +23,7 @@ from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
 from backend.tools.x100_image_infer import run_cell_image_infer
-from backend.tools.model_control import warmup_model, get_loaded_models, load_model
+from backend.tools.model_control import warmup_model, ensure_model_loaded
 from backend.tools.triton_client import resolve_triton_route, infer_cellularity
 from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
 from algorithms.SelectArea.main_wbc import *
@@ -1061,17 +1061,15 @@ class TaskService:
         )
 
         gpu_id, _ = resolve_triton_route()
-        loaded = set(get_loaded_models(gpu_id=gpu_id))
-        if _CELLULARITY_MODEL_NAME not in loaded:
-            ok, load_err = load_model(_CELLULARITY_MODEL_NAME, gpu_id=gpu_id)
-            if not ok:
-                return None, {
-                    'ret_code': RetCode.CLIENT_ERROR.value,
-                    'ret_desc': load_err,
-                    'reason': load_err,
-                    'models': [_CELLULARITY_MODEL_NAME],
-                    'result': {},
-                }, timings
+        ok, load_err = ensure_model_loaded(_CELLULARITY_MODEL_NAME, gpu_id=gpu_id)
+        if not ok:
+            return None, {
+                'ret_code': RetCode.CLIENT_ERROR.value,
+                'ret_desc': load_err,
+                'reason': load_err,
+                'models': [_CELLULARITY_MODEL_NAME],
+                'result': {},
+            }, timings
 
         wbc_pixel_count = 0
         red_pixel_count = 0

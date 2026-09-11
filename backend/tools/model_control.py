@@ -39,6 +39,10 @@ KIND_CLASSIFICATION = "classification"
 KIND_SCORE = "score"
 
 _IMAGE_ENHANCE_MODELS: Tuple[str, ...] = ("Image_enhance",)
+# Triton 仓库名与 MODEL_TABLE.name 不一致时的映射（驱逐 / 显存估算用 catalog 元数据）
+_TRITON_MODEL_ALIASES: dict[str, str] = {
+    "DPI147246_BM_PB_cell_analysis": "LOWRES-CELLULARITY",
+}
 
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
 
@@ -118,10 +122,12 @@ def _row_to_spec(row: dict) -> ModelSpec:
     if dr and dr != "不限制":
         dpi_min, dpi_max = int(dr[0]), int(dr[1])
     vram = float(row.get("vram_gb") if row.get("vram_gb") is not None else DEFAULT_MODEL_VRAM_GB)
+    actual_raw = row.get("actual_dpi")
+    actual_dpi = int(actual_raw) if actual_raw is not None else 0
     return ModelSpec(
         name=str(row["name"]),
         kind=kind,
-        actual_dpi=int(row["actual_dpi"]),
+        actual_dpi=actual_dpi,
         smear_types=smear_types,
         targets=targets,
         output=str(row.get("output") or ""),
@@ -345,12 +351,56 @@ def _estimated_vram(names: set[str], by_name: dict[str, ModelSpec]) -> float:
     return sum(_vram_of(n, by_name) for n in names)
 
 
+def _resolve_load_spec(model_name: str) -> ModelSpec:
+    """解析单模型加载时的 ModelSpec（含 Triton 名 → MODEL_TABLE 别名）。"""
+    by_name = _specs_by_name()
+    if model_name in by_name:
+        return by_name[model_name]
+    alias = _TRITON_MODEL_ALIASES.get(model_name)
+    if alias and alias in by_name:
+        base = by_name[alias]
+        return ModelSpec(
+            name=model_name,
+            kind=base.kind,
+            actual_dpi=base.actual_dpi,
+            smear_types=base.smear_types,
+            targets=base.targets,
+            output=base.output,
+            dpi_min=base.dpi_min,
+            dpi_max=base.dpi_max,
+            vram_gb=base.vram_gb,
+        )
+    actual_dpi = 0
+    for token in ("147246", "357378", "714756", "35000", "71000", "144750"):
+        if token in model_name:
+            actual_dpi = int(token)
+            break
+    return ModelSpec(
+        name=model_name,
+        kind="single",
+        actual_dpi=actual_dpi,
+        smear_types=frozenset(),
+        targets=frozenset(),
+        output="",
+        vram_gb=DEFAULT_MODEL_VRAM_GB,
+    )
+
+
+def _load_specs_by_triton_name(specs: List[ModelSpec]) -> dict[str, ModelSpec]:
+    """Triton 模型名 → spec，供显存估算时查 vram_gb / actual_dpi。"""
+    by_name = _specs_by_name()
+    out = dict(by_name)
+    for spec in specs:
+        out[spec.name] = spec
+    return out
+
+
 def _evict_other_dpi_models(
     needed: List[ModelSpec],
     gpu_id: int,
 ) -> None:
     """显存不够时卸载其它 actual_dpi 层级的已加载模型。"""
-    by_name = _specs_by_name()
+    by_name = _load_specs_by_triton_name(needed)
     needed_names = {spec.name for spec in needed}
     needed_dpis = {spec.actual_dpi for spec in needed}
     budget = _vram_budget_gb()
@@ -483,34 +533,40 @@ def ensure_model_loaded(
     gpu_id: Optional[int] = None,
 ) -> Tuple[bool, str]:
     """
-    兼容滤镜等单模型/pipeline 加载；细胞检测请用 load_models。
+    单模型按需加载：与 load_models 相同，先按显存预算驱逐其它 DPI 层级，再 load。
+    滤镜 / 增生分析 / 全局图等单模型场景统一走此路径。
     max_models / max_groups 保留签名兼容，已不再使用。
     """
     del max_models, max_groups
     if model_name == "Image_enhance_pipeline":
-        models = list(_IMAGE_ENHANCE_MODELS)
+        model_names = list(_IMAGE_ENHANCE_MODELS)
     else:
-        models = [model_name]
+        model_names = [model_name]
 
     gid = _normalize_gpu_id(gpu_id)
-    enhance_specs = [
-        ModelSpec(
-            name=name,
-            kind="filter",
-            actual_dpi=0,
-            smear_types=frozenset(),
-            targets=frozenset(),
-            output="",
-            vram_gb=DEFAULT_MODEL_VRAM_GB,
-        )
-        for name in models
-    ]
+    needed = [_resolve_load_spec(name) for name in model_names]
     with _model_lock:
-        _evict_other_dpi_models(enhance_specs, gid)
-        for name in models:
+        _evict_other_dpi_models(needed, gid)
+        by_name = _load_specs_by_triton_name(needed)
+        loaded = set(get_loaded_models(gpu_id=gid))
+        future = loaded | set(model_names)
+        used = _estimated_vram(future, by_name)
+        budget = _vram_budget_gb()
+        if used > budget + 1e-6:
+            msg = (
+                f"VRAM not enough on gpu={gid}: need ~{used:.1f}GB, "
+                f"budget {budget:.1f}GB (max_memory={max_memory}, "
+                f"reserved_memory={reserved_memory})"
+            )
+            logger.warning(msg)
+            return False, msg
+        for name in model_names:
+            if name in loaded:
+                continue
             ok, msg = load_model(name, gpu_id=gid)
             if not ok:
                 return False, msg
+            loaded.add(name)
     return True, ""
 
 

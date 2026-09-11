@@ -1,6 +1,6 @@
 # triton_client.py
 """multipart 对齐 project.multi_pipeline_server：POST /{147246|357378|714756|35000|71000}/infer；
-滤镜走 multi_pipeline POST /{image_enhance|opencv_enhance}/infer（裸流）。按 DPI 选 target 与结果解析。"""
+全局图走 POST /global/infer；滤镜走 multi_pipeline POST /{image_enhance|opencv_enhance}/infer（裸流）。按 DPI 选 target 与结果解析。"""
 from __future__ import annotations
 
 import os
@@ -64,6 +64,35 @@ MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 # 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756|35000|71000}/infer。
 _MULTI_PIPELINE_TARGETS = frozenset({"147246", "357378", "714756", "35000", "71000"})
 _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
+GLOBAL_IMAGE_ANALYSIS_MODEL = "GLOBAL-IMAGE-ANALYSIS"
+GLOBAL_IMAGE_HEAD_DIR_MODEL = "GLOBAL-IMAGE-HEAD-DIR"
+_GLOBAL_TASK_MODELS = {
+    "roi": GLOBAL_IMAGE_ANALYSIS_MODEL,
+    "dir": GLOBAL_IMAGE_HEAD_DIR_MODEL,
+}
+_VALID_GLOBAL_SMEAR_TYPES = frozenset({"BM", "PB"})
+_VALID_GLOBAL_TASKS = frozenset(_GLOBAL_TASK_MODELS.keys())
+_GLOBAL_INFER_SKIP_RESULT_KEYS = frozenset(
+    {
+        "error",
+        "type",
+        "trace_tail",
+        "code",
+        "_timing_models",
+        "_plugin_timing",
+        "timing",
+        "latency_ms",
+        "payload_bytes",
+        "image_format",
+        "payload_read_ms",
+        "request_total_ms",
+        "ran_models",
+        "models",
+        "dpi",
+        "slide_type",
+        "task",
+    }
+)
 _PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
 
 PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
@@ -203,6 +232,13 @@ def _multi_pipeline_ca_infer_url(endpoint: dict | None = None) -> str:
     if infer_url.endswith("/infer/"):
         return f"{infer_url.rstrip('/')}_ca"
     return f"{infer_url.rstrip('/')}/147246/infer_ca"
+
+
+def _global_pipeline_infer_url(endpoint: dict | None = None) -> str:
+    """全局图分析：POST /global/infer（multipart）。"""
+    ep = endpoint or get_triton_endpoint()
+    bs = _normalize_http_url(ep.get("pipeline_base_url") or "")
+    return f"{bs.rstrip('/')}/global/infer"
 
 
 def _filter_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
@@ -554,6 +590,7 @@ def _post_multipart_pipeline_infer(
     filename: str,
     timeout_s: float,
     extra_form: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 tasks、slide_type；147246 为 enable_meg、slide_type）。"""
     if not url.lower().startswith("http"):
@@ -567,6 +604,7 @@ def _post_multipart_pipeline_infer(
             url,
             data=data,
             files=files,
+            headers=headers or None,
             timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
         )
     except requests.exceptions.RequestException as e:
@@ -1708,6 +1746,88 @@ def _pad_image_bytes_to_cell_analysis_size(image_bytes: bytes) -> bytes:
         buf = BytesIO()
         canvas.save(buf, format="JPEG", quality=95)
         return buf.getvalue()
+
+
+def _parse_global_infer_tasks(raw: str) -> tuple[str | None, frozenset[str] | None]:
+    tasks = {
+        t.strip().lower()
+        for t in str(raw or "").replace(";", ",").split(",")
+        if t.strip()
+    }
+    if not tasks:
+        return "task is required", None
+    invalid = sorted(tasks - _VALID_GLOBAL_TASKS)
+    if invalid:
+        return f"invalid task {invalid}, allowed: roi, dir", None
+    return None, frozenset(tasks)
+
+
+def _parse_global_smear_type(raw: str) -> tuple[str | None, str | None]:
+    smear_type = (raw or "").strip().upper()
+    if smear_type not in _VALID_GLOBAL_SMEAR_TYPES:
+        return f"smear_type must be BM or PB, got {raw!r}", None
+    return None, smear_type
+
+
+def format_global_infer_result(pipeline: dict[str, Any]) -> dict[str, Any]:
+    """将 multi_pipeline /global/infer 原始响应整理为业务 result 字段。"""
+    return {
+        key: value
+        for key, value in pipeline.items()
+        if key not in _GLOBAL_INFER_SKIP_RESULT_KEYS
+    }
+
+
+def infer_global_image(
+    image_bytes: bytes,
+    smear_type: str,
+    task: str,
+    filename: str = "image.jpg",
+    gpu_id: Optional[int] = None,
+    client_seq: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    全局图分析：multi_pipeline_server POST /global/infer。
+    固定模型 GLOBAL-IMAGE-ANALYSIS（roi）与 GLOBAL-IMAGE-HEAD-DIR（dir）。
+    """
+    if not image_bytes:
+        raise ValueError("empty image payload")
+
+    err, parsed_smear = _parse_global_smear_type(smear_type)
+    if err:
+        raise ValueError(err)
+    err, tasks = _parse_global_infer_tasks(task)
+    if err:
+        raise ValueError(err)
+    assert parsed_smear is not None and tasks is not None
+
+    gpu_id, endpoint = _resolve_triton_route(gpu_id)
+    model_names = [_GLOBAL_TASK_MODELS[t] for t in sorted(tasks)]
+    for model_name in model_names:
+        ok, msg = ensure_model_loaded(model_name, gpu_id=gpu_id)
+        if not ok:
+            raise RuntimeError(msg)
+
+    url = _global_pipeline_infer_url(endpoint=endpoint)
+    task_str = ",".join(sorted(tasks))
+    headers = {"x-client-seq": client_seq} if client_seq else None
+    logger.info(
+        "infer_global_image route gpu_id=%s smear_type=%s task=%s models=%s client_seq=%s url=%s",
+        gpu_id,
+        parsed_smear,
+        task_str,
+        model_names,
+        client_seq or "-",
+        url,
+    )
+    return _post_multipart_pipeline_infer(
+        url,
+        image_bytes,
+        filename,
+        PIPELINE_HTTP_TIMEOUT_S,
+        extra_form={"slide_type": parsed_smear, "task": task_str},
+        headers=headers,
+    )
 
 
 def infer_cellularity(
