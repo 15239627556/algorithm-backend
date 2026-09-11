@@ -1,6 +1,6 @@
 # triton_client.py
-"""multipart 对齐 project.multi_pipeline_server：POST /{147246|357378|714756|35000|71000}/infer；
-全局图走 POST /global/infer；滤镜走 multi_pipeline POST /{image_enhance|opencv_enhance}/infer（裸流）。按 DPI 选 target 与结果解析。"""
+"""multipart 对齐 multi_pipeline_server：细胞检测 POST /infer（dpi+slide_type+task）；
+全局图 POST /global/infer；滤镜 POST /{image_enhance|opencv_enhance}/infer（裸流）。按 actual_dpi 与结果解析。"""
 from __future__ import annotations
 
 import os
@@ -47,8 +47,8 @@ from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
 
 logger = logging.getLogger(__name__)
 
-# 细胞检测走 multi_pipeline_server：POST /{actual_dpi}/infer。
-# actual_dpi 来自 MODEL_TABLE 命中的定位模型，不是 Triton pipeline 名。
+# 细胞检测走 multi_pipeline_server：POST /infer，Form 传 actual_dpi。
+# actual_dpi 来自 MODEL_TABLE 命中的定位模型，不是 Triton 仓库模型名。
 DPI_147246 = 147246
 DPI_357378 = 357378
 DPI_714756 = 714756
@@ -61,8 +61,7 @@ CSF_UNCLASSIFIED_CELL_TYPE = 100007
 # 图片增强/滤镜（x40 超分辨率滤镜深度学习模式）
 MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 
-# 与 multi_pipeline_server 路由一致：POST /{147246|357378|714756|35000|71000}/infer。
-_MULTI_PIPELINE_TARGETS = frozenset({"147246", "357378", "714756", "35000", "71000"})
+_PIPELINE_DPI_VALUES = frozenset({147246, 357378, 714756, 35000, 71000})
 _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 GLOBAL_IMAGE_ANALYSIS_MODEL = "GLOBAL-IMAGE-ANALYSIS"
 GLOBAL_IMAGE_HEAD_DIR_MODEL = "GLOBAL-IMAGE-HEAD-DIR"
@@ -93,7 +92,10 @@ _GLOBAL_INFER_SKIP_RESULT_KEYS = frozenset(
         "task",
     }
 )
-_PIPELINE_147246_INFER_URL_RAW = os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
+_PIPELINE_INFER_URL_RAW = (
+    os.environ.get("PIPELINE_INFER_URL", "").strip().rstrip("/")
+    or os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
+)
 
 PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
 
@@ -192,46 +194,22 @@ def _strip_plain_infer_suffix(url: str) -> str | None:
     return f"{p.scheme}://{p.netloc}"
 
 
-def _multi_pipeline_infer_url(target: str, endpoint: dict | None = None) -> str:
-    """与 multi_pipeline_server 一致的路径：/{target}/infer（multipart）。"""
-    if target not in _MULTI_PIPELINE_TARGETS:
-        raise ValueError(f"invalid multi pipeline target: {target!r}")
-
-    ov_raw = _PIPELINE_147246_INFER_URL_RAW
-    # 轮询场景：优先用本次选中端点的 pipeline_base_url
-    if endpoint is not None and not ov_raw:
-        bs = _normalize_http_url(endpoint.get("pipeline_base_url") or "")
-        if bs:
-            return f"{bs.rstrip('/')}/{target}/infer"
-
-    if target == "147246" and ov_raw:
-        ov = _normalize_http_url(ov_raw)
-        root = _strip_plain_infer_suffix(ov)
-        if root is not None:
-            return f"{root}/{target}/infer"
-        return ov
-
+def _pipeline_infer_url(endpoint: dict | None = None) -> str:
+    """统一细胞检测推理：POST /infer（multipart）。"""
+    ov_raw = _PIPELINE_INFER_URL_RAW
     if ov_raw:
         ov = _normalize_http_url(ov_raw)
+        path_norm = (urlparse(ov).path or "").rstrip("/").lower()
+        if path_norm.endswith("/infer"):
+            return ov.rstrip("/")
         root = _strip_plain_infer_suffix(ov)
         if root is not None:
-            return f"{root}/{target}/infer"
-        if "147246" in ov:
-            return ov.replace("147246", target, 1)
+            return f"{root}/infer"
+        return ov
 
     ep = endpoint or get_triton_endpoint()
     bs = _normalize_http_url(ep.get("pipeline_base_url") or "")
-    return f"{bs.rstrip('/')}/{target}/infer"
-
-
-def _multi_pipeline_ca_infer_url(endpoint: dict | None = None) -> str:
-    """细胞分析独立路径：POST /147246/infer_ca（裸流），只需 cell_analysis 模型。"""
-    infer_url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
-    if infer_url.endswith("/infer"):
-        return f"{infer_url}_ca"
-    if infer_url.endswith("/infer/"):
-        return f"{infer_url.rstrip('/')}_ca"
-    return f"{infer_url.rstrip('/')}/147246/infer_ca"
+    return f"{bs.rstrip('/')}/infer"
 
 
 def _global_pipeline_infer_url(endpoint: dict | None = None) -> str:
@@ -456,7 +434,7 @@ _triton_client_lock = threading.Lock()
 
 
 def _infer_route_dpi(resolved: ResolvedModels) -> int | None:
-    """从 MODEL_TABLE 命中的模型取 HTTP 推理路由（/{actual_dpi}/infer）。"""
+    """从 MODEL_TABLE 命中的模型取 /infer 的 dpi 参数（actual_dpi）。"""
     actuals = {spec.actual_dpi for spec in resolved.detection}
     if not actuals:
         actuals = {spec.actual_dpi for spec in resolved.score}
@@ -483,22 +461,43 @@ def get_model_by_dpi(
     return names
 
 
-def _714756_tasks_from_algorithm_types(algorithm_types: str) -> str:
-    """714756 pipeline 只接受 wbc/red/plat；RBC→red，其余类型丢弃。"""
+def _pipeline_task_from_algorithm_types(
+    algorithm_types: str,
+    route_dpi: int,
+    smear_type: str,
+) -> str:
+    """
+    将 target_cell_types / algorithm_types 转为 multi_pipeline /infer 的 task 字段。
+    与 model.json 中 task 对齐：wbc / meg / rbc / plat / cscore 等。
+    """
+    from backend.tools.combo_validator import _parse_cell_types
+
+    task_map = {
+        "WBC": "wbc",
+        "MEG": "meg",
+        "RBC": "rbc",
+        "RED": "rbc",
+        "PLAT": "plat",
+        "PLT": "plat",
+    }
     parts: list[str] = []
     seen: set[str] = set()
-    for raw in (algorithm_types or "").lower().split(","):
-        t = raw.strip()
-        if not t:
+    for cell_type in _parse_cell_types(algorithm_types):
+        task = task_map.get(cell_type, cell_type.lower())
+        if task in seen:
             continue
-        if "_" in t:
-            t = t.split("_")[-1]
-        if t == "rbc":
-            t = "red"
-        if t not in {"wbc", "red", "plat"} or t in seen:
-            continue
-        seen.add(t)
-        parts.append(t)
+        seen.add(task)
+        parts.append(task)
+
+    st = normalize_smear_type(smear_type)
+    if (
+        route_dpi == DPI_147246
+        and st in ("BM", "PB")
+        and seen.intersection({"wbc", "meg"})
+        and "cscore" not in seen
+    ):
+        parts.append("cscore")
+
     return ",".join(parts)
 
 
@@ -592,7 +591,7 @@ def _post_multipart_pipeline_infer(
     extra_form: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """multipart/form-data：字段名对齐 multi_pipeline_server（image 必选；714756 为 tasks、slide_type；147246 为 enable_meg、slide_type）。"""
+    """multipart/form-data：image 必选；/infer 另需 dpi、slide_type、task 等 Form 字段。"""
     if not url.lower().startswith("http"):
         url = f"http://{url}"
 
@@ -649,9 +648,99 @@ def _scalar_int(payload: dict[str, Any], *keys: str, default: int = 0) -> int:
     return default
 
 
+def _as_float64_array(value: Any) -> Optional[np.ndarray]:
+    if value is None:
+        return None
+    return np.asarray(value, dtype=np.float64)
+
+
+def _res_get(res: dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if k in res and res[k] is not None:
+            return res[k]
+    return None
+
+
+def _pipeline_task_block(res: dict[str, Any], task: str) -> dict[str, Any]:
+    block = res.get(task)
+    return block if isinstance(block, dict) else {}
+
+
+def _pipeline_task_det(res: dict[str, Any], task: str) -> dict[str, Any]:
+    det = _pipeline_task_block(res, task).get("det")
+    return det if isinstance(det, dict) else {}
+
+
+def _pipeline_task_cls(res: dict[str, Any], task: str) -> dict[str, Any]:
+    cls = _pipeline_task_block(res, task).get("cls")
+    return cls if isinstance(cls, dict) else {}
+
+
+def _xyxy_boxes_and_scores(det: dict[str, Any]) -> tuple[Optional[np.ndarray], Optional[np.ndarray], int]:
+    """从 task.det 提取 xyxy bboxes 与 scores，返回 (boxes, scores, count)。"""
+    if not det:
+        return None, None, 0
+    boxes = _as_float64_array(det.get("bboxes"))
+    if boxes is None or boxes.size == 0:
+        return None, None, 0
+    if boxes.ndim == 1 and boxes.size % 4 == 0:
+        boxes = boxes.reshape(-1, 4)
+    elif boxes.ndim < 2:
+        return None, None, 0
+    n = int(boxes.shape[0])
+    scores = _as_float64_array(det.get("scores"))
+    if scores is not None and scores.size >= n:
+        scores = scores.flatten()[:n]
+    else:
+        scores = np.ones(n, dtype=np.float64)
+    return boxes, scores, n
+
+
+def _xyxy_to_xywh_rows(boxes: np.ndarray) -> np.ndarray:
+    b = np.asarray(boxes, dtype=np.float64).reshape(-1, 4)
+    out = b.copy()
+    out[:, 2] = b[:, 2] - b[:, 0]
+    out[:, 3] = b[:, 3] - b[:, 1]
+    return out
+
+
+def _cls_head_field(cls_block: dict[str, Any], head: str, field: str) -> Optional[np.ndarray]:
+    if not isinstance(cls_block, dict):
+        return None
+    head_block = cls_block.get(head)
+    if not isinstance(head_block, dict):
+        return None
+    return _as_float64_array(head_block.get(field))
+
+
+def _nested_cellularity_counts(res: dict[str, Any]) -> tuple[int, int]:
+    block = _pipeline_task_block(res, "cellularity")
+    wbc = block.get("wbc") if isinstance(block.get("wbc"), dict) else {}
+    rbc = block.get("rbc") if isinstance(block.get("rbc"), dict) else {}
+    wpc = _scalar_int(wbc, "count", default=-1)
+    rpc = _scalar_int(rbc, "count", default=-1)
+    if wpc < 0:
+        wpc = _scalar_int(
+            res,
+            "cell_analysis_wbc_pixel_count",
+            "wbc_pixel_count",
+            "CELL_ANALYSIS_WBC_PIXEL_COUNT",
+        )
+    if rpc < 0:
+        rpc = _scalar_int(
+            res,
+            "cell_analysis_red_pixel_count",
+            "red_pixel_count",
+            "CELL_ANALYSIS_RED_PIXEL_COUNT",
+        )
+    return wpc, rpc
+
+
 def _parse_pipeline_json_147246(res: dict[str, Any]) -> tuple[
     Optional[np.ndarray],
+    Optional[np.ndarray],
     int,
+    Optional[np.ndarray],
     Optional[np.ndarray],
     int,
     np.ndarray,
@@ -660,90 +749,82 @@ def _parse_pipeline_json_147246(res: dict[str, Any]) -> tuple[
     int,
     int,
 ]:
+    """解析 147246 pipeline：wbc/meg.det（xyxy）、cscore.det/cls；兼容旧 flat 字段。"""
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
 
-    wbc_raw = res.get("wbc_detections")
-    if wbc_raw is None:
-        wbc_raw = res.get("WBC_DETECTIONS")
-    meg_raw = res.get("meg_detections")
-    if meg_raw is None:
-        meg_raw = res.get("MEG_DETECTIONS")
+    wbc_boxes, wbc_scores, wbc_num = _xyxy_boxes_and_scores(_pipeline_task_det(res, "wbc"))
+    meg_boxes, meg_scores, meg_num = _xyxy_boxes_and_scores(_pipeline_task_det(res, "meg"))
 
-    wbc_arr: Optional[np.ndarray]
-    if wbc_raw is None:
-        wbc_arr = None
+    if wbc_num <= 0:
+        wbc_raw = _res_get(res, "wbc_detections", "WBC_DETECTIONS")
+        wbc_arr = _as_float64_array(wbc_raw)
+        if wbc_arr is not None and wbc_arr.size > 0:
+            wbc_num = _scalar_int(res, "wbc_num", "WBC_NUM_DETECTIONS", default=len(wbc_arr))
+            wbc_num = min(wbc_num, len(wbc_arr))
+            wbc_boxes = wbc_arr[:wbc_num, :4] if wbc_arr.ndim >= 2 else wbc_arr.reshape(-1, 4)[:wbc_num]
+            wbc_scores = (
+                wbc_arr[:wbc_num, 4].flatten()
+                if wbc_arr.ndim >= 2 and wbc_arr.shape[1] > 4
+                else np.ones(wbc_num, dtype=np.float64)
+            )
+
+    if meg_num <= 0:
+        meg_raw = _res_get(res, "meg_detections", "MEG_DETECTIONS")
+        meg_arr = _as_float64_array(meg_raw)
+        if meg_arr is not None and meg_arr.size > 0:
+            meg_num = _scalar_int(res, "meg_num", "MEG_NUM_DETECTIONS", default=len(meg_arr))
+            meg_num = min(meg_num, len(meg_arr))
+            meg_boxes = meg_arr[:meg_num, :4] if meg_arr.ndim >= 2 else meg_arr.reshape(-1, 4)[:meg_num]
+            meg_scores = (
+                meg_arr[:meg_num, 4].flatten()
+                if meg_arr.ndim >= 2 and meg_arr.shape[1] > 4
+                else np.ones(meg_num, dtype=np.float64)
+            )
+
+    cscore_det = _pipeline_task_det(res, "cscore")
+    cscore_cls = _pipeline_task_cls(res, "cscore")
+    cscore_boxes, _, cscore_n = _xyxy_boxes_and_scores(cscore_det)
+    if cscore_n > 0 and cscore_boxes is not None:
+        # cscore.det.bboxes 为 xyxy；下游 meta["scores"] 约定 [lx, ly, w, h, score, grade]
+        regions = _xyxy_to_xywh_rows(cscore_boxes)
+        grades_a = np.asarray(cscore_cls.get("tops") if cscore_cls else [], dtype=np.float64).flatten()
+        scores_a = np.asarray(cscore_cls.get("scores") if cscore_cls else [], dtype=np.float64).flatten()
     else:
-        wbc_arr = np.asarray(wbc_raw, dtype=np.float64)
-        if wbc_arr.size == 0:
-            wbc_arr = None
-    meg_arr: Optional[np.ndarray]
-    if meg_raw is None:
-        meg_arr = None
-    else:
-        meg_arr = np.asarray(meg_raw, dtype=np.float64)
-        if meg_arr.size == 0:
-            meg_arr = None
+        cr = _res_get(res, "constituency_regions", "CONSTITUENCY_REGIONS") or []
+        cs = _res_get(res, "constituency_scores", "CONSTITUENCY_SCORES")
+        cg = _res_get(res, "constituency_grades", "CONSTITUENCY_GRADES")
+        regions = (
+            np.asarray(cr, dtype=np.float64).reshape(-1, 4)
+            if np.asarray(cr).size > 0
+            else np.zeros((0, 4), dtype=np.float64)
+        )
+        scores_a = np.asarray(cs if cs is not None else [], dtype=np.float64).flatten()
+        grades_a = np.asarray(cg if cg is not None else [], dtype=np.float64).flatten()
 
-    wbc_num = _scalar_int(res, "wbc_num", "WBC_NUM_DETECTIONS", default=-1)
-    meg_num = _scalar_int(res, "meg_num", "MEG_NUM_DETECTIONS", default=-1)
-    if wbc_arr is not None:
-        n = len(wbc_arr)
-        if wbc_num <= 0:
-            wbc_num = n
-        wbc_num = min(wbc_num, n)
-    else:
-        wbc_num = 0
-    if meg_arr is not None:
-        n = len(meg_arr)
-        if meg_num <= 0:
-            meg_num = n
-        meg_num = min(meg_num, n)
-    else:
-        meg_num = 0
-
-    cr = (
-        res.get("constituency_regions")
-        if res.get("constituency_regions") is not None
-        else res.get("CONSTITUENCY_REGIONS")
+    wpc, rpc = _nested_cellularity_counts(res)
+    return (
+        wbc_boxes,
+        wbc_scores,
+        wbc_num,
+        meg_boxes,
+        meg_scores,
+        meg_num,
+        regions,
+        scores_a,
+        grades_a,
+        wpc,
+        rpc,
     )
-    if cr is None:
-        cr = []
-    cs = (
-        res.get("constituency_scores")
-        if res.get("constituency_scores") is not None
-        else res.get("CONSTITUENCY_SCORES")
-    )
-    cg = (
-        res.get("constituency_grades")
-        if res.get("constituency_grades") is not None
-        else res.get("CONSTITUENCY_GRADES")
-    )
-
-    regions = np.asarray(cr, dtype=np.float64).reshape(-1, 4) if np.asarray(cr).size > 0 else np.zeros((0, 4), dtype=np.float64)
-    scores_a = np.asarray(cs if cs is not None else [], dtype=np.float64).flatten()
-    grades_a = np.asarray(cg if cg is not None else [], dtype=np.float64).flatten()
-
-    wpc = _scalar_int(
-        res,
-        "cell_analysis_wbc_pixel_count",
-        "wbc_pixel_count",
-        "CELL_ANALYSIS_WBC_PIXEL_COUNT",
-    )
-    rpc = _scalar_int(
-        res,
-        "cell_analysis_red_pixel_count",
-        "red_pixel_count",
-        "CELL_ANALYSIS_RED_PIXEL_COUNT",
-    )
-    return wbc_arr, wbc_num, meg_arr, meg_num, regions, scores_a, grades_a, wpc, rpc
 
 
 def _infer_147246_finalize(
     algorithm_types: str,
-    wbc: Optional[np.ndarray],
+    wbc_boxes: Optional[np.ndarray],
+    wbc_scores: Optional[np.ndarray],
     wbc_num: int,
-    meg: Optional[np.ndarray],
+    meg_boxes: Optional[np.ndarray],
+    meg_scores: Optional[np.ndarray],
     meg_num: int,
     con_regions: np.ndarray,
     con_scores: np.ndarray,
@@ -771,13 +852,39 @@ def _infer_147246_finalize(
 
     cells: List[Cell] = []
     if "WBC" in (algorithm_types or ""):
-        if wbc_num > 0 and wbc is not None:
-            wc = np.asarray(wbc, dtype=np.float64)
-            cells.extend(_boxes_to_cells(wc[:wbc_num], 100000, CELL_TYPES_X40))
+        if wbc_num > 0 and wbc_boxes is not None:
+            s = (
+                np.asarray(wbc_scores, dtype=np.float64).flatten()[:wbc_num]
+                if wbc_scores is not None
+                else np.ones(wbc_num, dtype=np.float64)
+            )
+            cells.extend(
+                _boxes_xyxy_to_cells(
+                    wbc_boxes[:wbc_num],
+                    s,
+                    np.zeros(wbc_num, dtype=np.int32),
+                    100000,
+                    ["unclassified"],
+                    CELL_TYPES_X40,
+                )
+            )
     if "MEG" in (algorithm_types or ""):
-        if meg_num > 0 and meg is not None:
-            mg = np.asarray(meg, dtype=np.float64)
-            cells.extend(_boxes_to_cells(mg[:meg_num], 100001, CELL_TYPES_X40))
+        if meg_num > 0 and meg_boxes is not None:
+            s = (
+                np.asarray(meg_scores, dtype=np.float64).flatten()[:meg_num]
+                if meg_scores is not None
+                else np.ones(meg_num, dtype=np.float64)
+            )
+            cells.extend(
+                _boxes_xyxy_to_cells(
+                    meg_boxes[:meg_num],
+                    s,
+                    np.zeros(meg_num, dtype=np.int32),
+                    100001,
+                    ["unclassified"],
+                    CELL_TYPES_X40,
+                )
+            )
     cell_list = _cells_to_cell_list_single(cells, smear_type)
     return {
         "cells": cells,
@@ -789,41 +896,67 @@ def _infer_147246_finalize(
 
 
 def _infer_357378_from_pipeline_json(res: dict[str, Any], smear_type: str) -> dict[str, Any]:
+    """357378：meg.det（xyxy）+ meg.cls.tops/scores；兼容旧 flat boxes/scores。"""
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
-    boxes_raw = res.get("boxes") if res.get("boxes") is not None else res.get("BOXES")
-    scores_raw = res.get("scores") if res.get("scores") is not None else res.get("SCORES")
-    class_ids_raw = res.get("class_ids") if res.get("class_ids") is not None else res.get("CLASS_IDS")
-    class_probs_raw = res.get("class_probs") if res.get("class_probs") is not None else res.get("CLASS_PROBS")
 
-    boxes = np.asarray(boxes_raw, dtype=np.float64) if boxes_raw is not None else None
-    if boxes is None or boxes.size == 0:
-        return {"cells": [], "scores": [], "cell_list": []}
-    if boxes.ndim == 1 and boxes.size % 4 == 0:
-        boxes = boxes.reshape(-1, 4)
-    elif boxes.ndim < 2:
-        return {"cells": [], "scores": [], "cell_list": []}
+    meg_det = _pipeline_task_det(res, "meg")
+    meg_cls = _pipeline_task_cls(res, "meg")
+    boxes, scores, num_det = _xyxy_boxes_and_scores(meg_det)
 
-    navail = int(boxes.shape[0])
-    num_det = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=-1)
     if num_det <= 0:
-        num_det = navail
-    num_det = min(num_det, navail)
-    if num_det <= 0:
-        return {"cells": [], "scores": [], "cell_list": []}
+        boxes_raw = _res_get(res, "boxes", "BOXES")
+        boxes = _as_float64_array(boxes_raw)
+        if boxes is None or boxes.size == 0:
+            return {"cells": [], "scores": [], "cell_list": []}
+        if boxes.ndim == 1 and boxes.size % 4 == 0:
+            boxes = boxes.reshape(-1, 4)
+        elif boxes.ndim < 2:
+            return {"cells": [], "scores": [], "cell_list": []}
+        navail = int(boxes.shape[0])
+        num_det = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=navail)
+        num_det = min(num_det, navail)
+        if num_det <= 0:
+            return {"cells": [], "scores": [], "cell_list": []}
+        boxes = boxes[:num_det]
+        scores_raw = _res_get(res, "scores", "SCORES")
+        scores = (
+            np.asarray(scores_raw, dtype=np.float64)[:num_det]
+            if scores_raw is not None
+            else np.ones(num_det, dtype=np.float64)
+        )
+        class_ids_raw = _res_get(res, "class_ids", "CLASS_IDS")
+        class_probs_raw = _res_get(res, "class_probs", "CLASS_PROBS")
+        class_ids = (
+            np.asarray(class_ids_raw, dtype=np.int32)[:num_det]
+            if class_ids_raw is not None
+            else np.zeros(num_det, dtype=np.int32)
+        )
+        class_probs = np.asarray(class_probs_raw, dtype=np.float64) if class_probs_raw is not None else None
+    else:
+        tops_raw = meg_cls.get("tops") if meg_cls else None
+        probs_raw = meg_cls.get("scores") if meg_cls else None
+        if tops_raw is not None:
+            class_ids = np.asarray(tops_raw, dtype=np.int32)
+            if class_ids.ndim == 1:
+                class_ids = class_ids.reshape(-1, 1)
+            class_ids = class_ids[:num_det]
+        else:
+            class_ids = np.zeros((num_det, 1), dtype=np.int32)
+        class_probs = np.asarray(probs_raw, dtype=np.float64) if probs_raw is not None else None
+        if class_probs is not None:
+            class_probs = class_probs.reshape(num_det, -1)[:num_det]
 
-    boxes = boxes[:num_det]
-    scores = np.asarray(scores_raw, dtype=np.float64)[:num_det] if scores_raw is not None else np.ones(num_det)
-    class_ids = (
-        np.asarray(class_ids_raw, dtype=np.int32)[:num_det]
-        if class_ids_raw is not None
-        else np.zeros(num_det, dtype=np.int32)
-    )
-    class_probs = np.asarray(class_probs_raw, dtype=np.float64) if class_probs_raw is not None else None
     cells = _boxes_xyxy_to_cells(
-        boxes, scores, class_ids, 300000, X50_CLASS_NAMES, CELL_TYPES_MEG, class_probs=class_probs
+        boxes[:num_det],
+        scores[:num_det],
+        class_ids,
+        300000,
+        X50_CLASS_NAMES,
+        CELL_TYPES_MEG,
+        class_probs=class_probs,
     )
-    scores_out = np.asarray(scores).flatten().tolist()
+    scores_out = np.asarray(scores[:num_det]).flatten().tolist()
     cids = np.asarray(class_ids).reshape(num_det, -1)
     cprobs = (
         np.asarray(class_probs).reshape(num_det, -1)
@@ -835,56 +968,45 @@ def _infer_357378_from_pipeline_json(res: dict[str, Any], smear_type: str) -> di
 
 
 def _infer_csf_from_pipeline_json(res: dict[str, Any], smear_type: str) -> dict[str, Any]:
-    """35000 / 71000 CF pipeline：仅检测，统一映射为 100007 未分类脑脊液细胞。"""
+    """35000 / 71000：wbc.det（xyxy）；统一映射为 100007 未分类脑脊液细胞。"""
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
-    boxes_raw = res.get("boxes") if res.get("boxes") is not None else res.get("BOXES")
-    scores_raw = res.get("scores") if res.get("scores") is not None else res.get("SCORES")
 
-    boxes = np.asarray(boxes_raw, dtype=np.float64) if boxes_raw is not None else None
-    if boxes is None or boxes.size == 0:
-        return {"cells": [], "scores": [], "cell_list": []}
-    if boxes.ndim == 1 and boxes.size % 4 == 0:
-        boxes = boxes.reshape(-1, 4)
-    elif boxes.ndim < 2:
-        return {"cells": [], "scores": [], "cell_list": []}
-
-    navail = int(boxes.shape[0])
-    num_det = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=-1)
+    boxes, scores, num_det = _xyxy_boxes_and_scores(_pipeline_task_det(res, "wbc"))
     if num_det <= 0:
-        num_det = navail
-    num_det = min(num_det, navail)
-    if num_det <= 0:
-        return {"cells": [], "scores": [], "cell_list": []}
+        boxes_raw = _res_get(res, "boxes", "BOXES")
+        boxes = _as_float64_array(boxes_raw)
+        if boxes is None or boxes.size == 0:
+            return {"cells": [], "scores": [], "cell_list": []}
+        if boxes.ndim == 1 and boxes.size % 4 == 0:
+            boxes = boxes.reshape(-1, 4)
+        elif boxes.ndim < 2:
+            return {"cells": [], "scores": [], "cell_list": []}
+        navail = int(boxes.shape[0])
+        num_det = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=navail)
+        num_det = min(num_det, navail)
+        if num_det <= 0:
+            return {"cells": [], "scores": [], "cell_list": []}
+        boxes = boxes[:num_det]
+        scores_raw = _res_get(res, "scores", "SCORES")
+        scores = (
+            np.asarray(scores_raw, dtype=np.float64)[:num_det]
+            if scores_raw is not None
+            else np.ones(num_det, dtype=np.float64)
+        )
 
-    boxes = boxes[:num_det]
-    scores = np.asarray(scores_raw, dtype=np.float64)[:num_det] if scores_raw is not None else np.ones(num_det)
     class_ids = np.zeros(num_det, dtype=np.int32)
-
     cells = _boxes_xyxy_to_cells(
-        boxes,
-        scores,
+        boxes[:num_det],
+        scores[:num_det],
         class_ids,
         CSF_UNCLASSIFIED_CELL_TYPE,
         ["CSF"],
         CELL_TYPES_X40,
     )
-    scores_out = np.asarray(scores).flatten().tolist()
+    scores_out = np.asarray(scores[:num_det]).flatten().tolist()
     cell_list = _cells_to_cell_list_single(cells, smear_type)
     return {"cells": cells, "scores": scores_out, "cell_list": cell_list}
-
-
-def _res_get(res: dict[str, Any], *keys: str) -> Any:
-    for k in keys:
-        if k in res and res[k] is not None:
-            return res[k]
-    return None
-
-
-def _as_float64_array(value: Any) -> Optional[np.ndarray]:
-    if value is None:
-        return None
-    return np.asarray(value, dtype=np.float64)
 
 
 def _prepare_xywh_detections(det_raw: Any, num_det: int) -> tuple[Optional[np.ndarray], int]:
@@ -1222,48 +1344,91 @@ def _infer_714756_bm_from_pipeline_json(
     if res.get("error"):
         raise RuntimeError(str(res.get("error")))
 
-    boxes_raw = _res_get(res, "boxes", "BOXES")
-    scores_raw = _res_get(res, "scores", "SCORES")
-    class_ids_raw = _res_get(res, "class_ids", "CLASS_IDS")
+    wbc_det = _pipeline_task_det(res, "wbc")
+    wbc_cls = _pipeline_task_cls(res, "wbc")
+    rbc_det = _pipeline_task_det(res, "rbc")
+    rbc_cls = _pipeline_task_cls(res, "rbc")
+    plat_det = _pipeline_task_det(res, "plat")
+    plat_cls = _pipeline_task_cls(res, "plat")
 
-    wbc_num = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=-1)
-    red_num = _scalar_int(res, "red_num_detections", "RED_NUM_DETECTIONS", "red_num", default=-1)
-    plat_num = _scalar_int(res, "plat_num_detections", "PLAT_NUM_DETECTIONS", "plat_num", default=-1)
+    boxes, scores, wbc_num = _xyxy_boxes_and_scores(wbc_det)
+    wbc_class_ids_raw = wbc_cls.get("tops") if wbc_cls else None
+    wbc_class_probs_raw = wbc_cls.get("scores") if wbc_cls else None
 
-    red_class_struct = _as_float64_array(_res_get(res, "red_class_struct", "RED_CLASS_STRUCT"))
-    red_class_struct_prob = _as_float64_array(_res_get(res, "red_class_struct_prob", "RED_CLASS_STRUCT_PROB"))
-    red_class_color = _as_float64_array(_res_get(res, "red_class_color", "RED_CLASS_COLOR"))
-    red_class_color_prob = _as_float64_array(_res_get(res, "red_class_color_prob", "RED_CLASS_COLOR_PROB"))
-    red_class_morph = _as_float64_array(_res_get(res, "red_class_morph", "RED_CLASS_MORPH"))
-    red_class_morph_prob = _as_float64_array(_res_get(res, "red_class_morph_prob", "RED_CLASS_MORPH_PROB"))
-    red_class_agg = _as_float64_array(_res_get(res, "red_class_agg", "RED_CLASS_AGG"))
-    red_class_agg_prob = _as_float64_array(_res_get(res, "red_class_agg_prob", "RED_CLASS_AGG_PROB"))
+    rbc_boxes, red_scores_arr, red_num = _xyxy_boxes_and_scores(rbc_det)
+    rd: Optional[np.ndarray] = _xyxy_to_xywh_rows(rbc_boxes) if rbc_boxes is not None and red_num > 0 else None
+    red_scores = red_scores_arr
 
-    plat_class_morph = _as_float64_array(_res_get(res, "plat_class_morph", "PLAT_CLASS_MORPH"))
-    plat_class_morph_prob = _as_float64_array(_res_get(res, "plat_class_morph_prob", "PLAT_CLASS_MORPH_PROB"))
-    plat_class_dist = _as_float64_array(_res_get(res, "plat_class_dist", "PLAT_CLASS_DIST"))
-    plat_class_dist_prob = _as_float64_array(_res_get(res, "plat_class_dist_prob", "PLAT_CLASS_DIST_PROB"))
-    plat_class_color = _as_float64_array(_res_get(res, "plat_class_color", "PLAT_CLASS_COLOR"))
-    plat_class_color_prob = _as_float64_array(_res_get(res, "plat_class_color_prob", "PLAT_CLASS_COLOR_PROB"))
+    plat_boxes, plat_scores_arr, plat_num = _xyxy_boxes_and_scores(plat_det)
+    pd: Optional[np.ndarray] = _xyxy_to_xywh_rows(plat_boxes) if plat_boxes is not None and plat_num > 0 else None
+    plat_scores = plat_scores_arr
 
-    boxes = _as_float64_array(boxes_raw)
-    if boxes is None or boxes.size == 0:
-        boxes = np.zeros((0, 4), dtype=np.float64)
-        wbc_num = 0
-    else:
-        if boxes.ndim == 1 and boxes.size % 4 == 0:
-            boxes = boxes.reshape(-1, 4)
-        elif boxes.ndim < 2:
+    red_class_struct = _cls_head_field(rbc_cls, "struct", "tops")
+    red_class_struct_prob = _cls_head_field(rbc_cls, "struct", "scores")
+    red_class_color = _cls_head_field(rbc_cls, "color", "tops")
+    red_class_color_prob = _cls_head_field(rbc_cls, "color", "scores")
+    red_class_morph = _cls_head_field(rbc_cls, "morph", "tops")
+    red_class_morph_prob = _cls_head_field(rbc_cls, "morph", "scores")
+    red_class_agg = _cls_head_field(rbc_cls, "agg", "tops")
+    red_class_agg_prob = _cls_head_field(rbc_cls, "agg", "scores")
+
+    plat_class_morph = _cls_head_field(plat_cls, "morph", "tops")
+    plat_class_morph_prob = _cls_head_field(plat_cls, "morph", "scores")
+    plat_class_dist = _cls_head_field(plat_cls, "dist", "tops")
+    plat_class_dist_prob = _cls_head_field(plat_cls, "dist", "scores")
+    plat_class_color = _cls_head_field(plat_cls, "color", "tops")
+    plat_class_color_prob = _cls_head_field(plat_cls, "color", "scores")
+
+    if wbc_num <= 0:
+        boxes_raw = _res_get(res, "boxes", "BOXES")
+        scores_raw = _res_get(res, "scores", "SCORES")
+        class_ids_raw = _res_get(res, "class_ids", "CLASS_IDS")
+        wbc_num = _scalar_int(res, "num_detections", "NUM_DETECTIONS", default=-1)
+        boxes = _as_float64_array(boxes_raw)
+        if boxes is None or boxes.size == 0:
             boxes = np.zeros((0, 4), dtype=np.float64)
             wbc_num = 0
         else:
-            nbox = int(boxes.shape[0])
-            if wbc_num < 0:
-                wbc_num = nbox
+            if boxes.ndim == 1 and boxes.size % 4 == 0:
+                boxes = boxes.reshape(-1, 4)
+            elif boxes.ndim < 2:
+                boxes = np.zeros((0, 4), dtype=np.float64)
+                wbc_num = 0
             else:
-                wbc_num = min(wbc_num, nbox)
+                nbox = int(boxes.shape[0])
+                wbc_num = nbox if wbc_num < 0 else min(wbc_num, nbox)
+        scores = _as_float64_array(scores_raw)
+        wbc_class_ids_raw = class_ids_raw
+        wbc_class_probs_raw = _res_get(res, "class_probs", "CLASS_PROBS")
+    else:
+        class_ids_raw = wbc_class_ids_raw
 
-    scores = _as_float64_array(scores_raw)
+    if red_num <= 0:
+        red_num = _scalar_int(res, "red_num_detections", "RED_NUM_DETECTIONS", "red_num", default=-1)
+        rd, red_num = _prepare_xywh_detections(_res_get(res, "red_detections", "RED_DETECTIONS"), red_num)
+        red_scores = _flatten_det_scores(_res_get(res, "red_det_scores", "RED_DET_SCORES"))
+        if red_class_struct is None:
+            red_class_struct = _as_float64_array(_res_get(res, "red_class_struct", "RED_CLASS_STRUCT"))
+            red_class_struct_prob = _as_float64_array(_res_get(res, "red_class_struct_prob", "RED_CLASS_STRUCT_PROB"))
+            red_class_color = _as_float64_array(_res_get(res, "red_class_color", "RED_CLASS_COLOR"))
+            red_class_color_prob = _as_float64_array(_res_get(res, "red_class_color_prob", "RED_CLASS_COLOR_PROB"))
+            red_class_morph = _as_float64_array(_res_get(res, "red_class_morph", "RED_CLASS_MORPH"))
+            red_class_morph_prob = _as_float64_array(_res_get(res, "red_class_morph_prob", "RED_CLASS_MORPH_PROB"))
+            red_class_agg = _as_float64_array(_res_get(res, "red_class_agg", "RED_CLASS_AGG"))
+            red_class_agg_prob = _as_float64_array(_res_get(res, "red_class_agg_prob", "RED_CLASS_AGG_PROB"))
+
+    if plat_num <= 0:
+        plat_num = _scalar_int(res, "plat_num_detections", "PLAT_NUM_DETECTIONS", "plat_num", default=-1)
+        pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
+        plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
+        if plat_class_morph is None:
+            plat_class_morph = _as_float64_array(_res_get(res, "plat_class_morph", "PLAT_CLASS_MORPH"))
+            plat_class_morph_prob = _as_float64_array(_res_get(res, "plat_class_morph_prob", "PLAT_CLASS_MORPH_PROB"))
+            plat_class_dist = _as_float64_array(_res_get(res, "plat_class_dist", "PLAT_CLASS_DIST"))
+            plat_class_dist_prob = _as_float64_array(_res_get(res, "plat_class_dist_prob", "PLAT_CLASS_DIST_PROB"))
+            plat_class_color = _as_float64_array(_res_get(res, "plat_class_color", "PLAT_CLASS_COLOR"))
+            plat_class_color_prob = _as_float64_array(_res_get(res, "plat_class_color_prob", "PLAT_CLASS_COLOR_PROB"))
+
     class_ids = np.asarray(class_ids_raw, dtype=np.int32) if class_ids_raw is not None else None
 
     cells: List[Cell] = []
@@ -1283,12 +1448,9 @@ def _infer_714756_bm_from_pipeline_json(
             if class_ids is not None and class_ids.shape[0] >= wbc_num
             else np.zeros(wbc_num, dtype=np.int32)
         )
-        cprobs_raw = (
-            res.get("class_probs") if res.get("class_probs") is not None else res.get("CLASS_PROBS")
-        )
         cprobs_arr = (
-            np.asarray(cprobs_raw, dtype=np.float64)[:wbc_num].reshape(wbc_num, -1)
-            if cprobs_raw is not None
+            np.asarray(wbc_class_probs_raw, dtype=np.float64)[:wbc_num].reshape(wbc_num, -1)
+            if wbc_class_probs_raw is not None
             else None
         )
         if classify_wbc and st == "CSF":
@@ -1328,8 +1490,6 @@ def _infer_714756_bm_from_pipeline_json(
             scores_out.extend(np.asarray(s).flatten().tolist())
             cell_list.extend(_cells_to_cell_list_single(wbc_cells, smear_type))
 
-    rd, red_num = _prepare_xywh_detections(_res_get(res, "red_detections", "RED_DETECTIONS"), red_num)
-    red_scores = _flatten_det_scores(_res_get(res, "red_det_scores", "RED_DET_SCORES"))
     if red_num > 0 and rd is not None:
 
         def _red_extra(i: int) -> dict[str, Any]:
@@ -1375,8 +1535,6 @@ def _infer_714756_bm_from_pipeline_json(
             scores_out.extend([c.bbox_confidence for c in rbc_cells])
             cell_list.extend(_cells_to_cell_list_single(rbc_cells, smear_type))
 
-    pd, plat_num = _prepare_xywh_detections(_res_get(res, "plat_detections", "PLAT_DETECTIONS"), plat_num)
-    plat_scores = _flatten_det_scores(_res_get(res, "plat_det_scores", "PLAT_DET_SCORES"))
     if plat_num > 0 and pd is not None:
 
         def _plat_extra(i: int) -> dict[str, Any]:
@@ -1615,6 +1773,38 @@ def _resolve_triton_route(gpu_id: Optional[int] = None) -> tuple[int, dict]:
 resolve_triton_route = _resolve_triton_route
 
 
+def _post_unified_pipeline_infer(
+    image_bytes: bytes,
+    filename: str,
+    route_dpi: int,
+    smear_type: str,
+    algorithm_types: str,
+    endpoint: dict,
+) -> dict[str, Any]:
+    """POST /infer：multipart 传 image + dpi(actual_dpi) + slide_type + task。"""
+    url = _pipeline_infer_url(endpoint=endpoint)
+    slide_type = normalize_smear_type(smear_type)
+    task = _pipeline_task_from_algorithm_types(algorithm_types, route_dpi, smear_type)
+    logger.debug(
+        "unified /infer url=%s dpi=%s slide_type=%s task=%s",
+        url,
+        route_dpi,
+        slide_type,
+        task,
+    )
+    return _post_multipart_pipeline_infer(
+        url,
+        image_bytes,
+        filename,
+        PIPELINE_HTTP_TIMEOUT_S,
+        extra_form={
+            "dpi": str(route_dpi),
+            "slide_type": slide_type,
+            "task": task,
+        },
+    )
+
+
 def infer(
     image_bytes: bytes,
     dpi: int,
@@ -1624,8 +1814,8 @@ def infer(
     gpu_id: Optional[int] = None,
 ) -> dict:
     """
-    细胞检测推理。先 resolve_models 查 MODEL_TABLE，再按定位模型 actual_dpi
-    POST /{actual_dpi}/infer。返回 {"cells", "scores", "cell_list"}。
+    细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
+    返回 {"cells", "scores", "cell_list"}。
 
     平扫 upload_image 依赖 create_task 的 warmup_model（load_models）；
     单张识别见 get_task_result_x100。
@@ -1636,80 +1826,51 @@ def infer(
     route_dpi = _infer_route_dpi(resolved)
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
 
+    if route_dpi is None or route_dpi not in _PIPELINE_DPI_VALUES:
+        result = {"cells": [], "scores": [], "cell_list": []}
+        if warning:
+            result["warning"] = warning
+        return result
+
+    res_json = _post_unified_pipeline_infer(
+        image_bytes,
+        filename,
+        route_dpi,
+        smear_type,
+        algorithm_types,
+        endpoint,
+    )
+
     if route_dpi == DPI_147246:
-        enable_meg = 1 if "MEG" in (algorithm_types or "") else 0
-        slide_type = smear_type.strip().upper() or "BM"
-        url = _multi_pipeline_infer_url("147246", endpoint=endpoint)
-        res_json = _post_raw_pipeline_infer(
-            url,
-            image_bytes,
-            filename,
-            PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={
-                "enable_meg": str(int(enable_meg)),
-                "slide_type": slide_type,
-            },
+        wbc_boxes, wbc_scores, wbc_num, meg_boxes, meg_scores, meg_num, cr, cs, cg, wpc, rpc = (
+            _parse_pipeline_json_147246(res_json)
         )
-
-        wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc = _parse_pipeline_json_147246(res_json)
         result = _infer_147246_finalize(
-            algorithm_types, wbc, wbc_num, meg, meg_num, cr, cs, cg, wpc, rpc, smear_type
+            algorithm_types,
+            wbc_boxes,
+            wbc_scores,
+            wbc_num,
+            meg_boxes,
+            meg_scores,
+            meg_num,
+            cr,
+            cs,
+            cg,
+            wpc,
+            rpc,
+            smear_type,
         )
-        if warning:
-            result["warning"] = warning
-        return result
-
-    if route_dpi == DPI_357378:
-        url = _multi_pipeline_infer_url("357378", endpoint=endpoint)
-        res_json = _post_multipart_pipeline_infer(
-            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
-        )
+    elif route_dpi == DPI_357378:
         result = _infer_357378_from_pipeline_json(res_json, smear_type)
-        if warning:
-            result["warning"] = warning
-        return result
-
-    if route_dpi == DPI_714756:
-        tasks = _714756_tasks_from_algorithm_types(algorithm_types)
-        url = _multi_pipeline_infer_url("714756", endpoint=endpoint)
-        res_json = _post_multipart_pipeline_infer(
-            url,
-            image_bytes,
-            filename,
-            PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={
-                "tasks": tasks,
-                "slide_type": normalize_smear_type(smear_type),
-            },
-        )
+    elif route_dpi == DPI_714756:
         result = _infer_714756_bm_from_pipeline_json(
             res_json, smear_type, dpi=dpi, resolved=resolved
         )
-        if warning:
-            result["warning"] = warning
-        return result
-
-    if route_dpi == DPI_35000:
-        url = _multi_pipeline_infer_url("35000", endpoint=endpoint)
-        res_json = _post_multipart_pipeline_infer(
-            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
-        )
+    elif route_dpi in (DPI_35000, DPI_71000):
         result = _infer_csf_from_pipeline_json(res_json, smear_type)
-        if warning:
-            result["warning"] = warning
-        return result
+    else:
+        result = {"cells": [], "scores": [], "cell_list": []}
 
-    if route_dpi == DPI_71000:
-        url = _multi_pipeline_infer_url("71000", endpoint=endpoint)
-        res_json = _post_multipart_pipeline_infer(
-            url, image_bytes, filename, PIPELINE_HTTP_TIMEOUT_S
-        )
-        result = _infer_csf_from_pipeline_json(res_json, smear_type)
-        if warning:
-            result["warning"] = warning
-        return result
-
-    result = {"cells": [], "scores": [], "cell_list": []}
     if warning:
         result["warning"] = warning
     return result
@@ -1834,10 +1995,11 @@ def infer_cellularity(
     image_bytes: bytes,
     filename: str = "tile.jpg",
     gpu_id: Optional[int] = None,
+    smear_type: str = "BM",
 ) -> dict[str, Any]:
     """
-    骨髓增生程度：multi_pipeline_server POST /147246/infer_ca。
-    只依赖 DPI147246_BM_PB_cell_analysis，不走定位/评分完整 pipeline。
+    骨髓增生程度：multi_pipeline_server POST /infer（dpi=147246, task=cellularity）。
+    只依赖 LOWRES-CELLULARITY，不走定位/评分完整 pipeline。
     传图前居中补边至固定尺寸 2448x2048。
     """
     if not image_bytes:
@@ -1854,14 +2016,19 @@ def infer_cellularity(
         }
     pad_ms = (time.perf_counter() - t_pad0) * 1000.0
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
-    url = _multi_pipeline_ca_infer_url(endpoint=endpoint)
+    url = _pipeline_infer_url(endpoint=endpoint)
     try:
         t_infer0 = time.perf_counter()
-        res_json = _post_raw_pipeline_infer(
+        res_json = _post_multipart_pipeline_infer(
             url,
             image_bytes,
             filename,
             PIPELINE_HTTP_TIMEOUT_S,
+            extra_form={
+                "dpi": str(DPI_147246),
+                "slide_type": normalize_smear_type(smear_type),
+                "task": "cellularity",
+            },
         )
         infer_ms = (time.perf_counter() - t_infer0) * 1000.0
     except Exception as e:
@@ -1873,20 +2040,11 @@ def infer_cellularity(
             "infer_ms": infer_ms,
             "pad_ms": pad_ms,
         }
+    wpc, rpc = _nested_cellularity_counts(res_json)
     return {
         "ok": True,
-        "wbc_pixel_count": _scalar_int(
-            res_json,
-            "cell_analysis_wbc_pixel_count",
-            "wbc_pixel_count",
-            "CELL_ANALYSIS_WBC_PIXEL_COUNT",
-        ),
-        "red_pixel_count": _scalar_int(
-            res_json,
-            "cell_analysis_red_pixel_count",
-            "red_pixel_count",
-            "CELL_ANALYSIS_RED_PIXEL_COUNT",
-        ),
+        "wbc_pixel_count": wpc,
+        "red_pixel_count": rpc,
         "infer_ms": infer_ms,
         "pad_ms": pad_ms,
     }

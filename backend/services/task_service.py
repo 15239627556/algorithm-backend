@@ -36,8 +36,8 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 _IMAGE_FILE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
-# 增生分析独立路径：只加载 cell_analysis，走 /147246/infer_ca
-_CELLULARITY_MODEL_NAME = "DPI147246_BM_PB_cell_analysis"
+# 增生分析：LOWRES-CELLULARITY，走 /infer（dpi=147246, task=cellularity）
+_CELLULARITY_MODEL_NAME = "LOWRES-CELLULARITY"
 _CELLULARITY_RECT_FILES_DIR = "rect0_files"
 _CELLULARITY_TILE_SIZE = 2048
 _CELLULARITY_ANALYSIS_WIDTH_MM = 10.0

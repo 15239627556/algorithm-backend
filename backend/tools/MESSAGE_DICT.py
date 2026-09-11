@@ -209,12 +209,13 @@ dpi_list = [40, 50, 100]
 allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
 
 # =============================================================================
-# 模型目录（新增模型直接在此追加）
+# 模型目录（新增模型直接在此追加，字段与 DOCS/版本说明.md 对齐）
 # dpi_range: (min, max) 或 None（不限制，分类模型）
-#   请求 DPI 落在区间内才允许，并可缩放到 actual_dpi；否则接口返回「DPI不合适」
-# output: bboxes=定位, tops=分类, scores=评分
+# max_src_w / max_src_h: 原图最大宽高（像素）；None 表示不限
+# pipeline 输出：/infer 按 task 嵌套，见 param_json_out（如 wbc.det.bboxes）
+# output: bboxes=定位, tops=分类, scores=评分, result=其它结构化结果
 # vram_gb: 预估显存（GB）
-# camera=flir 时 DPIALL_BM_PB_WBC_classifier 会被替换为 DPIALL_FLIR_BM_PB_WBC_classifier
+# camera=flir 时 HIGHRES-WBC-CLS 会被替换为 FLIR 专用分类器（1.5G）
 # =============================================================================
 MODEL_TABLE = [
     {
@@ -225,6 +226,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "bboxes",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.7,
     },
     {
@@ -235,6 +238,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "bboxes",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.4,
     },
     {
@@ -245,6 +250,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB",
         "output": "bboxes",
+        "max_src_w": 3200,
+        "max_src_h": 2200,
         "vram_gb": 4.5,
     },
     {
@@ -255,6 +262,8 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "bboxes",
+        "max_src_w": 3200,
+        "max_src_h": 2200,
         "vram_gb": 2.5,
     },
     {
@@ -265,6 +274,8 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "bboxes",
+        "max_src_w": 2448,
+        "max_src_h": 2048,
         "vram_gb": 0.2,
     },
     {
@@ -275,6 +286,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB/CSF",
         "output": "bboxes",
+        "max_src_w": 4896,
+        "max_src_h": 4096,
         "vram_gb": 0.9,
     },
     {
@@ -285,6 +298,8 @@ MODEL_TABLE = [
         "targets": "RBC",
         "smear_types": "PB",
         "output": "bboxes",
+        "max_src_w": 4896,
+        "max_src_h": 4096,
         "vram_gb": 2.5,
     },
     {
@@ -295,6 +310,8 @@ MODEL_TABLE = [
         "targets": "PLAT",
         "smear_types": "PB",
         "output": "bboxes",
+        "max_src_w": 4896,
+        "max_src_h": 4096,
         "vram_gb": 0.8,
     },
     {
@@ -305,6 +322,8 @@ MODEL_TABLE = [
         "targets": "MEG",
         "smear_types": "BM",
         "output": "tops",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.1,
     },
     {
@@ -315,6 +334,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "BM/PB",
         "output": "tops",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.5,
     },
     {
@@ -325,6 +346,8 @@ MODEL_TABLE = [
         "targets": "WBC",
         "smear_types": "CSF",
         "output": "tops",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.5,
     },
     {
@@ -335,6 +358,8 @@ MODEL_TABLE = [
         "targets": "RBC",
         "smear_types": "PB",
         "output": "tops",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.5,
     },
     {
@@ -345,6 +370,8 @@ MODEL_TABLE = [
         "targets": "PLAT",
         "smear_types": "PB",
         "output": "tops",
+        "max_src_w": None,
+        "max_src_h": None,
         "vram_gb": 0.5,
     },
     {
@@ -355,6 +382,8 @@ MODEL_TABLE = [
         "targets": "不限制",
         "smear_types": "BM",
         "output": "scores",
+        "max_src_w": 3200,
+        "max_src_h": 2200,
         "vram_gb": 0.7,
     },
     {
@@ -365,6 +394,8 @@ MODEL_TABLE = [
         "targets": "不限制",
         "smear_types": "PB",
         "output": "scores",
+        "max_src_w": 3200,
+        "max_src_h": 2200,
         "vram_gb": 0.7,
     },
     {
@@ -375,7 +406,9 @@ MODEL_TABLE = [
         "targets": "CELLULARITY",
         "smear_types": "BM/PB",
         "output": "result",
-        "vram_gb": 1.6,
+        "max_src_w": None,
+        "max_src_h": None,
+        "vram_gb": 1.2,
     },
     {
         "name_zh": "全局图分析",
@@ -385,6 +418,8 @@ MODEL_TABLE = [
         "targets": "roi",
         "smear_types": "BM/PB",
         "output": "result",
+        "max_src_w": 3200,
+        "max_src_h": 1280,
         "vram_gb": 1.6,
     },
     {
@@ -395,6 +430,8 @@ MODEL_TABLE = [
         "targets": "dir",
         "smear_types": "BM/PB",
         "output": "result",
+        "max_src_w": 3200,
+        "max_src_h": 1280,
         "vram_gb": 1.6,
     },
 ]
@@ -417,7 +454,10 @@ def model_dpi_ranges() -> dict[int, tuple[int, int]]:
         dr = row.get("dpi_range")
         if not dr or dr == "不限制":
             continue
-        actual = int(row["actual_dpi"])
+        actual_raw = row.get("actual_dpi")
+        if actual_raw is None:
+            continue
+        actual = int(actual_raw)
         low, high = int(dr[0]), int(dr[1])
         if actual in ranges:
             lo, hi = ranges[actual]
@@ -425,6 +465,36 @@ def model_dpi_ranges() -> dict[int, tuple[int, int]]:
         else:
             ranges[actual] = (low, high)
     return ranges
+
+
+def model_max_src_by_actual_dpi() -> dict[int, tuple[int, int] | None]:
+    """
+    actual_dpi → 该档位 detection/score 模型的原图尺寸上限 (max_w, max_h)。
+    若该档位所有相关模型均不限尺寸，则值为 None。
+    """
+    limits: dict[int, tuple[int, int]] = {}
+    has_limited: dict[int, bool] = {}
+    for row in MODEL_TABLE:
+        if row.get("output") not in ("bboxes", "scores"):
+            continue
+        actual_raw = row.get("actual_dpi")
+        if actual_raw is None:
+            continue
+        actual = int(actual_raw)
+        mw, mh = row.get("max_src_w"), row.get("max_src_h")
+        if mw is None or mh is None:
+            has_limited.setdefault(actual, False)
+            continue
+        has_limited[actual] = True
+        cur = limits.get(actual)
+        if cur is None:
+            limits[actual] = (int(mw), int(mh))
+        else:
+            limits[actual] = (max(cur[0], int(mw)), max(cur[1], int(mh)))
+    out: dict[int, tuple[int, int] | None] = {}
+    for actual in set(limits) | set(has_limited):
+        out[actual] = limits[actual] if has_limited.get(actual) else None
+    return out
 
 
 

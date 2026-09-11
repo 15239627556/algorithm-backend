@@ -41,7 +41,7 @@ KIND_SCORE = "score"
 _IMAGE_ENHANCE_MODELS: Tuple[str, ...] = ("Image_enhance",)
 # Triton 仓库名与 MODEL_TABLE.name 不一致时的映射（驱逐 / 显存估算用 catalog 元数据）
 _TRITON_MODEL_ALIASES: dict[str, str] = {
-    "DPI147246_BM_PB_cell_analysis": "LOWRES-CELLULARITY",
+    "DPI147246_BM_PB_cell_analysis": "LOWRES-CELLULARITY",  # 遗留 Triton 名
 }
 
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))

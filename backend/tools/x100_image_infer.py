@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from backend.tools.MESSAGE_DICT import DPI_NOT_SUITABLE, model_dpi_ranges
+from backend.tools.MESSAGE_DICT import DPI_NOT_SUITABLE, model_dpi_ranges, model_max_src_by_actual_dpi
 from backend.tools.combo_validator import LEGACY_DPI_MAP, _parse_cell_types, normalize_smear_type
 from backend.tools.image_tiling import (
     DEFAULT_TILE_OVERLAP,
@@ -30,25 +30,31 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-# 切块限制按 MODEL_TABLE 的 actual_dpi 索引；(max_w, max_h, min_w, min_h)
-# None 表示无尺寸限制（CSF 定位）
-_DPI_TILE_LIMITS: dict[int, tuple[int, int, int, int] | None] = {
-    147246: (3200, 2200, 2448, 2048),
-    357378: (2448, 2048, 2448, 2048),
-    714756: (4896, 4896, 2048, 1536),
-    35000: None,
-    71000: None,
+# 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
+_DPI_TILE_MIN: dict[int, tuple[int, int]] = {
+    147246: (2448, 2048),
+    357378: (2448, 2048),
+    714756: (2048, 1536),
 }
 
 
 def model_tile_limits(actual_dpi: int) -> tuple[int, int, int, int] | None:
     """返回 (max_w, max_h, min_w, min_h)；None 表示该 DPI 无尺寸限制。"""
     dpi = int(actual_dpi)
-    if dpi in _DPI_TILE_LIMITS:
-        return _DPI_TILE_LIMITS[dpi]
     if dpi in (35000, 71000):
         return None
-    return _DPI_TILE_LIMITS.get(714756 if dpi >= 500000 else 357378)
+    max_by_dpi = model_max_src_by_actual_dpi()
+    max_limits = max_by_dpi.get(dpi)
+    if max_limits is None:
+        fallback_dpi = 714756 if dpi >= 500000 else 357378
+        max_limits = max_by_dpi.get(fallback_dpi)
+        min_limits = _DPI_TILE_MIN.get(fallback_dpi)
+    else:
+        min_limits = _DPI_TILE_MIN.get(dpi)
+    if max_limits is None:
+        return None
+    min_w, min_h = min_limits or (0, 0)
+    return max_limits[0], max_limits[1], min_w, min_h
 
 
 def model_tile_max_limits(actual_dpi: int) -> tuple[int, int] | None:

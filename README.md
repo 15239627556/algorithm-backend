@@ -44,8 +44,7 @@ FastAPI（app.py）
 
 | 路由 | 用途 |
 |------|------|
-| `POST /147246/infer` 等 | 按 DPI 的细胞检测 pipeline |
-| `POST /147246/infer_ca` | 骨髓增生程度（cellularity）专用 |
+| `POST /infer` | 统一细胞检测（Form：`dpi`+`slide_type`+`task`+`image`） |
 | `POST /global/infer` | 全局图 ROI / 头部朝向 |
 | `POST /opencv_enhance/infer` | OpenCV 滤镜（裸流） |
 | `POST /image_enhance/infer` | 深度学习超分滤镜（裸流） |
@@ -146,7 +145,8 @@ curl http://localhost:3090/health
 | `TRITON_LOAD_TIMEOUT` | `600` | Triton 模型 load 超时（秒） |
 | `PIPELINE_HTTP_TIMEOUT_S` | `600` | multi_pipeline 推理读超时（秒） |
 | `PIPELINE_HTTP_CONNECT_TIMEOUT_S` | `10` | multi_pipeline 连接超时（秒） |
-| `PIPELINE_147246_INFER_URL` | （空） | 可选，覆盖 147246 infer 完整 URL |
+| `PIPELINE_INFER_URL` | （空） | 可选，覆盖 `/infer` 完整 URL |
+| `PIPELINE_147246_INFER_URL` | （空） | 遗留别名，同 `PIPELINE_INFER_URL` |
 | `MAX_MEMORY` | `11` | Triton 侧显存预算（GB） |
 | `RESERVED_MEMORY` | `1` | 预留显存（GB） |
 
