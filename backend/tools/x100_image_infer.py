@@ -18,6 +18,7 @@ from backend.tools.image_tiling import (
     tile_ranges_1d,
 )
 from backend.tools.triton_client import infer, resolve_triton_route
+from backend.tools.pipeline_guard import PipelineUnavailable, assert_inference_allowed
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_elongated_1pct,
     filter_cell_dicts_edge_incomplete,
@@ -595,6 +596,10 @@ def run_cell_image_infer(
     ensure_loaded: 平扫 create_task 已预热时传 False，避免每张图再打 Triton /load。
     allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
     """
+    try:
+        assert_inference_allowed()
+    except PipelineUnavailable as e:
+        return {"ok": False, "error": str(e)}
     input_dpi = int(dpi)
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or ""

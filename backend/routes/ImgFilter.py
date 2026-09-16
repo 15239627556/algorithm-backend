@@ -2,6 +2,7 @@ from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from backend.tools.triton_client import infer_image_enhance, infer_opencv_enhance
+from backend.tools.pipeline_guard import PipelineUnavailable
 
 ImgFilter = APIRouter(prefix="/img_filter", tags=["图片滤镜接口"])
 
@@ -27,6 +28,8 @@ def x100_img_filter(image_file: UploadFile = File(..., description="图像文件
         return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
     try:
         enhanced_bytes, content_type = infer_opencv_enhance(image_bytes)
+    except PipelineUnavailable as e:
+        return JSONResponse(status_code=503, content={"message": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
     return _image_filter_response(filename, enhanced_bytes, content_type)
@@ -41,6 +44,8 @@ def x40_img_filter_pt(image_file: UploadFile = File(..., description="图像文�
         return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
     try:
         enhanced_bytes, content_type = infer_opencv_enhance(image_bytes)
+    except PipelineUnavailable as e:
+        return JSONResponse(status_code=503, content={"message": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
     return _image_filter_response(filename, enhanced_bytes, content_type)
@@ -55,6 +60,8 @@ def x40_img_filter(image_file: UploadFile = File(..., description="图像文件�
         return JSONResponse(status_code=400, content={"message": "无效的图片文件"})
     try:
         enhanced_bytes, content_type = infer_image_enhance(image_bytes)
+    except PipelineUnavailable as e:
+        return JSONResponse(status_code=503, content={"message": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"Filter inference failed: {e}"})
     return _image_filter_response(filename, enhanced_bytes, content_type)

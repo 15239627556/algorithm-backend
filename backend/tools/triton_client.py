@@ -44,6 +44,11 @@ from backend.tools.model_control import (
     ResolvedModels,
 )
 from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
+from backend.tools.pipeline_guard import (
+    PipelineUnavailable,
+    assert_inference_allowed,
+    trip_on_timeout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,18 +102,18 @@ _PIPELINE_INFER_URL_RAW = (
     or os.environ.get("PIPELINE_147246_INFER_URL", "").strip().rstrip("/")
 )
 
-PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "600"))
+PIPELINE_HTTP_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_TIMEOUT_S", "10"))
 
 # cell_analysis 模型固定输入尺寸；不足时居中补 RGB(230,230,230)
 _CELL_ANALYSIS_TARGET_W = 2448
 _CELL_ANALYSIS_TARGET_H = 2048
 _CELL_ANALYSIS_PAD_RGB = (230, 230, 230)
 
-# 连接建立阶段的超时（秒）。读取阶段用 PIPELINE_HTTP_TIMEOUT_S，推理耗时较长故单独区分。
+# 连接建立阶段的超时（秒）。读取阶段用 PIPELINE_HTTP_TIMEOUT_S（默认 10s）。
+# 读超时连续 3 次则熔断并 force_exit 重启推理服务。
 PIPELINE_HTTP_CONNECT_TIMEOUT_S = float(os.environ.get("PIPELINE_HTTP_CONNECT_TIMEOUT_S", "10"))
-# 仅对“连接建立失败”做有限重试；推理 POST 非幂等，故不重试已发出的请求（read/status 不重试）。
 _PIPELINE_HTTP_CONNECT_RETRIES = int(os.environ.get("PIPELINE_HTTP_CONNECT_RETRIES", "2"))
-# pipeline 裸流 POST 连接层失败时的应用层重试次数（含首次，默认最多 3 次）。
+# pipeline POST 应用层重试次数（含首次，默认最多 3 次）：连接失败或超时。
 _PIPELINE_HTTP_POST_MAX_ATTEMPTS = int(os.environ.get("PIPELINE_HTTP_POST_MAX_ATTEMPTS", "3"))
 # 连接池：按 host 复用；需 ≥ Web 侧并发（双端点轮询时每端各占一半）。
 # 默认与 THREAD_POOL_SIZE 同量级，否则线程多了也只会在 urllib3 池里排队。
@@ -171,6 +176,73 @@ def _reset_pipeline_session() -> None:
         except Exception:
             pass
         _thread_local.pipeline_session = None
+
+
+def _pipeline_session_post(
+    *,
+    url: str,
+    timeout_s: float,
+    log_ctx: str,
+    data: Any = None,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    files: dict[str, Any] | None = None,
+) -> requests.Response:
+    """
+    推理 POST：超时 10s（可配）内最多 3 次；三次仍超时则熔断并重启推理服务。
+    熔断期间拒绝全部后续请求，直到所有卡 /health ready。
+    """
+    assert_inference_allowed()
+    last_timeout: requests.exceptions.Timeout | None = None
+    last_conn: requests.exceptions.ConnectionError | None = None
+    for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
+        assert_inference_allowed()
+        try:
+            return _get_pipeline_session().post(
+                url,
+                params=params,
+                data=data,
+                files=files,
+                headers=headers,
+                timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
+            )
+        except requests.exceptions.Timeout as e:
+            last_timeout = e
+            logger.warning(
+                "%s 超时 (attempt %d/%d, timeout=%ss): %s",
+                log_ctx,
+                attempt,
+                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
+                timeout_s,
+                e,
+            )
+            _reset_pipeline_session()
+        except requests.exceptions.ConnectionError as e:
+            last_conn = e
+            logger.warning(
+                "%s 连接失败 (attempt %d/%d): %s",
+                log_ctx,
+                attempt,
+                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
+                e,
+            )
+            _reset_pipeline_session()
+            if attempt < _PIPELINE_HTTP_POST_MAX_ATTEMPTS:
+                time.sleep(0.5 * attempt)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"{log_ctx} 请求失败: {e}") from e
+
+    if last_timeout is not None:
+        trip_on_timeout(url=url)
+        raise PipelineUnavailable(
+            f"{log_ctx} 连续超时 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次，"
+            "已触发全部推理服务重启，暂不接收图片推理"
+        ) from last_timeout
+    if last_conn is not None:
+        raise RuntimeError(
+            f"{log_ctx} 请求失败（已重试 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次）: {last_conn}"
+        ) from last_conn
+    raise RuntimeError(f"{log_ctx} 请求失败")
 
 
 def _normalize_http_url(url_or_hostport: str) -> str:
@@ -237,38 +309,13 @@ def _post_filter_pipeline_infer(
     if not url.lower().startswith("http"):
         url = f"http://{url}"
 
-    last_error: requests.exceptions.RequestException | None = None
-    resp: requests.Response | None = None
-    for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
-        try:
-            resp = _get_pipeline_session().post(
-                url,
-                data=image_bytes,
-                headers={"Content-Type": "application/octet-stream"},
-                timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
-            )
-            last_error = None
-            break
-        except requests.exceptions.ConnectionError as e:
-            last_error = e
-            logger.warning(
-                "filter pipeline 连接失败 (attempt %d/%d): %s",
-                attempt,
-                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
-                e,
-            )
-            _reset_pipeline_session()
-            if attempt < _PIPELINE_HTTP_POST_MAX_ATTEMPTS:
-                time.sleep(0.5 * attempt)
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"filter pipeline 请求失败: {e}") from e
-
-    if last_error is not None:
-        raise RuntimeError(
-            f"filter pipeline 请求失败（已重试 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次）: {last_error}"
-        ) from last_error
-
-    assert resp is not None
+    resp = _pipeline_session_post(
+        url=url,
+        timeout_s=timeout_s,
+        log_ctx="filter pipeline",
+        data=image_bytes,
+        headers={"Content-Type": "application/octet-stream"},
+    )
     if resp.status_code >= 400:
         try:
             err_json = resp.json()
@@ -518,48 +565,14 @@ def _post_raw_pipeline_infer(
     # 把filename也放在params中
     params["filename"] = filename
 
-    last_error: requests.exceptions.RequestException | None = None
-    resp: requests.Response | None = None
-    # logger.info(f"url: {url}")
-    for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
-        # logger.info(
-        #     "file_name=%s, 发送请求的时间：%s (attempt %d/%d)",
-        #     filename,
-        #     datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
-        #     attempt,
-        #     _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
-        # )
-        try:
-            resp = _get_pipeline_session().post(
-                url,
-                params=params,        # 👈 核心改动 1：参数走 URL Query
-                data=image_bytes,     # 👈 核心改动 2：直接塞入纯 bytes
-                headers={"Content-Type": "application/octet-stream"}, # 👈 核心改动 3：明确告诉服务端这是纯二进制
-                timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
-            )
-            last_error = None
-            break
-        except requests.exceptions.ConnectionError as e:
-            last_error = e
-            logger.warning(
-                "file_name=%s, pipeline 连接失败 (attempt %d/%d): %s",
-                filename,
-                attempt,
-                _PIPELINE_HTTP_POST_MAX_ATTEMPTS,
-                e,
-            )
-            _reset_pipeline_session()
-            if attempt < _PIPELINE_HTTP_POST_MAX_ATTEMPTS:
-                time.sleep(0.5 * attempt)
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
-
-    if last_error is not None:
-        raise RuntimeError(
-            f"pipeline_server 请求失败（已重试 {_PIPELINE_HTTP_POST_MAX_ATTEMPTS} 次）: {last_error}"
-        ) from last_error
-
-    assert resp is not None
+    resp = _pipeline_session_post(
+        url=url,
+        timeout_s=timeout_s,
+        log_ctx=f"pipeline_server file_name={filename}",
+        params=params,
+        data=image_bytes,
+        headers={"Content-Type": "application/octet-stream"},
+    )
 
     if resp.status_code >= 400:
         err_body = resp.text
@@ -598,16 +611,14 @@ def _post_multipart_pipeline_infer(
     # requests 自动生成 boundary 并设置 Content-Type；普通字段走 data，文件走 files。
     data = {name: str(value) for name, value in extra_form.items()} if extra_form else None
     files = {"image": (filename, image_bytes, "image/jpeg")}
-    try:
-        resp = _get_pipeline_session().post(
-            url,
-            data=data,
-            files=files,
-            headers=headers or None,
-            timeout=(PIPELINE_HTTP_CONNECT_TIMEOUT_S, timeout_s),
-        )
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"pipeline_server 请求失败: {e}") from e
+    resp = _pipeline_session_post(
+        url=url,
+        timeout_s=timeout_s,
+        log_ctx=f"pipeline_server file_name={filename}",
+        data=data,
+        files=files,
+        headers=headers or None,
+    )
 
     if resp.status_code >= 400:
         err_body = resp.text
@@ -1762,7 +1773,8 @@ def _get_client(gpu_id: int = 0):
 
 
 def _resolve_triton_route(gpu_id: Optional[int] = None) -> tuple[int, dict]:
-    """与滤镜路径一致：显式 gpu_id 定点，否则 next_triton_endpoint 轮询单卡。"""
+    """与滤镜路径一致：显式 gpu_id 定点，否则 next_triton_endpoint 轮询单卡。熔断时整组拒绝。"""
+    assert_inference_allowed()
     if gpu_id is not None:
         gid = int(gpu_id)
         return gid, get_triton_endpoint(gid)
@@ -1821,6 +1833,7 @@ def infer(
     单张识别见 get_task_result_x100。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     """
+    assert_inference_allowed()
     resolved = resolve_models(dpi, smear_type, algorithm_types)
     warning = resolved.warning
     route_dpi = _infer_route_dpi(resolved)
@@ -1951,6 +1964,7 @@ def infer_global_image(
     全局图分析：multi_pipeline_server POST /global/infer。
     固定模型 GLOBAL-IMAGE-ANALYSIS（roi）与 GLOBAL-IMAGE-HEAD-DIR（dir）。
     """
+    assert_inference_allowed()
     if not image_bytes:
         raise ValueError("empty image payload")
 
@@ -2002,6 +2016,10 @@ def infer_cellularity(
     只依赖 LOWRES-CELLULARITY，不走定位/评分完整 pipeline。
     传图前居中补边至固定尺寸 2448x2048。
     """
+    try:
+        assert_inference_allowed()
+    except PipelineUnavailable as e:
+        return {"ok": False, "error": str(e), "infer_ms": 0.0, "pad_ms": 0.0}
     if not image_bytes:
         return {"ok": False, "error": "empty image payload", "infer_ms": 0.0, "pad_ms": 0.0}
     t_pad0 = time.perf_counter()
@@ -2031,6 +2049,8 @@ def infer_cellularity(
             },
         )
         infer_ms = (time.perf_counter() - t_infer0) * 1000.0
+    except PipelineUnavailable as e:
+        return {"ok": False, "error": str(e), "infer_ms": 0.0, "pad_ms": pad_ms}
     except Exception as e:
         return {"ok": False, "error": str(e), "infer_ms": 0.0, "pad_ms": pad_ms}
     if res_json.get("error"):
@@ -2055,7 +2075,7 @@ def infer_image_enhance(image_bytes: bytes) -> tuple[bytes, str]:
     x40 深度学习滤镜：multi_pipeline_server POST /image_enhance/infer（裸流）。
     推理前先 ensure_model_loaded(Image_enhance_pipeline)，与检测模型共用 LRU。
     """
-    gpu_id, endpoint = next_triton_endpoint()
+    gpu_id, endpoint = _resolve_triton_route()
     _ensure_filter_model_loaded(endpoint, gpu_id, "image_enhance")
     url = _filter_pipeline_infer_url("image_enhance", endpoint=endpoint)
     logger.debug(
@@ -2073,7 +2093,7 @@ def infer_opencv_enhance(image_bytes: bytes) -> tuple[bytes, str]:
     输入: 原始图片字节（jpg/png）
     输出: (增强后的图片字节, content_type)
     """
-    gpu_id, endpoint = next_triton_endpoint()
+    gpu_id, endpoint = _resolve_triton_route()
     url = _filter_pipeline_infer_url("opencv_enhance", endpoint=endpoint)
     logger.debug(
         "infer_opencv_enhance route gpu_id=%s name=%s url=%s",

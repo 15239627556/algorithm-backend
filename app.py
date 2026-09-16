@@ -6,6 +6,7 @@ import queue
 import logging
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler, QueueHandler, QueueListener
+from typing import Any
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.join(root_dir, "backend")
@@ -22,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.routes.ImgFilter import ImgFilter
 from backend.routes.task import task
+from backend.tools.pipeline_guard import collect_inference_health, is_circuit_open, circuit_snapshot
 from config import APP_HOST, APP_PORT, THREAD_POOL_SIZE, sufa_version, is_doc
 
 os.makedirs("backend/uploads", exist_ok=True)
@@ -329,8 +331,30 @@ app.add_middleware(AccessLogMiddleware)
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    """检查 config 中配置的 multi_pipeline 推理服务是否就绪。任一张卡熔断视为 not_ready。"""
+    inference, ready = collect_inference_health()
+    not_ready = []
+    for item in inference:
+        if item.get("status") == "ok":
+            continue
+        name = item.get("name") or "triton_gpu{}".format(item.get("gpu_id", 0))
+        not_ready.append("{} not ready".format(name))
+    if ready:
+        ret_desc = "success"
+    elif not_ready:
+        ret_desc = ", ".join(not_ready)
+    else:
+        ret_desc = "triton not_ready"
+    body: dict[str, Any] = {
+        "ret_code": 200 if ready else 201,
+        "ret_desc": ret_desc,
+        "inference": inference,
+    }
+    if is_circuit_open():
+        body["circuit"] = circuit_snapshot()
+    return body
+
 
 
 if __name__ == "__main__":
