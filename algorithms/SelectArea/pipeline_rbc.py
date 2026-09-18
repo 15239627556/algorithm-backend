@@ -22,6 +22,7 @@ from .selection import (
     expand_selection_to_target,
 )
 from .task_region_extraction import (
+    build_bubble_forbidden_mask,
     build_forbidden_mask,
     generate_initial_and_extra_tasks,
 )
@@ -82,7 +83,8 @@ class RBCSamplingPipeline:
         self.cell_matrix = None
         self.best_res = None
         self.task_rects = None
-        self.forbidden_mask = None
+        self.forbidden_mask = None  # label=5 禁区
+        self.bubble_forbidden_mask = None  # 空泡膨胀禁区
         self.user_search_mask = None
 
     def run(
@@ -151,6 +153,8 @@ class RBCSamplingPipeline:
         target_num = self.cfg.target_cell_num_WBC * self.cfg.target_ratio
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
+        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg)
 
         if all_cell_count < target_num:
             if self.cfg.user_choice_area:
@@ -214,20 +218,27 @@ class RBCSamplingPipeline:
             user_search_mask=self.user_search_mask,
         )
 
+        # 生成拍摄区域与有效细胞：与骨髓一致，规避 label=5 ∪ 空泡
+        region_forbidden = self.forbidden_mask
+        if self.bubble_forbidden_mask is not None:
+            region_forbidden = np.where(
+                (self.forbidden_mask > 0) | (self.bubble_forbidden_mask > 0),
+                1,
+                0,
+            ).astype(np.uint8)
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
             grid=self.grid,
             cell_matrix=self.cell_matrix,
             tiles=tiles,
             config=self.cfg,
+            forbidden_mask=region_forbidden,
         )
-
-        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
         valid_cells = collect_valid_cells_vectorized(
             all_cells_array=all_cells_array,
             best_selection=self.best_res,
             grid=self.grid,
-            forbidden_mask=self.forbidden_mask,
+            forbidden_mask=region_forbidden,
         )
 
         final_tasks = generate_wbc_view_tasks(

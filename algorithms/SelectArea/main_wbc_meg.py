@@ -376,6 +376,7 @@ def run_one_project(
         project=project,
         wbc_rects=wbc_rects,
         roi=roi,
+        heatmap_grid=wbc_pipeline.grid,
     )
     t_meg = time.time() - t1
     print(f"[MEG] {len(meg_tasks)} views, {t_meg:.3f}s")

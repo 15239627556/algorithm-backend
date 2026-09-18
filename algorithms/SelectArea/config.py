@@ -56,6 +56,20 @@ class BM40Config:
     bmp_label: int = field(default=5, init=False)                            # 骨髓小粒规避参数
     forbidden_label5_min_component_size: int = field(default=32, init=False)    # label=5 连通域格数 >=32 才视为禁区
     init_task_select_ratio: float = field(default=0.3, init=False)           # 生成初始拍摄任务时，阈值搜索允许误差比例
+
+    # --- 空泡规避（仅用热力图分值，不读 40 倍图；BM/PB 均启用） ---
+    # 高分涂抹体填洞 → 口袋 = 填洞后 − 填洞前 → 圆/椭圆筛选 → 按百倍视野尺度膨胀。
+    bubble_avoid_enabled: bool = field(default=True, init=False)
+    bubble_smear_ratio: float = field(default=0.3, init=False)  # 涂抹体阈值：bg + ratio*(max-bg)
+    bubble_close_ksize: Tuple[int, int] = field(default=(5, 5), init=False)  # 仅封涂抹体小缝，勿过大
+    bubble_open_ksize: Tuple[int, int] = field(default=(3, 3), init=False)   # 口袋开运算去碎噪
+    bubble_min_area: int = field(default=100, init=False)  # 口袋最小面积（格）
+    bubble_max_area: int = field(default=5000, init=False)  # 口袋最大面积（格）
+    bubble_min_circularity: float = field(default=0.60, init=False)  # 小面积最小圆度
+    bubble_large_area_threshold: int = field(default=400, init=False)  # 大于该面积改用大空泡圆度
+    bubble_min_circularity_large: float = field(default=0.40, init=False)  # 大面积最小圆度
+    bubble_max_aspect_ratio: float = field(default=2.5, init=False)  # 最大外接框长宽比
+    bubble_dilate_extra_cells: int = field(default=3, init=False)  # 最终禁区再扩格数
    
     # --- 评分海岸线惩罚（尺寸均为 Python 热力图格数） ---
     coast_penalty_enabled: bool = field(default=True, init=False)

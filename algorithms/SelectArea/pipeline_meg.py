@@ -12,8 +12,8 @@ if str(root_dir) not in sys.path:
 from project.smear_project import SmearProject
 from .config import BM40Config
 from .data_structure import TaskOutput
-from .heatmaps import HeatmapGrid, compute_global_bounds_from_tiles
-from .task_region_extraction import build_forbidden_mask
+from .heatmaps import HeatmapGrid, build_score_heatmap, compute_global_bounds_from_tiles
+from .task_region_extraction import build_bubble_forbidden_mask, build_forbidden_mask
 from .task_meg import generate_meg_view_tasks
 
 if TYPE_CHECKING:
@@ -85,6 +85,7 @@ class MegSamplingPipeline:
         self.cfg = config
         self.grid = None
         self.forbidden_mask = None
+        self.bubble_forbidden_mask = None
 
     def run_meg(
         self,
@@ -92,6 +93,7 @@ class MegSamplingPipeline:
         wbc_rects: List[List[int]] | None = None,
         *,
         roi: Optional["RoiDataset"] = None,
+        heatmap_grid: Optional[HeatmapGrid] = None,
     ) -> List[TaskOutput]:
         if roi is not None:
             tiles = roi.tiles
@@ -133,18 +135,35 @@ class MegSamplingPipeline:
             print("[INFO][MEG] 未在 40x tiles 中找到任何巨核细胞。")
             return []
 
-        # 4. 构建 HeatmapGrid（仅依赖 scores，不涉及细胞类型）
-        self.grid = _build_lightweight_grid_for_mask(tiles, self.cfg.cell_size)
+        # 4. 热力图：空泡检测需要分值；可复用有核 grid，否则按需构建
+        if heatmap_grid is not None:
+            self.grid = heatmap_grid
+        elif getattr(self.cfg, "bubble_avoid_enabled", False):
+            self.grid = (
+                roi.build_heatmap_grid(self.cfg)
+                if roi is not None
+                else build_score_heatmap(tiles, config=self.cfg)
+            )
+        else:
+            self.grid = _build_lightweight_grid_for_mask(tiles, self.cfg.cell_size)
 
-        # 5. 构建禁区掩码（与 WBC 流程保持一致）
+        # 5. 禁区：label=5 与空泡分开构建后再合并过滤细胞
         self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg)
+        region_forbidden = self.forbidden_mask
+        if self.bubble_forbidden_mask is not None:
+            region_forbidden = np.where(
+                (self.forbidden_mask > 0) | (self.bubble_forbidden_mask > 0),
+                1,
+                0,
+            ).astype(np.uint8)
 
-        # 6. 使用 forbidden_mask 过滤巨核细胞（不在禁区内的才保留）
+        # 6. 使用合并禁区过滤巨核细胞（不在禁区内的才保留）
         centers = 0.5 * (all_meg_cells_array[:, 0:2] + all_meg_cells_array[:, 2:4])
         gxs = ((centers[:, 0] - self.grid.origin_x) // self.grid.cell_size).astype(np.int32)
         gys = ((centers[:, 1] - self.grid.origin_y) // self.grid.cell_size).astype(np.int32)
 
-        rows, cols = self.forbidden_mask.shape
+        rows, cols = region_forbidden.shape
         in_bounds = (gxs >= 0) & (gxs < cols) & (gys >= 0) & (gys < rows)
         if not np.any(in_bounds):
             print("[INFO][MEG] 所有巨核细胞均落在网格之外。")
@@ -153,7 +172,7 @@ class MegSamplingPipeline:
         valid_pos_idx = np.where(in_bounds)[0]
         valid_gxs = gxs[in_bounds]
         valid_gys = gys[in_bounds]
-        non_forbidden = self.forbidden_mask[valid_gys, valid_gxs] == 0
+        non_forbidden = region_forbidden[valid_gys, valid_gxs] == 0
         keep_idx = valid_pos_idx[non_forbidden]  # 0 表示非禁区
 
         if keep_idx.size == 0:
