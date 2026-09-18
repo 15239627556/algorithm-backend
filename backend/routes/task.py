@@ -151,6 +151,10 @@ class AnalyzeSlideBody(BaseModel):
     model_config = ConfigDict(extra="allow")
     task_id: Optional[str] = None
     analyze_names: list[Any] = Field(default_factory=list)
+    save_heatmap: Optional[bool] = Field(
+        default=None,
+        description="是否保存增生热力图 PNG；默认跟随 SAVE_HEATMAP",
+    )
 
 
 class ModelControlBody(BaseModel):
@@ -352,7 +356,11 @@ def analyze_slide(body: AnalyzeSlideBody):
             "ret_desc": f"Unsupported analyze item: {invalid}, only supported: {list(ALLOWED_ANALYZE_NAMES)}",
             "result": {},
         }
-    result = taskService.analyze_slide(task_id, analyze_names)
+    result = taskService.analyze_slide(
+        task_id,
+        analyze_names,
+        save_heatmap=body.save_heatmap,
+    )
     return result
 
 

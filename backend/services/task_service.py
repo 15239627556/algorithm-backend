@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 
 import numpy as np
 import orjson
-from config import cellularity_file_path_prefix
+from config import cellularity_file_path_prefix, save_heatmap as default_save_heatmap
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder
@@ -171,6 +171,14 @@ def _task_info_path(task_id: str) -> str:
 def _task_tiles_dir(task_id: str) -> str:
     """单块推理结果目录：uploads/{task_id}/tiles/{row}_{col}.json"""
     return os.path.join(upload_folder, task_id, "tiles")
+
+
+def _cellularity_heatmap_dir(task_id: str) -> str:
+    return os.path.join(upload_folder, task_id, "heatmaps")
+
+
+def _save_cellularity_color_map_png(rgb: np.ndarray, dest_path: str) -> None:
+    Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(dest_path)
 
 
 def _tile_result_path(task_id: str, row_index: int, col_index: int) -> str:
@@ -1030,6 +1038,7 @@ class TaskService:
         info: dict,
         folder_path: str,
         analysis_rect: dict | None,
+        save_heatmap: bool = False,
     ) -> tuple[dict | None, dict | None, dict]:
         timings = {"pad_ms": 0.0, "infer_ms": 0.0}
         request_folder_path = str(folder_path)
@@ -1077,6 +1086,10 @@ class TaskService:
         success_count = 0
         total_infer_ms = 0.0
         total_pad_ms = 0.0
+        heatmaps: list[dict] = []
+        heatmap_dir = _cellularity_heatmap_dir(task_id) if save_heatmap else None
+        if heatmap_dir:
+            os.makedirs(heatmap_dir, exist_ok=True)
 
         def _infer_one(image_path: str) -> tuple[str, dict]:
             with open(image_path, "rb") as f:
@@ -1085,6 +1098,8 @@ class TaskService:
                 image_bytes,
                 filename=os.path.basename(image_path),
                 gpu_id=gpu_id,
+                smear_type=str(info.get("smear_type") or "BM"),
+                save_heatmap=save_heatmap,
             )
             return image_path, result
 
@@ -1108,6 +1123,14 @@ class TaskService:
                         wbc_pixel_count += int(result.get("wbc_pixel_count") or 0)
                         red_pixel_count += int(result.get("red_pixel_count") or 0)
                         success_count += 1
+                        if save_heatmap:
+                            item = self._persist_cellularity_color_map(
+                                image_path,
+                                result,
+                                heatmap_dir,
+                            )
+                            if item:
+                                heatmaps.append(item)
                 except Exception as e:
                     logger.exception(
                         "cellularity infer failed task_id=%s image=%s",
@@ -1116,7 +1139,11 @@ class TaskService:
                     )
                     failed_images.append({"image_path": image_path, "reason": str(e)})
 
-        timings = {"pad_ms": total_pad_ms, "infer_ms": total_infer_ms}
+        timings = {
+            "pad_ms": total_pad_ms,
+            "infer_ms": total_infer_ms,
+            "heatmaps": heatmaps,
+        }
         if success_count <= 0:
             return None, {
                 'ret_code': RetCode.CLIENT_ERROR.value,
@@ -1126,6 +1153,7 @@ class TaskService:
                 'result': {},
             }, timings
 
+        heatmaps.sort(key=lambda item: str(item.get("image_path") or ""))
         info['wbc_pixel_count'] = wbc_pixel_count
         info['red_pixel_count'] = red_pixel_count
         info['cellularity_image_count'] = success_count
@@ -1136,14 +1164,43 @@ class TaskService:
         info['cellularity_folder_path'] = resolved_folder_path
         info['cellularity_analysis_rect'] = analysis_rect
         info['cellularity_analyzed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        info['cellularity_heatmap_dir'] = heatmap_dir
+        info['cellularity_heatmaps'] = heatmaps
         _save_task_info(task_id, info)
         return info, None, timings
+
+    def _persist_cellularity_color_map(
+        self,
+        image_path: str,
+        result: dict,
+        heatmap_dir: str | None,
+    ) -> dict | None:
+        rgb = result.get("color_map_rgb")
+        if rgb is None or not heatmap_dir:
+            logger.warning("cellularity heatmap missing image=%s", image_path)
+            return None
+        stem = os.path.splitext(os.path.basename(image_path))[0]
+        heatmap_path = os.path.join(heatmap_dir, f"{stem}.png")
+        try:
+            _save_cellularity_color_map_png(rgb, heatmap_path)
+        except Exception as e:
+            logger.warning(
+                "save cellularity heatmap failed image=%s err=%s",
+                image_path,
+                e,
+            )
+            return None
+        return {
+            "image_path": image_path,
+            "heatmap_path": heatmap_path,
+        }
 
     def _has_cached_cellularity_pixels(
         self,
         info: dict,
         folder_path: str,
         analysis_rect: dict | None,
+        save_heatmap: bool = False,
     ) -> bool:
         request_folder_path = str(folder_path)
         resolved_folder_path = self._resolve_cellularity_folder_path(request_folder_path)
@@ -1161,13 +1218,19 @@ class TaskService:
             self._cellularity_rect_key(info.get('cellularity_analysis_rect'))
             == self._cellularity_rect_key(analysis_rect)
         )
-        return (
+        has_pixels = (
             same_path
             and same_rect
             and 'wbc_pixel_count' in info
             and 'red_pixel_count' in info
             and info.get('cellularity_image_count') is not None
         )
+        if not has_pixels:
+            return False
+        if not save_heatmap:
+            return True
+        heatmaps = info.get('cellularity_heatmaps')
+        return isinstance(heatmaps, list) and len(heatmaps) > 0
 
     def _ensure_largest_task_rect(
         self,
@@ -1209,16 +1272,23 @@ class TaskService:
         self,
         task_id: str,
         analyze_names: list,
+        save_heatmap: bool | None = None,
     ) -> dict:
         """
         玻片分析（骨髓玻片增生分析等）。
         cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
+        save_heatmap 为 True 时向推理服务请求 color_map，解码后保存为可直接查看的 PNG。
         """
+        if save_heatmap is None:
+            save_heatmap = bool(default_save_heatmap)
+        else:
+            save_heatmap = bool(save_heatmap)
         t0 = time.perf_counter()
         logger.info(
-            "analyze_slide start task_id=%s analyze_names=%s",
+            "analyze_slide start task_id=%s analyze_names=%s save_heatmap=%s",
             task_id[:8],
             analyze_names,
+            save_heatmap,
         )
         pad_ms = 0.0
         infer_ms = 0.0
@@ -1253,21 +1323,30 @@ class TaskService:
             return _finish(analysis_err)
         cache_hit = False
         cellularity_folder_path = None
+        heatmaps: list[dict] = []
         if 'cellularity' in analyze_names:
             cellularity_folder_path, path_err = self._latest_cellularity_folder_path(info)
             if path_err:
                 return _finish(path_err)
-            if self._has_cached_cellularity_pixels(info, cellularity_folder_path, analysis_rect):
+            if self._has_cached_cellularity_pixels(
+                info,
+                cellularity_folder_path,
+                analysis_rect,
+                save_heatmap=save_heatmap,
+            ):
                 cache_hit = True
+                heatmaps = list(info.get('cellularity_heatmaps') or [])
             else:
                 info, calc_err, timings = self._calculate_cellularity_pixels(
                     task_id,
                     info,
                     cellularity_folder_path,
                     analysis_rect,
+                    save_heatmap=save_heatmap,
                 )
                 pad_ms = float(timings.get("pad_ms") or 0.0)
                 infer_ms = float(timings.get("infer_ms") or 0.0)
+                heatmaps = list(timings.get("heatmaps") or [])
                 if calc_err:
                     return _finish(calc_err)
 
@@ -1288,6 +1367,10 @@ class TaskService:
             result['cache_hit'] = cache_hit
             result['largest_task_rect'] = largest_task_rect
             result['analysis_rect'] = analysis_rect
+            result['save_heatmap'] = save_heatmap
+            if save_heatmap:
+                result['heatmap_dir'] = info.get('cellularity_heatmap_dir')
+                result['heatmaps'] = heatmaps
         return _finish({
             'ret_code': RetCode.API_SUCCESS.value,
             'ret_desc': RetDesc.API_SUCCESS.value,

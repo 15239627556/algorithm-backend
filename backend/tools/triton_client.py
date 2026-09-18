@@ -12,6 +12,7 @@ if __name__ == "__main__":
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
+import base64
 import json
 import logging
 import threading
@@ -722,6 +723,38 @@ def _cls_head_field(cls_block: dict[str, Any], head: str, field: str) -> Optiona
     if not isinstance(head_block, dict):
         return None
     return _as_float64_array(head_block.get(field))
+
+
+def _cellularity_color_map_node(result: dict[str, Any]) -> dict[str, Any] | None:
+    node = _pipeline_task_block(result, "cellularity").get("color_map")
+    return node if isinstance(node, dict) else None
+
+
+def _decode_cellularity_color_map(result: dict[str, Any]) -> np.ndarray | None:
+    """解码 cellularity.color_map（RGB u8_b64）为 HxWx3 uint8；没有则返回 None。"""
+    node = _cellularity_color_map_node(result)
+    if node is None:
+        return None
+    h = int(node.get("h") or 0)
+    w = int(node.get("w") or 0)
+    c = int(node.get("c") or 3)
+    encoding = str(node.get("encoding") or "")
+    layout = str(node.get("layout") or "rgb").lower()
+    data = node.get("data") or ""
+    if h <= 0 or w <= 0 or c != 3 or encoding != "u8_b64" or not isinstance(data, str) or not data:
+        return None
+    raw = base64.b64decode(data)
+    expect = h * w * 3
+    if len(raw) != expect:
+        raise RuntimeError(
+            f"cellularity.color_map 尺寸不匹配: h={h} w={w} c=3 bytes={len(raw)}"
+        )
+    rgb = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 3).copy()
+    if layout == "bgr":
+        return rgb[:, :, ::-1].copy()
+    if layout != "rgb":
+        raise RuntimeError(f"unsupported cellularity.color_map layout: {layout}")
+    return rgb
 
 
 def _nested_cellularity_counts(res: dict[str, Any]) -> tuple[int, int]:
@@ -2010,11 +2043,13 @@ def infer_cellularity(
     filename: str = "tile.jpg",
     gpu_id: Optional[int] = None,
     smear_type: str = "BM",
+    save_heatmap: bool = False,
 ) -> dict[str, Any]:
     """
     骨髓增生程度：multi_pipeline_server POST /infer（dpi=147246, task=cellularity）。
     只依赖 LOWRES-CELLULARITY，不走定位/评分完整 pipeline。
     传图前居中补边至固定尺寸 2448x2048。
+    save_heatmap=True 时请求推理服务返回 cellularity.color_map。
     """
     try:
         assert_inference_allowed()
@@ -2035,6 +2070,13 @@ def infer_cellularity(
     pad_ms = (time.perf_counter() - t_pad0) * 1000.0
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
     url = _pipeline_infer_url(endpoint=endpoint)
+    extra_form = {
+        "dpi": str(DPI_147246),
+        "slide_type": normalize_smear_type(smear_type),
+        "task": "cellularity",
+    }
+    if save_heatmap:
+        extra_form["save_heatmap"] = "true"
     try:
         t_infer0 = time.perf_counter()
         res_json = _post_multipart_pipeline_infer(
@@ -2042,11 +2084,7 @@ def infer_cellularity(
             image_bytes,
             filename,
             PIPELINE_HTTP_TIMEOUT_S,
-            extra_form={
-                "dpi": str(DPI_147246),
-                "slide_type": normalize_smear_type(smear_type),
-                "task": "cellularity",
-            },
+            extra_form=extra_form,
         )
         infer_ms = (time.perf_counter() - t_infer0) * 1000.0
     except PipelineUnavailable as e:
@@ -2061,13 +2099,26 @@ def infer_cellularity(
             "pad_ms": pad_ms,
         }
     wpc, rpc = _nested_cellularity_counts(res_json)
-    return {
+    payload: dict[str, Any] = {
         "ok": True,
         "wbc_pixel_count": wpc,
         "red_pixel_count": rpc,
         "infer_ms": infer_ms,
         "pad_ms": pad_ms,
     }
+    if save_heatmap:
+        try:
+            color_map_rgb = _decode_cellularity_color_map(res_json)
+        except Exception as e:
+            logger.warning(
+                "decode cellularity color_map failed filename=%s err=%s",
+                filename,
+                e,
+            )
+            color_map_rgb = None
+        if color_map_rgb is not None:
+            payload["color_map_rgb"] = color_map_rgb
+    return payload
 
 
 def infer_image_enhance(image_bytes: bytes) -> tuple[bytes, str]:

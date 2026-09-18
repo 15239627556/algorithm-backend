@@ -62,6 +62,7 @@ Makefile
 /access.log
 /error.log
 /backend/uploads/
+/backend/tmp/
 *.ipynb
 *.log
 .vscode/
