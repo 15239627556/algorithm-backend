@@ -14,7 +14,7 @@ import orjson
 from config import cellularity_file_path_prefix, save_heatmap as default_save_heatmap
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
-from backend.tools.public_methods import thread_decorator, upload_folder
+from backend.tools.public_methods import thread_decorator, upload_folder, tmp_folder
 from backend.tools.combo_validator import validate_combo
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from PIL import Image
@@ -174,11 +174,14 @@ def _task_tiles_dir(task_id: str) -> str:
 
 
 def _cellularity_heatmap_dir(task_id: str) -> str:
-    return os.path.join(upload_folder, task_id, "heatmaps")
+    """平扫结束会删除 uploads/{task_id}，热力图放到 tmp/{task_id}/。"""
+    return os.path.join(tmp_folder, task_id)
 
 
-def _save_cellularity_color_map_png(rgb: np.ndarray, dest_path: str) -> None:
-    Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(dest_path)
+def _save_cellularity_heatmap_jpg(rgb: np.ndarray, dest_path: str) -> None:
+    Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB").save(
+        dest_path, format="JPEG", quality=95
+    )
 
 
 def _tile_result_path(task_id: str, row_index: int, col_index: int) -> str:
@@ -1180,9 +1183,9 @@ class TaskService:
             logger.warning("cellularity heatmap missing image=%s", image_path)
             return None
         stem = os.path.splitext(os.path.basename(image_path))[0]
-        heatmap_path = os.path.join(heatmap_dir, f"{stem}.png")
+        heatmap_path = os.path.join(heatmap_dir, f"{stem}.jpg")
         try:
-            _save_cellularity_color_map_png(rgb, heatmap_path)
+            _save_cellularity_heatmap_jpg(rgb, heatmap_path)
         except Exception as e:
             logger.warning(
                 "save cellularity heatmap failed image=%s err=%s",
@@ -1230,7 +1233,9 @@ class TaskService:
         if not save_heatmap:
             return True
         heatmaps = info.get('cellularity_heatmaps')
-        return isinstance(heatmaps, list) and len(heatmaps) > 0
+        if not isinstance(heatmaps, list) or not heatmaps:
+            return False
+        return all(os.path.isfile(str(item.get("heatmap_path") or "")) for item in heatmaps)
 
     def _ensure_largest_task_rect(
         self,
@@ -1277,7 +1282,7 @@ class TaskService:
         """
         玻片分析（骨髓玻片增生分析等）。
         cellularity(增生程度) = red_pixel_count / wbc_pixel_count，保留2位小数。
-        save_heatmap 为 True 时向推理服务请求 color_map，解码后保存为可直接查看的 PNG。
+        save_heatmap 为 True 时向推理服务请求 color_map，解码后保存为 tmp/{task_id}/{图片名}.jpg。
         """
         if save_heatmap is None:
             save_heatmap = bool(default_save_heatmap)

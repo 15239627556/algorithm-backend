@@ -8,6 +8,7 @@ import cProfile
 import pstats
 
 upload_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+tmp_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tmp')
 images_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images')
 
 _logger = logging.getLogger(__name__)

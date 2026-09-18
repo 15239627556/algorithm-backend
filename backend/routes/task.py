@@ -153,7 +153,7 @@ class AnalyzeSlideBody(BaseModel):
     analyze_names: list[Any] = Field(default_factory=list)
     save_heatmap: Optional[bool] = Field(
         default=None,
-        description="是否保存增生热力图 PNG；默认跟随 SAVE_HEATMAP",
+        description="是否保存增生热力图 JPEG 到 tmp/{task_id}/；默认跟随 SAVE_HEATMAP",
     )
 
 

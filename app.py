@@ -26,9 +26,10 @@ from backend.routes.task import task
 from backend.tools.pipeline_guard import collect_inference_health, is_circuit_open, circuit_snapshot
 from config import APP_HOST, APP_PORT, THREAD_POOL_SIZE, sufa_version, is_doc
 
-os.makedirs("backend/uploads", exist_ok=True)
-os.makedirs("backend/tmp", exist_ok=True)
-os.makedirs("uploads", exist_ok=True)
+uploads_dir = os.path.join(backend_dir, "uploads")
+tmp_dir = os.path.join(backend_dir, "tmp")
+os.makedirs(uploads_dir, exist_ok=True)
+os.makedirs(tmp_dir, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # 日志：三文件 + 控制台
@@ -323,7 +324,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 app.include_router(task)
 app.include_router(ImgFilter)
 # 最外层包访问日志（add_middleware 对纯 ASGI 类也可用）
