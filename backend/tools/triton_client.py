@@ -188,12 +188,19 @@ def _pipeline_session_post(
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     files: dict[str, Any] | None = None,
+    test: bool = False,
 ) -> requests.Response:
     """
     推理 POST：超时 10s（可配）内最多 3 次；三次仍超时则熔断并重启推理服务。
     熔断期间拒绝全部后续请求，直到所有卡 /health ready。
+    test=True 时跳过请求，直接熔断并重启推理服务。
     """
     assert_inference_allowed()
+    if test:
+        trip_on_timeout(url=url)
+        raise PipelineUnavailable(
+            f"{log_ctx} 测试熔断：已触发全部推理服务重启，暂不接收图片推理"
+        )
     last_timeout: requests.exceptions.Timeout | None = None
     last_conn: requests.exceptions.ConnectionError | None = None
     for attempt in range(1, _PIPELINE_HTTP_POST_MAX_ATTEMPTS + 1):
@@ -604,6 +611,7 @@ def _post_multipart_pipeline_infer(
     timeout_s: float,
     extra_form: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    test: bool = False,
 ) -> dict[str, Any]:
     """multipart/form-data：image 必选；/infer 另需 dpi、slide_type、task 等 Form 字段。"""
     if not url.lower().startswith("http"):
@@ -619,6 +627,7 @@ def _post_multipart_pipeline_infer(
         data=data,
         files=files,
         headers=headers or None,
+        test=test,
     )
 
     if resp.status_code >= 400:
@@ -1825,6 +1834,7 @@ def _post_unified_pipeline_infer(
     smear_type: str,
     algorithm_types: str,
     endpoint: dict,
+    test: bool = False,
 ) -> dict[str, Any]:
     """POST /infer：multipart 传 image + dpi(actual_dpi) + slide_type + task。"""
     url = _pipeline_infer_url(endpoint=endpoint)
@@ -1847,6 +1857,7 @@ def _post_unified_pipeline_infer(
             "slide_type": slide_type,
             "task": task,
         },
+        test=test,
     )
 
 
@@ -1857,6 +1868,7 @@ def infer(
     algorithm_types: str = "",
     filename: str = "tile.jpg",
     gpu_id: Optional[int] = None,
+    test: bool = False,
 ) -> dict:
     """
     细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
@@ -1885,6 +1897,7 @@ def infer(
         smear_type,
         algorithm_types,
         endpoint,
+        test=test,
     )
 
     if route_dpi == DPI_147246:

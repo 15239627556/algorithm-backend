@@ -36,6 +36,16 @@ def _edge_cell_filter_form(value: Optional[str]) -> bool:
     return True
 
 
+def _test_form(value: Optional[str]) -> bool:
+    """form 中 test 常为字符串，不能用 type=bool（bool('false') 为 True）。默认 False。"""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    return s in ("1", "true", "yes", "on")
+
+
 class _UploadAdapter:
     """兼容 TaskService 对 FileStorage 的 .read() / .filename 用法。"""
 
@@ -126,6 +136,7 @@ class RequiredNum(BaseModel):
     WBC: Optional[int] = None
     MEG: Optional[int] = None
     RBC: Optional[int] = None
+    FOCUS_POINT: Optional[int] = None
 
 
 class RoiSelectionBody(BaseModel):
@@ -536,6 +547,10 @@ def analyze_cell_image(
         "true",
         description="是否过滤边缘细胞，默认 true；可传 false/0/off",
     ),
+    test: Optional[str] = Form(
+        "false",
+        description="测试熔断：true 时主动触发推理服务熔断重启，默认 false",
+    ),
 ):
     result = taskService.get_task_result_x100(
         task_id,
@@ -548,5 +563,6 @@ def analyze_cell_image(
         position_ymin,
         position_xmax,
         position_ymax,
+        _test_form(test),
     )
     return result

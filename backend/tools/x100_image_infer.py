@@ -418,6 +418,7 @@ def infer_x100_on_bgr(
     gpu_id: int,
     max_w: int,
     max_h: int,
+    test: bool = False,
 ) -> dict[str, Any]:
     """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。"""
     h, w = int(bgr.shape[0]), int(bgr.shape[1])
@@ -430,6 +431,7 @@ def infer_x100_on_bgr(
             algorithm_types=target_cell_types or "",
             filename=filename,
             gpu_id=gpu_id,
+            test=test,
         )
 
     # max_w/max_h <= 0 表示模型无尺寸上限，整图直接推理
@@ -584,6 +586,7 @@ def run_cell_image_infer(
     filename: str = "image.jpg",
     *,
     edge_cell_filter: bool = True,
+    test: bool = False,
     gpu_id: int | None = None,
     ensure_loaded: bool = True,
     allow_dpi_scale: bool = True,
@@ -682,6 +685,7 @@ def run_cell_image_infer(
                 algorithm_types=target_cell_types,
                 filename=filename,
                 gpu_id=gpu_id,
+                test=test,
             )
         else:
             result = infer_x100_on_bgr(
@@ -693,6 +697,7 @@ def run_cell_image_infer(
                 gpu_id=gpu_id,
                 max_w=max_w,
                 max_h=max_h,
+                test=test,
             )
     except Exception as e:
         logger.exception("Triton infer failed: %s", e)

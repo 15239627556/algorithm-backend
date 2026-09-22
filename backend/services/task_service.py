@@ -15,7 +15,7 @@ from config import cellularity_file_path_prefix, save_heatmap as default_save_he
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder, tmp_folder
-from backend.tools.combo_validator import validate_combo
+from backend.tools.combo_validator import validate_combo, normalize_smear_type
 from backend.tools.json_safe_writer import serialize_non_json_fields
 from PIL import Image
 
@@ -262,6 +262,16 @@ def _parse_edge_cell_filter_flag(value) -> bool:
     if s in ("0", "false", "no", "off", ""):
         return False
     return True
+
+
+def _parse_test_flag(value) -> bool:
+    """multipart/form 里布尔常为字符串，避免 bool('false') == True。默认 False。"""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    return s in ("1", "true", "yes", "on")
 
 
 def _task_project_path(task_id: str) -> str:
@@ -1494,13 +1504,11 @@ class TaskService:
                 'reason': 'Task not completed',
                 'result': {},
             }
-        smear_type = (info or {}).get("smear_type")
+        smear_type = normalize_smear_type((info or {}).get("smear_type"))
         dpi = info.get("dpi")
         tile_w = info.get("tile_width")
         tile_h = info.get("tile_height")
         heatmap_orientation = info.get('heatmap_orientation', -1)
-        if not smear_type:
-            smear_type = "BM"
 
         if not isinstance(kwargs, dict):
             kwargs = {}
@@ -1512,7 +1520,7 @@ class TaskService:
         # request_task_num = int(kwargs.get("request_task_num", 100) or 100)
 
         normalized_task_type = (task_type or "").strip().upper()
-        allowed_task_types = {"WBC", "MEG", "WBC_MEG", "RBC"}
+        allowed_task_types = {"WBC", "MEG", "WBC_MEG", "RBC", "FOCUS_POINT"}
         if normalized_task_type not in allowed_task_types:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
@@ -1532,6 +1540,7 @@ class TaskService:
         required_wbc = _get_required_int("WBC")
         required_meg = _get_required_int("MEG") * 3
         required_rbc = _get_required_int("RBC")
+        required_focus_point = _get_required_int("FOCUS_POINT")
 
         if smear_type == "BM":
             if normalized_task_type == "WBC":
@@ -1581,12 +1590,22 @@ class TaskService:
                     "ret_desc": "Missing required_num.WBC for PB WBC",
                     "reason": "Missing required_num.WBC for PB WBC",
                 }
+        elif smear_type == "CSF":
+            if normalized_task_type == "FOCUS_POINT":
+                if not required_focus_point or required_focus_point <= 0:
+                    return {
+                        "ret_code": RetCode.ROI_ERROR.value,
+                        "ret_desc": "Missing required_num.FOCUS_POINT for CSF FOCUS_POINT",
+                        "reason": "Missing required_num.FOCUS_POINT for CSF FOCUS_POINT",
+                    }
         else:
             return {
                 "ret_code": RetCode.ROI_ERROR.value,
                 "ret_desc": f"Unsupported smear_type: {smear_type}",
                 "reason": f"Unsupported smear_type: {smear_type}",
             }
+        # CSF 需要返回对焦点视野
+        task_rect = []
         if smear_type == "BM" and normalized_task_type in {"WBC", "WBC_MEG"}:
             bm_cfg = BM40Config(
                 user_choice_area=user_choice_area,
@@ -1706,6 +1725,30 @@ class TaskService:
             pipeline = RBCSamplingPipeline(pb_cfg)
             wbc_tasks = pipeline.run(roi=roi)
             final_task_list = [task.to_dict() for task in wbc_tasks]
+
+        elif smear_type == "CSF" and normalized_task_type == "FOCUS_POINT":
+            # CSF FOCUS_POINT 选区算法尚未实现，预留调用入口
+            focus_cfg = BM40Config(
+                user_choice_area=user_choice_area,
+                target_cell_num_WBC=required_focus_point,
+                x100_rect_width=int(view_width),
+                x100_rect_height=int(view_height),
+                heatmap_orientation=heatmap_orientation,
+                dpi=dpi,
+                View_type="FOCUS_POINT",
+                Smear_type="CSF",
+                tile_w=tile_w,
+                tile_h=tile_h,
+            )
+            # pipeline = FocusPointSamplingPipeline(focus_cfg)
+            # focus_tasks = pipeline.run(roi=roi)
+            # final_task_list = [task.to_dict() for task in focus_tasks]
+            _ = focus_cfg
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+                "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
+            }
         else:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
@@ -1718,15 +1761,23 @@ class TaskService:
         roi_ms = (time.perf_counter() - t_roi0) * 1000.0
         logger.info(
             "roi_selection finished task_id=%s task_list_num=%d largest_task_rect=%s ms=%.2f task_list=%s",
-            task_id[:8],
+            task_id,
             len(final_task_list),
             largest_task_rect,
             roi_ms,
             str(final_task_list),
         )
+        if not task_rect:
+            task_rect = [
+                largest_task_rect.get('view_xmin'),
+                largest_task_rect.get('view_ymin'),
+                largest_task_rect.get('view_xmax'),
+                largest_task_rect.get('view_ymax')
+                ]
         return {
             "ret_code": RetCode.API_SUCCESS.value,
             "ret_desc": RetDesc.API_SUCCESS.value,
+            'task_rect': task_rect,
             "task_list_num": len(final_task_list),
             "task_list": final_task_list,
             "largest_task_rect": largest_task_rect,
@@ -1808,7 +1859,8 @@ class TaskService:
 
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,
                              edge_cell_filter, smear_type,
-                             position_xmin, position_ymin, position_xmax, position_ymax):
+                             position_xmin, position_ymin, position_xmax, position_ymax,
+                             test=False):
         """
         细胞图像分析。支持两种模式：
         - 任务模式：task_id + position 必填，结果保存到项目
@@ -1823,6 +1875,7 @@ class TaskService:
             target_cell_types or "",
             filename=filename,
             edge_cell_filter=_parse_edge_cell_filter_flag(edge_cell_filter),
+            test=_parse_test_flag(test),
         )
         if not result.get("ok"):
             err = result.get("error") or "infer failed"
