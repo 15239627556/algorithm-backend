@@ -47,17 +47,17 @@ cellularity_file_path_prefix = os.environ.get("CELLULARITY_FILE_PATH_PREFIX", "/
 # 其它相机 "camera": "default"
 camera = os.environ.get("CAMERA", "flir")
 
-# 红细胞开关（环境变量 RBC_SWITCH: 1/true/on/yes 开启，0/false/no/off 关闭，默认 False）
+# 红细胞开关（环境变量 RBC_SWITCH: 1/true/on/yes 开启，0/false/no/off 关闭，默认 True）
 _rbc_switch_raw = os.environ.get("RBC_SWITCH")
 if _rbc_switch_raw is None:
-    rbc_switch = False
+    rbc_switch = True
 else:
     rbc_switch = _rbc_switch_raw.strip().lower() not in ("0", "false", "no", "off", "")
 
-# 血小板开关（环境变量 PLT_SWITCH: 同上，默认 False）
+# 血小板开关（环境变量 PLT_SWITCH: 同上，默认 True）
 _plt_switch_raw = os.environ.get("PLT_SWITCH")
 if _plt_switch_raw is None:
-    plt_switch = False
+    plt_switch = True
 else:
     plt_switch = _plt_switch_raw.strip().lower() not in ("0", "false", "no", "off", "")
 
