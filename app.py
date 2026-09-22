@@ -23,7 +23,12 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.routes.ImgFilter import ImgFilter
 from backend.routes.task import task
-from backend.tools.pipeline_guard import collect_inference_health, is_circuit_open, circuit_snapshot
+from backend.tools.pipeline_guard import (
+    collect_inference_health,
+    is_circuit_open,
+    circuit_snapshot,
+    reset_circuit_on_startup,
+)
 from config import APP_HOST, APP_PORT, THREAD_POOL_SIZE, sufa_version, is_doc
 
 uploads_dir = os.path.join(backend_dir, "uploads")
@@ -298,6 +303,11 @@ async def lifespan(_app: FastAPI):
     #     warmup_pinned_models_at_startup()
     # except Exception:
     #     app_logger.exception("Triton pinned model warmup failed at startup")
+
+    try:
+        reset_circuit_on_startup()
+    except Exception:
+        app_logger.exception("Failed to reset inference circuit on startup")
 
     yield
 

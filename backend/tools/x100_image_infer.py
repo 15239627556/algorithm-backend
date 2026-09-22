@@ -18,7 +18,11 @@ from backend.tools.image_tiling import (
     tile_ranges_1d,
 )
 from backend.tools.triton_client import infer, resolve_triton_route
-from backend.tools.pipeline_guard import PipelineUnavailable, assert_inference_allowed
+from backend.tools.pipeline_guard import (
+    PipelineUnavailable,
+    assert_inference_allowed,
+    trip_on_timeout,
+)
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_elongated_1pct,
     filter_cell_dicts_edge_incomplete,
@@ -603,6 +607,19 @@ def run_cell_image_infer(
         assert_inference_allowed()
     except PipelineUnavailable as e:
         return {"ok": False, "error": str(e)}
+    if test:
+        url = None
+        try:
+            gid, endpoint = resolve_triton_route(gpu_id)
+            base = (endpoint.get("pipeline_base_url") or "").rstrip("/")
+            url = f"{base}/infer" if base else None
+        except PipelineUnavailable as e:
+            return {"ok": False, "error": str(e)}
+        trip_on_timeout(gpu_id=gid, url=url)
+        return {
+            "ok": False,
+            "error": "测试熔断：已触发全部推理服务重启，暂不接收图片推理",
+        }
     input_dpi = int(dpi)
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or ""

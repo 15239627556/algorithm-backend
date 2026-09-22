@@ -3,6 +3,7 @@
 推理服务熔断：任一 GPU 超时重试耗尽后，掐断全部图片推理，
 并对 config 中每张卡的独立容器调用 /admin/force_exit。
 之后每秒探测全部 /health，全部 ready 才恢复接图。
+Web 进程启动时清除落盘熔断，避免重启 Web 后沿用 open 状态反复 force_exit。
 
 熔断状态落盘（backend/tmp/pipeline_circuit.json），uvicorn workers>1 时各进程共享。
 """
@@ -30,6 +31,8 @@ FORCE_EXIT_READ_TIMEOUT_S = float(os.environ.get("FORCE_EXIT_READ_TIMEOUT_S", "5
 FORCE_EXIT_RETRY_SEC = float(os.environ.get("FORCE_EXIT_RETRY_SEC", "15"))
 # force_exit 先回响应再 os._exit，立刻打 /health 仍可能是旧进程的 ok。
 FORCE_EXIT_WAIT_SEC = float(os.environ.get("FORCE_EXIT_WAIT_SEC", "5"))
+# 额外 force_exit 次数上限（不含首次）。避免健康检查错过掉线窗口后每 15s 杀一次。
+FORCE_EXIT_MAX_RETRIES = int(os.environ.get("FORCE_EXIT_MAX_RETRIES", "2"))
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _STATE_DIR = os.path.join(_ROOT, "backend", "tmp")
@@ -97,6 +100,7 @@ def _empty_state() -> dict[str, Any]:
         "open": False,
         "opened_at": 0.0,
         "force_exit_at": 0.0,
+        "force_exit_count": 0,
         "trigger_gpu_id": None,
         "seen_down": {},
     }
@@ -169,6 +173,18 @@ def _resolve_gpu_id_from_url(url: str | None) -> int | None:
 
 def is_circuit_open(gpu_id: int | None = None) -> bool:
     return bool(_load_state().get("open"))
+
+
+def reset_circuit_on_startup() -> None:
+    """Web 进程启动时清除落盘熔断，恢复接图，避免沿用上次 open 状态反复 force_exit。"""
+    with _FileLock(_LOCK_PATH):
+        st = _read_state_unlocked()
+        was_open = bool(st.get("open"))
+        _write_state_unlocked(_empty_state())
+    if was_open:
+        logger.warning("Web 启动：发现残留熔断状态，已清除并恢复接收图片推理")
+    else:
+        logger.info("Web 启动：熔断状态已复位")
 
 
 def circuit_snapshot(gpu_id: int | None = None) -> dict[str, Any]:
@@ -292,6 +308,7 @@ def trip_on_timeout(*, gpu_id: int | None = None, url: str | None = None) -> Non
             st["open"] = True
             st["opened_at"] = now
             st["force_exit_at"] = now
+            st["force_exit_count"] = 1
             st["trigger_gpu_id"] = gpu_id
             st["seen_down"] = {str(gid): False for gid in range(len(TRITON_ENDPOINTS))}
             _write_state_unlocked(st)
@@ -401,13 +418,17 @@ def _seen_flag(seen: dict[str, Any], gid: int) -> bool:
 
 
 def _recovery_loop() -> None:
-    """熔断后先等待进程退出，再每秒打全部 /health；见到掉线后再等到全部 ready 才恢复接图。"""
+    """熔断后立刻轮询 /health：必须先见到掉线，再全部 ready 才恢复接图。
+
+    不再先空等 FORCE_EXIT_WAIT_SEC，否则容易错过掉线窗口，把旧进程的 ok
+    当成已恢复。health 一直 ok 时最多再 force_exit 有限次，然后保持熔断
+    （拒绝推理），直到见到重启完成，或 Web 进程启动清状态。
+    """
     logger.info(
         "开始探测全部推理服务 /health，pid=%s interval=%.0fs",
         os.getpid(),
         HEALTH_POLL_INTERVAL_S,
     )
-    _wait_after_force_exit()
     while True:
         started = time.monotonic()
         st = _load_state()
@@ -424,6 +445,7 @@ def _recovery_loop() -> None:
 
         retry_exit = False
         still_up: list[int] = []
+        max_exits = 1 + max(0, FORCE_EXIT_MAX_RETRIES)
         with _FileLock(_LOCK_PATH):
             st = _read_state_unlocked()
             if not st.get("open"):
@@ -441,23 +463,44 @@ def _recovery_loop() -> None:
             all_seen_down = bool(gids) and all(_seen_flag(seen, gid) for gid in gids)
             all_ready = bool(items) and all(item.get("status") == "ok" for item in items)
             last_exit = float(st.get("force_exit_at") or 0.0)
+            exit_count = int(st.get("force_exit_count") or 1)
             still_up = [gid for gid in gids if not _seen_flag(seen, gid)]
             if all_seen_down and all_ready:
                 _write_state_unlocked(_empty_state())
                 logger.info("全部推理服务 /health 已 ready，恢复接收图片推理")
                 return
-            if (not all_seen_down) and last_exit and (time.time() - last_exit) >= FORCE_EXIT_RETRY_SEC:
+            if (
+                (not all_seen_down)
+                and last_exit
+                and (time.time() - last_exit) >= FORCE_EXIT_RETRY_SEC
+                and exit_count < max_exits
+            ):
                 st["force_exit_at"] = time.time()
+                st["force_exit_count"] = exit_count + 1
                 retry_exit = True
+            elif (
+                (not all_seen_down)
+                and last_exit
+                and (time.time() - last_exit) >= FORCE_EXIT_RETRY_SEC
+                and exit_count >= max_exits
+                and not st.get("retry_exhausted")
+            ):
+                st["retry_exhausted"] = True
+                logger.error(
+                    "force_exit 已达上限 %s 次，仍有卡未见掉线，停止反复重启并保持熔断: %s",
+                    max_exits,
+                    ", ".join(_endpoint_name(gid) for gid in still_up) or "all",
+                )
             _write_state_unlocked(st)
 
         if retry_exit:
             logger.error(
-                "force_exit 后仍有卡 health=ready，再次重启: %s",
+                "force_exit 后仍有卡 health=ready，再次重启 (%s/%s): %s",
+                exit_count + 1,
+                max_exits,
                 ", ".join(_endpoint_name(gid) for gid in still_up) or "all",
             )
             _force_exit_all()
-            _wait_after_force_exit()
             continue
 
         elapsed = time.monotonic() - started

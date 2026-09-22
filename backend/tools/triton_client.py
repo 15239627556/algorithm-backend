@@ -1883,6 +1883,11 @@ def infer(
     warning = resolved.warning
     route_dpi = _infer_route_dpi(resolved)
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
+    if test:
+        trip_on_timeout(gpu_id=gpu_id, url=_pipeline_infer_url(endpoint=endpoint))
+        raise PipelineUnavailable(
+            "测试熔断：已触发全部推理服务重启，暂不接收图片推理"
+        )
 
     if route_dpi is None or route_dpi not in _PIPELINE_DPI_VALUES:
         result = {"cells": [], "scores": [], "cell_list": []}
