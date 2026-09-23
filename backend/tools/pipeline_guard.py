@@ -33,6 +33,8 @@ FORCE_EXIT_RETRY_SEC = float(os.environ.get("FORCE_EXIT_RETRY_SEC", "15"))
 FORCE_EXIT_WAIT_SEC = float(os.environ.get("FORCE_EXIT_WAIT_SEC", "5"))
 # 额外 force_exit 次数上限（不含首次）。避免健康检查错过掉线窗口后每 15s 杀一次。
 FORCE_EXIT_MAX_RETRIES = int(os.environ.get("FORCE_EXIT_MAX_RETRIES", "2"))
+# 平扫 / 单张识别在熔断时先等待再返回，配合客户端重试，避免同一张图打满。
+CIRCUIT_OPEN_WAIT_S = float(os.environ.get("CIRCUIT_OPEN_WAIT_S", "12"))
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _STATE_DIR = os.path.join(_ROOT, "backend", "tmp")
@@ -224,6 +226,15 @@ def assert_inference_allowed(gpu_id: int | None = None) -> None:
     if is_circuit_open():
         _ensure_poller()
         raise PipelineUnavailable("推理服务重启中，暂不接收图片推理")
+
+
+def wait_while_circuit_open() -> None:
+    """熔断中阻塞一段时间再让调用方返回错误，避免客户端立即重试。"""
+    delay = max(0.0, CIRCUIT_OPEN_WAIT_S)
+    if delay <= 0:
+        return
+    logger.warning("熔断中，等待 %.0fs 后再拒绝推理请求", delay)
+    time.sleep(delay)
 
 
 def check_pipeline_health(endpoint: dict, gpu_id: int) -> dict[str, Any]:

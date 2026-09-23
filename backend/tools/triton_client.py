@@ -1874,8 +1874,7 @@ def infer(
     细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
     返回 {"cells", "scores", "cell_list"}。
 
-    平扫 upload_image 依赖 create_task 的 warmup_model（load_models）；
-    单张识别见 get_task_result_x100。
+    平扫 upload_image 与单张识别均经 run_cell_image_infer 在推理前 load_models。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     """
     assert_inference_allowed()

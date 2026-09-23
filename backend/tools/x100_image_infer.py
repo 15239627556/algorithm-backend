@@ -22,6 +22,7 @@ from backend.tools.pipeline_guard import (
     PipelineUnavailable,
     assert_inference_allowed,
     trip_on_timeout,
+    wait_while_circuit_open,
 )
 from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_elongated_1pct,
@@ -600,12 +601,14 @@ def run_cell_image_infer(
     选模型 → 缩放/填充 → 加载 → 推理（大图切块）→ 坐标回映射 → 过滤。
     成功 ok=True；失败 ok=False 且 error 为原因。
 
-    ensure_loaded: 平扫 create_task 已预热时传 False，避免每张图再打 Triton /load。
+    ensure_loaded: True 时推理前 load_models（已 READY 的跳过）。平扫瓦片也要开，
+    否则推理服务重启后 create_task 的预热失效，upload_image 会报模型未加载。
     allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
     """
     try:
         assert_inference_allowed()
     except PipelineUnavailable as e:
+        wait_while_circuit_open()
         return {"ok": False, "error": str(e)}
     if test:
         url = None
@@ -614,6 +617,7 @@ def run_cell_image_infer(
             base = (endpoint.get("pipeline_base_url") or "").rstrip("/")
             url = f"{base}/infer" if base else None
         except PipelineUnavailable as e:
+            wait_while_circuit_open()
             return {"ok": False, "error": str(e)}
         trip_on_timeout(gpu_id=gid, url=url)
         return {
@@ -716,6 +720,9 @@ def run_cell_image_infer(
                 max_h=max_h,
                 test=test,
             )
+    except PipelineUnavailable as e:
+        wait_while_circuit_open()
+        return {"ok": False, "error": str(e)}
     except Exception as e:
         logger.exception("Triton infer failed: %s", e)
         return {"ok": False, "error": str(e)}

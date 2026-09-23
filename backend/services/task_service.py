@@ -689,7 +689,8 @@ class TaskService:
             target_cell_types or "",
             filename=filename,
             edge_cell_filter=False,
-            ensure_loaded=False,
+            # 与单张识别相同：已加载则跳过，推理服务重启后自动补加载。
+            ensure_loaded=True,
             allow_dpi_scale=False,
         )
         if not result.get("ok"):
