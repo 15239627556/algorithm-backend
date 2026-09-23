@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
+import json
+import logging
+import os
 from enum import Enum
+
+_logger = logging.getLogger(__name__)
 
 
 class RetCode(Enum):
@@ -214,7 +219,7 @@ allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
 # max_src_w / max_src_h: 原图最大宽高（像素）；None 表示不限
 # pipeline 输出：/infer 按 task 嵌套，见 param_json_out（如 wbc.det.bboxes）
 # output: bboxes=定位, tops=分类, scores=评分, result=其它结构化结果
-# vram_gb: 预估显存（GB）
+# vram_gb: 预估显存（GB）；启动时若存在 manifest.json，按 name 覆盖为 memory-usage-gb
 # camera=flir 时 HIGHRES-WBC-CLS 会被替换为 FLIR 专用分类器（1.5G）
 # =============================================================================
 MODEL_TABLE = [
@@ -445,6 +450,60 @@ _OUTPUT_KIND = {
 
 DEFAULT_MODEL_VRAM_GB = 1.5
 DPI_NOT_SUITABLE = "DPI不合适"
+
+
+def _default_manifest_path() -> str:
+    # backend/tools/MESSAGE_DICT.py → 仓库根目录/manifest.json
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(repo_root, "manifest.json")
+
+
+def apply_manifest_vram(manifest_path: str | None = None) -> int:
+    """
+    若存在 manifest.json，按 models[].name 将 memory-usage-gb 写入 MODEL_TABLE.vram_gb。
+    文件不存在则跳过。返回成功覆盖的条数。
+    """
+    path = manifest_path or _default_manifest_path()
+    if not os.path.isfile(path):
+        _logger.info("manifest.json not found, keep MODEL_TABLE vram_gb: %s", path)
+        return 0
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        _logger.exception("Failed to read manifest.json: %s", path)
+        return 0
+
+    usage_by_name: dict[str, float] = {}
+    for item in payload.get("models") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        raw = item.get("memory-usage-gb")
+        if not name or raw is None or raw == "":
+            continue
+        try:
+            usage_by_name[name] = float(raw)
+        except (TypeError, ValueError):
+            _logger.warning("Invalid memory-usage-gb for %s: %r", name, raw)
+
+    updated = 0
+    for row in MODEL_TABLE:
+        name = str(row.get("name") or "").strip()
+        if name not in usage_by_name:
+            continue
+        new_vram = usage_by_name[name]
+        old_vram = row.get("vram_gb")
+        row["vram_gb"] = new_vram
+        updated += 1
+        _logger.info(
+            "MODEL_TABLE[%s].vram_gb %s -> %s (manifest memory-usage-gb)",
+            name,
+            old_vram,
+            new_vram,
+        )
+    return updated
 
 
 def model_dpi_ranges() -> dict[int, tuple[int, int]]:

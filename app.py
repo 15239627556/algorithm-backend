@@ -305,6 +305,14 @@ async def lifespan(_app: FastAPI):
     #     app_logger.exception("Triton pinned model warmup failed at startup")
 
     try:
+        from backend.tools.MESSAGE_DICT import apply_manifest_vram
+
+        n = apply_manifest_vram(os.path.join(root_dir, "manifest.json"))
+        app_logger.info("Applied manifest.json vram_gb to %s MODEL_TABLE entries", n)
+    except Exception:
+        app_logger.exception("Failed to apply manifest.json vram_gb")
+
+    try:
         reset_circuit_on_startup()
     except Exception:
         app_logger.exception("Failed to reset inference circuit on startup")
