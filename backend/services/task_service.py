@@ -22,13 +22,14 @@ from PIL import Image
 from project.smear_project import SmearProject
 from project.roi_store import RoiDataset
 from project.cells import Cell
-from backend.tools.x100_image_infer import run_cell_image_infer
+from backend.tools.x100_image_infer import run_cell_image_infer, run_miniapp_cell_image_infer
 from backend.tools.model_control import warmup_model, ensure_model_loaded
 from backend.tools.triton_client import resolve_triton_route, infer_cellularity
 from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
 from algorithms.SelectArea.main_wbc import *
 from algorithms.SelectArea.main_meg import *
 from algorithms.SelectArea.main_rbc import *
+from algorithms.SelectArea.main_cf import *
 from algorithms.SelectArea.setcover import solve, SetCoverSolverParameter
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
@@ -1730,26 +1731,24 @@ class TaskService:
         elif smear_type == "CSF" and normalized_task_type == "FOCUS_POINT":
             # CSF FOCUS_POINT 选区算法尚未实现，预留调用入口
             focus_cfg = BM40Config(
-                user_choice_area=user_choice_area,
-                target_cell_num_WBC=required_focus_point,
+                focus_point=required_focus_point,
+                dpi=dpi,
                 x100_rect_width=int(view_width),
                 x100_rect_height=int(view_height),
-                heatmap_orientation=heatmap_orientation,
-                dpi=dpi,
                 View_type="FOCUS_POINT",
-                Smear_type="CSF",
+                heatmap_orientation=heatmap_orientation,
+                Smear_type="CF",
                 tile_w=tile_w,
                 tile_h=tile_h,
             )
             # pipeline = FocusPointSamplingPipeline(focus_cfg)
             # focus_tasks = pipeline.run(roi=roi)
             # final_task_list = [task.to_dict() for task in focus_tasks]
-            _ = focus_cfg
-            return {
-                "ret_code": RetCode.CLIENT_ERROR.value,
-                "ret_desc": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
-                "reason": f"roi_selection not implemented for smear_type={smear_type}, task_type={task_type}",
-            }
+            pipeline = CFSamplingPipeline(focus_cfg)
+            task_rect, tasks = pipeline.run(
+            roi=roi, focus_point=required_focus_point
+            )
+            final_task_list = [task.to_dict() for task in tasks]
         else:
             return {
                 "ret_code": RetCode.CLIENT_ERROR.value,
@@ -1891,6 +1890,38 @@ class TaskService:
             "ret_desc": RetDesc.API_SUCCESS.value,
             "cell_count": len(cell_list),
             "cell_list": cell_list,
+        }
+        if result.get("warning"):
+            response["warning"] = result["warning"]
+        return response
+
+    def get_miniapp_cell_image_result(self, image_file, target_cell_types, smear_type):
+        """
+        小程序细胞图像分析。不接收 DPI：固定 714756 模型，
+        在候选 DPI 上强制缩放后直接返回细胞最多的结果。
+        """
+        image_bytes = image_file.read()
+        filename = getattr(image_file, "filename", None) or "image.jpg"
+        result = run_miniapp_cell_image_infer(
+            image_bytes,
+            smear_type or "BM",
+            target_cell_types or "",
+            filename=filename,
+        )
+        if not result.get("ok"):
+            err = result.get("error") or "infer failed"
+            return {
+                "ret_code": RetCode.CLIENT_ERROR.value,
+                "ret_desc": err,
+                "reason": err,
+            }
+        cell_list = result.get("cell_list") or []
+        response = {
+            "ret_code": RetCode.API_SUCCESS.value,
+            "ret_desc": RetDesc.API_SUCCESS.value,
+            "cell_count": len(cell_list),
+            "cell_list": cell_list,
+            "guess_dpi": result.get("guess_dpi"),
         }
         if result.get("warning"):
             response["warning"] = result["warning"]

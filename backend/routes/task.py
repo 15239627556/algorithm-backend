@@ -566,3 +566,27 @@ def analyze_cell_image(
         _test_form(test),
     )
     return result
+
+
+@task.post(
+    "/analyze_cell_image_miniapp",
+    summary="小程序细胞图像分析",
+    description=(
+        "不传 DPI。固定加载 714756 模型，依次按 147246、357378、557378、714746 "
+        "强制缩放并识别，直接返回细胞最多的一次。细胞数相同时 guess_dpi 优先级为 "
+        "714746、147246、357378、557378。"
+    ),
+)
+def analyze_cell_image_miniapp(
+    image_file: UploadFile = File(..., description="图像文件（.jpg格式）"),
+    target_cell_types: str = Form(
+        ...,
+        description="目标细胞类型如 WBC / WBC,RBC,PLAT",
+    ),
+    smear_type: str = Form(..., description="涂片类型 BM/PB/CF"),
+):
+    return taskService.get_miniapp_cell_image_result(
+        _UploadAdapter(image_file),
+        target_cell_types,
+        smear_type,
+    )

@@ -223,6 +223,53 @@ def resolve_models(
     )
 
 
+def resolve_models_by_actual_dpi(
+    actual_dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+) -> ResolvedModels:
+    """
+    只加载指定 actual_dpi 的模型，不看 dpi_range。
+    用于小程序猜 DPI：图像按比值强制缩放到该档，推理始终走这一档模型。
+    """
+    catalog = get_model_catalog()
+    st = normalize_smear_type(smear_type)
+    types = _parse_cell_types(target_cell_types)
+    actual = int(actual_dpi)
+
+    detection = [
+        spec
+        for spec in catalog
+        if spec.kind == KIND_DETECTION
+        and spec.actual_dpi == actual
+        and spec.smear_matches(st)
+        and spec.target_matches(types)
+    ]
+    classification: List[ModelSpec] = []
+    for spec in catalog:
+        if spec.kind != KIND_CLASSIFICATION or spec.actual_dpi != actual:
+            continue
+        if not spec.smear_matches(st) or not spec.target_matches(types):
+            continue
+        if not any(spec.targets & det.targets for det in detection):
+            continue
+        classification.append(spec)
+
+    score = [
+        spec
+        for spec in catalog
+        if spec.kind == KIND_SCORE
+        and spec.actual_dpi == actual
+        and spec.smear_matches(st)
+        and spec.target_matches(types)
+    ]
+    return ResolvedModels(
+        detection=detection,
+        classification=classification,
+        score=score,
+    )
+
+
 def resolve_required_models(
     dpi: int,
     smear_type: str,
@@ -452,19 +499,13 @@ def _evict_other_dpi_models(
             unload_model(name, gpu_id=gpu_id)
 
 
-def load_models(
-    dpi: int,
-    smear_type: str,
-    target_cell_types: str,
+def load_resolved_models(
+    resolved: ResolvedModels,
     *,
     gpu_id: Optional[int] = None,
     all_gpus: bool = False,
 ) -> Tuple[bool, str, List[str]]:
-    """
-    按需加载模型：参数为玻片类型、DPI、目标检测类型。
-    加载前按 max_memory-reserved_memory 判断显存；不够则卸载其它 DPI 层级模型。
-    """
-    resolved = resolve_models(dpi, smear_type, target_cell_types)
+    """按已解析的模型列表加载。dpi_unsuitable 时直接拒绝。"""
     if resolved.dpi_unsuitable:
         return False, "DPI不合适", []
     needed = resolved.specs
@@ -498,6 +539,22 @@ def load_models(
                 loaded.add(model_name)
                 last_msg = msg
     return True, last_msg, models
+
+
+def load_models(
+    dpi: int,
+    smear_type: str,
+    target_cell_types: str,
+    *,
+    gpu_id: Optional[int] = None,
+    all_gpus: bool = False,
+) -> Tuple[bool, str, List[str]]:
+    """
+    按需加载模型：参数为玻片类型、DPI、目标检测类型。
+    加载前按 max_memory-reserved_memory 判断显存；不够则卸载其它 DPI 层级模型。
+    """
+    resolved = resolve_models(dpi, smear_type, target_cell_types)
+    return load_resolved_models(resolved, gpu_id=gpu_id, all_gpus=all_gpus)
 
 
 def unload_models(

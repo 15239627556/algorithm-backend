@@ -29,12 +29,26 @@ from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_edge_incomplete,
     filter_cell_dicts_small_wbc_714756,
 )
-from backend.tools.model_control import load_models, resolve_models
+from backend.tools.model_control import (
+    load_models,
+    load_resolved_models,
+    resolve_models,
+    resolve_models_by_actual_dpi,
+)
 from project.cells import Cell
 from project.tiles import Tile
 from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_tiles_per_type
 
 logger = logging.getLogger(__name__)
+
+# 小程序猜 DPI：候选为假定的拍摄 DPI，模型固定 714756，不走 dpi_range。
+MINIAPP_MODEL_DPI = 714756
+MINIAPP_GUESS_DPIS = (147246, 357378, 557378, 714746)
+# 细胞数相同时 guess_dpi 优先级，越靠前越优先。
+MINIAPP_GUESS_DPI_TIE_PRIORITY = (714746, 147246, 357378, 557378)
+_MINIAPP_GUESS_DPI_RANK = {
+    dpi: rank for rank, dpi in enumerate(MINIAPP_GUESS_DPI_TIE_PRIORITY)
+}
 
 # 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
 _DPI_TILE_MIN: dict[int, tuple[int, int]] = {
@@ -94,6 +108,14 @@ def compute_dpi_scale_ratio(input_dpi: int, model_dpi: int) -> float:
     if not dpi_needs_scale(input_dpi, model_dpi):
         return 1.0
     return model_dpi / input_dpi
+
+
+def compute_force_dpi_scale_ratio(input_dpi: int, model_dpi: int) -> float:
+    """忽略 dpi_range，按模型 DPI / 假定 DPI 强制缩放。"""
+    src = int(input_dpi)
+    if src <= 0:
+        return 1.0
+    return float(model_dpi) / float(src)
 
 
 def encode_bgr_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes:
@@ -424,11 +446,19 @@ def infer_x100_on_bgr(
     max_w: int,
     max_h: int,
     test: bool = False,
+    resolved: Any = None,
+    route_dpi: int | None = None,
 ) -> dict[str, Any]:
     """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。"""
     h, w = int(bgr.shape[0]), int(bgr.shape[1])
 
     def _run_infer(tile_bytes: bytes) -> dict[str, Any]:
+        # resolved / route_dpi 仅小程序强制档位时传入；平扫和单张保持原来的选模。
+        extra: dict[str, Any] = {}
+        if resolved is not None:
+            extra["resolved"] = resolved
+        if route_dpi is not None:
+            extra["route_dpi"] = route_dpi
         return infer(
             tile_bytes,
             dpi=infer_dpi,
@@ -437,6 +467,7 @@ def infer_x100_on_bgr(
             filename=filename,
             gpu_id=gpu_id,
             test=test,
+            **extra,
         )
 
     # max_w/max_h <= 0 表示模型无尺寸上限，整图直接推理
@@ -508,10 +539,12 @@ def prepare_x100_bgr(
     actual_dpi: int,
     *,
     allow_dpi_scale: bool = True,
+    scale_ratio: float | None = None,
 ) -> tuple[np.ndarray, int, int, float, int, int, int, int, int]:
     """
     解码、按 DPI 比值缩放，并在必要时黑底居中填充至模型最小尺寸。
     返回 (bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y)。
+    scale_ratio 已给定时直接使用，不再按 dpi_range 重算。
     """
     model_dpi = int(actual_dpi)
     limits = model_tile_limits(model_dpi)
@@ -525,7 +558,10 @@ def prepare_x100_bgr(
         raise ValueError("cannot decode image")
 
     orig_h, orig_w = int(bgr.shape[0]), int(bgr.shape[1])
-    scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
+    if scale_ratio is None:
+        scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
+    else:
+        scale_ratio = float(scale_ratio)
     if scale_ratio != 1.0:
         bgr = scale_bgr(bgr, scale_ratio)
 
@@ -595,6 +631,7 @@ def run_cell_image_infer(
     gpu_id: int | None = None,
     ensure_loaded: bool = True,
     allow_dpi_scale: bool = True,
+    force_model_dpi: int | None = None,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -604,6 +641,7 @@ def run_cell_image_infer(
     ensure_loaded: True 时推理前 load_models（已 READY 的跳过）。平扫瓦片也要开，
     否则推理服务重启后 create_task 的预热失效，upload_image 会报模型未加载。
     allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
+    force_model_dpi: 忽略 dpi_range，只加载该 actual_dpi 的模型，并按比值强制缩放。
     """
     try:
         assert_inference_allowed()
@@ -627,10 +665,14 @@ def run_cell_image_infer(
     input_dpi = int(dpi)
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or ""
+    forced_dpi = int(force_model_dpi) if force_model_dpi is not None else None
 
-    resolved = resolve_models(input_dpi, smear_type, target_cell_types)
-    if resolved.dpi_unsuitable:
-        return {"ok": False, "error": DPI_NOT_SUITABLE}
+    if forced_dpi is not None:
+        resolved = resolve_models_by_actual_dpi(forced_dpi, smear_type, target_cell_types)
+    else:
+        resolved = resolve_models(input_dpi, smear_type, target_cell_types)
+        if resolved.dpi_unsuitable:
+            return {"ok": False, "error": DPI_NOT_SUITABLE}
     requested = _parse_cell_types(target_cell_types)
     if not requested:
         return {"ok": False, "error": "target_cell_types cannot be empty"}
@@ -642,10 +684,11 @@ def run_cell_image_infer(
     missing = requested - covered
     if missing:
         st = normalize_smear_type(smear_type)
+        dpi_label = forced_dpi if forced_dpi is not None else input_dpi
         return {
             "ok": False,
             "error": (
-                f"Invalid combo: DPI={input_dpi} smear_type={st} has no detection model for "
+                f"Invalid combo: DPI={dpi_label} smear_type={st} has no detection model for "
                 f"{sorted(missing)}"
             ),
         }
@@ -654,7 +697,7 @@ def run_cell_image_infer(
         return {"ok": False, "error": DPI_NOT_SUITABLE}
 
     model_names = ",".join(spec.name for spec in resolved.specs)
-    model_dpi = int(route_specs[0].actual_dpi)
+    model_dpi = forced_dpi if forced_dpi is not None else int(route_specs[0].actual_dpi)
     model_warning = resolved.warning
     limits = model_tile_limits(model_dpi)
     if limits is None:
@@ -662,7 +705,10 @@ def run_cell_image_infer(
     else:
         max_w, max_h, min_w, min_h = limits
 
-    scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
+    if forced_dpi is not None:
+        scale_ratio = compute_force_dpi_scale_ratio(input_dpi, model_dpi)
+    else:
+        scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
     peeked = peek_image_size(image_bytes)
     use_original_bytes = False
     pad_x, pad_y = 0, 0
@@ -677,23 +723,35 @@ def run_cell_image_infer(
     if not use_original_bytes:
         try:
             bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y = prepare_x100_bgr(
-                image_bytes, input_dpi, model_dpi, allow_dpi_scale=allow_dpi_scale,
+                image_bytes,
+                input_dpi,
+                model_dpi,
+                allow_dpi_scale=allow_dpi_scale,
+                scale_ratio=scale_ratio,
             )
         except ValueError as e:
             return {"ok": False, "error": str(e)}
 
-    infer_dpi = model_dpi if scale_ratio != 1.0 else input_dpi
+    infer_dpi = model_dpi if (forced_dpi is not None or scale_ratio != 1.0) else input_dpi
+    # 平扫、单张不传 resolved/route_dpi，仍由 infer 按请求 DPI 选模。
+    force_kwargs: dict[str, Any] = {}
+    if forced_dpi is not None:
+        force_kwargs["resolved"] = resolved
+        force_kwargs["route_dpi"] = model_dpi
     use_714756_filter = any(spec.actual_dpi == 714756 for spec in resolved.detection)
 
     if gpu_id is None:
         gpu_id, _ = resolve_triton_route()
     if ensure_loaded:
-        ok, load_err, _ = load_models(
-            input_dpi,
-            smear_type,
-            target_cell_types,
-            gpu_id=gpu_id,
-        )
+        if forced_dpi is not None:
+            ok, load_err, _ = load_resolved_models(resolved, gpu_id=gpu_id)
+        else:
+            ok, load_err, _ = load_models(
+                input_dpi,
+                smear_type,
+                target_cell_types,
+                gpu_id=gpu_id,
+            )
         if not ok:
             return {"ok": False, "error": load_err}
 
@@ -707,6 +765,7 @@ def run_cell_image_infer(
                 filename=filename,
                 gpu_id=gpu_id,
                 test=test,
+                **force_kwargs,
             )
         else:
             result = infer_x100_on_bgr(
@@ -719,6 +778,7 @@ def run_cell_image_infer(
                 max_w=max_w,
                 max_h=max_h,
                 test=test,
+                **force_kwargs,
             )
     except PipelineUnavailable as e:
         wait_while_circuit_open()
@@ -763,3 +823,68 @@ def run_cell_image_infer(
         "warning": warning,
         "model_name": model_names,
     }
+
+
+def _miniapp_guess_preferred(
+    count: int,
+    dpi: int,
+    best_count: int,
+    best_dpi: int | None,
+) -> bool:
+    """细胞更多则替换；数量相同则按 MINIAPP_GUESS_DPI_TIE_PRIORITY 优先。"""
+    if best_dpi is None or count > best_count:
+        return True
+    if count < best_count:
+        return False
+    return _MINIAPP_GUESS_DPI_RANK.get(dpi, 99) < _MINIAPP_GUESS_DPI_RANK.get(int(best_dpi), 99)
+
+
+def run_miniapp_cell_image_infer(
+    image_bytes: bytes,
+    smear_type: str,
+    target_cell_types: str,
+    filename: str = "image.jpg",
+    *,
+    gpu_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    小程序单张识别：不接收 DPI。
+    固定加载 714756 模型，对候选 DPI 强制缩放，直接返回细胞最多的一次。
+    细胞数相同时按 714746、147246、357378、557378 优先。
+    """
+    best: dict[str, Any] | None = None
+    best_dpi: int | None = None
+    best_count = -1
+    last_error: dict[str, Any] | None = None
+
+    for guess_dpi in MINIAPP_GUESS_DPIS:
+        result = run_cell_image_infer(
+            image_bytes,
+            guess_dpi,
+            smear_type,
+            target_cell_types,
+            filename=filename,
+            gpu_id=gpu_id,
+            force_model_dpi=MINIAPP_MODEL_DPI,
+        )
+        if not result.get("ok"):
+            last_error = result
+            logger.info(
+                "miniapp guess dpi=%s failed: %s",
+                guess_dpi,
+                result.get("error"),
+            )
+            continue
+        count = len(result.get("cell_list") or [])
+        logger.info("miniapp guess dpi=%s cells=%s", guess_dpi, count)
+        if _miniapp_guess_preferred(count, int(guess_dpi), best_count, best_dpi):
+            best = result
+            best_dpi = int(guess_dpi)
+            best_count = count
+
+    if best is None or best_dpi is None:
+        return last_error or {"ok": False, "error": "infer failed"}
+
+    logger.info("miniapp pick guess_dpi=%s cells=%s", best_dpi, best_count)
+    best["guess_dpi"] = best_dpi
+    return best

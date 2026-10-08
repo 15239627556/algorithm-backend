@@ -1869,6 +1869,8 @@ def infer(
     filename: str = "tile.jpg",
     gpu_id: Optional[int] = None,
     test: bool = False,
+    resolved: Optional[ResolvedModels] = None,
+    route_dpi: Optional[int] = None,
 ) -> dict:
     """
     细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
@@ -1876,11 +1878,16 @@ def infer(
 
     平扫 upload_image 与单张识别均经 run_cell_image_infer 在推理前 load_models。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
+    resolved / route_dpi 同时传入时跳过按请求 DPI 重新选模，用于强制走某一档模型。
     """
     assert_inference_allowed()
-    resolved = resolve_models(dpi, smear_type, algorithm_types)
+    if resolved is None:
+        resolved = resolve_models(dpi, smear_type, algorithm_types)
     warning = resolved.warning
-    route_dpi = _infer_route_dpi(resolved)
+    if route_dpi is None:
+        route_dpi = _infer_route_dpi(resolved)
+    else:
+        route_dpi = int(route_dpi)
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
     if test:
         trip_on_timeout(gpu_id=gpu_id, url=_pipeline_infer_url(endpoint=endpoint))
