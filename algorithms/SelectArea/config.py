@@ -113,6 +113,14 @@ class BM40Config:
     MEG_cell_type: int = field(default=100001, init=False)  # MEG 细胞类型
     WBC_cell_type: int = field(default=100000, init=False)  # WBC 细胞类型 
     RBC_cell_type: int = field(default=100002, init=False)  # RBC 细胞类型 
+    CF_cell_type: int = field(default=100007, init=False)  # 脑脊液未分类细胞类型 
+
+    # --- 脑脊液 FOCUS_POINT 选区 ---
+    focus_point: int = 9  # 主团内平铺视野数（通常为 n^2，如 4/9）
+    cf_dense_close_ksize: int = field(default=5, init=False)  # 密度连通闭运算核
+    # 质量心累积覆盖比例：从密度加权质心由近及远纳入格子，至覆盖该比例细胞后取外接框
+    cf_dense_mass_frac: float = field(default=0.95, init=False)
+    cf_fov_refine_steps: int = field(default=5, init=False)  # 子区内滑动步长 = 视野边长 / steps
 
     def get_search_area_scales(self) -> Tuple[float, ...]:
         """按涂片类型返回搜索窗口面积跨度。"""
