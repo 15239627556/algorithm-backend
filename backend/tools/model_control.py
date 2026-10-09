@@ -61,6 +61,8 @@ class ModelSpec:
     dpi_min: int | None = None
     dpi_max: int | None = None
     vram_gb: float = DEFAULT_MODEL_VRAM_GB
+    optional: bool = False
+    single_only: bool = False
 
     def dpi_matches(self, dpi: int) -> bool:
         if self.dpi_min is None or self.dpi_max is None:
@@ -85,6 +87,16 @@ class ResolvedModels:
     score: List[ModelSpec] = field(default_factory=list)
     warning: str | None = None
     dpi_unsuitable: bool = False
+
+    def without_names(self, names: set[str]) -> ResolvedModels:
+        skip = set(names)
+        return ResolvedModels(
+            detection=[spec for spec in self.detection if spec.name not in skip],
+            classification=[spec for spec in self.classification if spec.name not in skip],
+            score=[spec for spec in self.score if spec.name not in skip],
+            warning=self.warning,
+            dpi_unsuitable=self.dpi_unsuitable,
+        )
 
     @property
     def names(self) -> List[str]:
@@ -134,6 +146,8 @@ def _row_to_spec(row: dict) -> ModelSpec:
         dpi_min=dpi_min,
         dpi_max=dpi_max,
         vram_gb=vram,
+        optional=bool(row.get("optional")),
+        single_only=bool(row.get("single_only")),
     )
 
 
@@ -149,6 +163,8 @@ def _apply_camera_override(spec: ModelSpec) -> ModelSpec:
             dpi_min=spec.dpi_min,
             dpi_max=spec.dpi_max,
             vram_gb=spec.vram_gb,
+            optional=spec.optional,
+            single_only=spec.single_only,
         )
     return spec
 
@@ -166,10 +182,17 @@ def _effective_dpi(dpi: int) -> int:
     return LEGACY_DPI_MAP.get(int(dpi), int(dpi))
 
 
+def _include_classifier(spec: ModelSpec, include_single_only: bool) -> bool:
+    """single_only 分类器默认不进平扫；单张识别显式打开。"""
+    return include_single_only or not spec.single_only
+
+
 def resolve_models(
     dpi: int,
     smear_type: str,
     target_cell_types: str,
+    *,
+    include_single_only: bool = False,
 ) -> ResolvedModels:
     """
     三步解析需加载的模型：
@@ -177,6 +200,7 @@ def resolve_models(
     2. 按玻片类型 + 目标类型匹配分类模型（DPI 不限制，须与已命中定位模型的实际 DPI 对齐）
     3. 按 DPI 区间 + 玻片类型匹配评分模型（目标不限制）
     DPI 不在任何适用区间内时 dpi_unsuitable=True，不回退到最近模型。
+    include_single_only: 单张识别才纳入 single_only 分类器；平扫保持 False。
     """
     catalog = get_model_catalog()
     st = normalize_smear_type(smear_type)
@@ -198,6 +222,8 @@ def resolve_models(
     classification: List[ModelSpec] = []
     for spec in catalog:
         if spec.kind != KIND_CLASSIFICATION:
+            continue
+        if not _include_classifier(spec, include_single_only):
             continue
         if not spec.smear_matches(st) or not spec.target_matches(types):
             continue
@@ -227,6 +253,8 @@ def resolve_models_by_actual_dpi(
     actual_dpi: int,
     smear_type: str,
     target_cell_types: str,
+    *,
+    include_single_only: bool = False,
 ) -> ResolvedModels:
     """
     只加载指定 actual_dpi 的模型，不看 dpi_range。
@@ -248,6 +276,8 @@ def resolve_models_by_actual_dpi(
     classification: List[ModelSpec] = []
     for spec in catalog:
         if spec.kind != KIND_CLASSIFICATION or spec.actual_dpi != actual:
+            continue
+        if not _include_classifier(spec, include_single_only):
             continue
         if not spec.smear_matches(st) or not spec.target_matches(types):
             continue
@@ -499,46 +529,139 @@ def _evict_other_dpi_models(
             unload_model(name, gpu_id=gpu_id)
 
 
+def _drop_single_only_not_needed(
+    needed: List[ModelSpec],
+    gpu_id: int,
+    loaded: set[str],
+) -> set[str]:
+    """本次不需要的 single_only 模型卸掉，避免平扫仍走分类。"""
+    needed_names = {spec.name for spec in needed}
+    by_name = _specs_by_name()
+    for name in list(loaded):
+        spec = by_name.get(name)
+        if spec is None or not spec.single_only or name in needed_names:
+            continue
+        ok, msg = unload_model(name, gpu_id=gpu_id)
+        if ok:
+            loaded.discard(name)
+            logger.info(
+                "Unloaded single-only model %s on gpu=%s (not used by this request)",
+                name,
+                gpu_id,
+            )
+        else:
+            logger.warning(
+                "Unload single-only model %s failed on gpu=%s: %s",
+                name,
+                gpu_id,
+                msg,
+            )
+    return loaded
+
+
+def _vram_error(gpu_id: int, used: float, budget: float) -> str:
+    return (
+        f"VRAM not enough on gpu={gpu_id}: need ~{used:.1f}GB, "
+        f"budget {budget:.1f}GB (max_memory={max_memory}, "
+        f"reserved_memory={reserved_memory})"
+    )
+
+
 def load_resolved_models(
     resolved: ResolvedModels,
     *,
     gpu_id: Optional[int] = None,
     all_gpus: bool = False,
 ) -> Tuple[bool, str, List[str]]:
-    """按已解析的模型列表加载。dpi_unsuitable 时直接拒绝。"""
+    """
+    按已解析的模型列表加载。dpi_unsuitable 时直接拒绝。
+    optional 模型加载失败或显存不够时跳过，不让整次请求失败。
+    返回值里的模型名是实际就绪的；调用方据此丢掉没加载上的可选分类器。
+    """
     if resolved.dpi_unsuitable:
         return False, "DPI不合适", []
     needed = resolved.specs
-    models = [spec.name for spec in needed]
-    if not models:
+    if not needed:
         return True, "", []
 
+    required = [spec for spec in needed if not spec.optional]
+    optional = [spec for spec in needed if spec.optional]
+    required_names = [spec.name for spec in required]
     last_msg = ""
+    ready_sets: list[set[str]] = []
+
     with _model_lock:
         for gid in _warmup_gpu_targets(gpu_id, all_gpus=all_gpus):
-            _evict_other_dpi_models(needed, gid)
+            loaded = _drop_single_only_not_needed(
+                needed,
+                gid,
+                set(get_loaded_models(gpu_id=gid)),
+            )
+            _evict_other_dpi_models(required, gid)
             by_name = _specs_by_name()
             loaded = set(get_loaded_models(gpu_id=gid))
-            future = loaded | set(models)
-            used = _estimated_vram(future, by_name)
             budget = _vram_budget_gb()
+            future = loaded | set(required_names)
+            used = _estimated_vram(future, by_name)
             if used > budget + 1e-6:
-                msg = (
-                    f"VRAM not enough on gpu={gid}: need ~{used:.1f}GB, "
-                    f"budget {budget:.1f}GB (max_memory={max_memory}, "
-                    f"reserved_memory={reserved_memory})"
-                )
+                msg = _vram_error(gid, used, budget)
                 logger.warning(msg)
-                return False, msg, models
-            for model_name in models:
-                if model_name in loaded:
+                return False, msg, required_names
+
+            ready: set[str] = set()
+            for model_name in required_names:
+                if model_name not in loaded:
+                    ok, msg = load_model(model_name, gpu_id=gid)
+                    if not ok:
+                        return False, msg, required_names
+                    loaded.add(model_name)
+                    last_msg = msg
+                ready.add(model_name)
+
+            for spec in optional:
+                name = spec.name
+                if name in loaded:
+                    ready.add(name)
                     continue
-                ok, msg = load_model(model_name, gpu_id=gid)
+                trial = loaded | {name}
+                if _estimated_vram(trial, by_name) > budget + 1e-6:
+                    _evict_other_dpi_models(required + [spec], gid)
+                    loaded = set(get_loaded_models(gpu_id=gid))
+                    for req_name in required_names:
+                        if req_name in loaded:
+                            continue
+                        ok, msg = load_model(req_name, gpu_id=gid)
+                        if not ok:
+                            return False, msg, required_names
+                        loaded.add(req_name)
+                        last_msg = msg
+                    trial = loaded | {name}
+                if _estimated_vram(trial, by_name) > budget + 1e-6:
+                    logger.warning(
+                        "Skip optional model %s on gpu=%s: VRAM not enough",
+                        name,
+                        gid,
+                    )
+                    continue
+                ok, msg = load_model(name, gpu_id=gid)
                 if not ok:
-                    return False, msg, models
-                loaded.add(model_name)
+                    logger.warning(
+                        "Optional model %s unavailable on gpu=%s, detection only: %s",
+                        name,
+                        gid,
+                        msg,
+                    )
+                    continue
+                loaded.add(name)
+                ready.add(name)
                 last_msg = msg
-    return True, last_msg, models
+            ready_sets.append(ready)
+
+    if not ready_sets:
+        return True, last_msg, []
+    common = set.intersection(*ready_sets)
+    ordered = [spec.name for spec in needed if spec.name in common]
+    return True, last_msg, ordered
 
 
 def load_models(

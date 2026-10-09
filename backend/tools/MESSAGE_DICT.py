@@ -221,6 +221,8 @@ allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
 # output: bboxes=定位, tops=分类, scores=评分, result=其它结构化结果
 # vram_gb: 预估显存（GB）；启动时若存在 manifest.json，按 name 覆盖为 memory-usage-gb
 # camera=flir 时 HIGHRES-WBC-CLS 会被替换为 FLIR 专用分类器（1.5G）
+# optional: 仓库里可能没有；加载失败不中断，单张退回定位
+# single_only: 仅单张识别加载。平扫不加载；若已被单张加载，平扫加载时会卸掉
 # =============================================================================
 MODEL_TABLE = [
     {
@@ -318,6 +320,20 @@ MODEL_TABLE = [
         "max_src_w": 4896,
         "max_src_h": 4096,
         "vram_gb": 0.8,
+    },
+    {
+        "name_zh": "低倍骨髓/外周血有核细胞分类",
+        "name": "LOWRES-WBC-CLS",
+        "dpi_range": (73623, 294492),
+        "actual_dpi": 147246,
+        "targets": "WBC",
+        "smear_types": "BM/PB",
+        "output": "tops",
+        "max_src_w": 3200,
+        "max_src_h": 2200,
+        "vram_gb": 0.5,
+        "optional": True,
+        "single_only": True,
     },
     {
         "name_zh": "高倍巨核细胞分类",

@@ -572,18 +572,22 @@ def analyze_cell_image(
     "/analyze_cell_image_miniapp",
     summary="小程序细胞图像分析",
     description=(
-        "不传 DPI。固定加载 714756 模型，依次按 147246、357378、557378、714746 "
-        "强制缩放并识别，直接返回细胞最多的一次。细胞数相同时 guess_dpi 优先级为 "
-        "714746、147246、357378、557378。"
+        "只必填 image_file。target_cell_types 默认 WBC，smear_type 默认 BM。"
+        "先用 714756 高倍有核定位+分类，再用 147246 低倍有核定位+分类，"
+        "返回细胞更多的一次；数量相同保留高倍结果。"
+        "低倍分类模型不存在时该档只返回定位。"
     ),
 )
 def analyze_cell_image_miniapp(
     image_file: UploadFile = File(..., description="图像文件（.jpg格式）"),
     target_cell_types: str = Form(
-        ...,
-        description="目标细胞类型如 WBC / WBC,RBC,PLAT",
+        "WBC",
+        description="目标细胞类型，默认 WBC",
     ),
-    smear_type: str = Form(..., description="涂片类型 BM/PB/CF"),
+    smear_type: str = Form(
+        "BM",
+        description="涂片类型 BM/PB/CF，默认 BM",
+    ),
 ):
     return taskService.get_miniapp_cell_image_result(
         _UploadAdapter(image_file),

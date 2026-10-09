@@ -30,7 +30,6 @@ from backend.tools.filter_edge_incomplete_cells import (
     filter_cell_dicts_small_wbc_714756,
 )
 from backend.tools.model_control import (
-    load_models,
     load_resolved_models,
     resolve_models,
     resolve_models_by_actual_dpi,
@@ -41,14 +40,9 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-# 小程序猜 DPI：候选为假定的拍摄 DPI，模型固定 714756，不走 dpi_range。
-MINIAPP_MODEL_DPI = 714756
-MINIAPP_GUESS_DPIS = (147246, 357378, 557378, 714746)
-# 细胞数相同时 guess_dpi 优先级，越靠前越优先。
-MINIAPP_GUESS_DPI_TIE_PRIORITY = (714746, 147246, 357378, 557378)
-_MINIAPP_GUESS_DPI_RANK = {
-    dpi: rank for rank, dpi in enumerate(MINIAPP_GUESS_DPI_TIE_PRIORITY)
-}
+# 小程序依次尝试的模型档：先高倍有核定位+分类，再低倍有核定位+分类。
+# 细胞数相同时保留先尝试的高倍结果。
+MINIAPP_ATTEMPT_DPIS = (714756, 147246)
 
 # 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
 _DPI_TILE_MIN: dict[int, tuple[int, int]] = {
@@ -632,6 +626,7 @@ def run_cell_image_infer(
     ensure_loaded: bool = True,
     allow_dpi_scale: bool = True,
     force_model_dpi: int | None = None,
+    include_single_only: bool = False,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -642,6 +637,8 @@ def run_cell_image_infer(
     否则推理服务重启后 create_task 的预热失效，upload_image 会报模型未加载。
     allow_dpi_scale: 平扫传 False，尺寸合适时原图直送，跳过解码/缩放/重编码。
     force_model_dpi: 忽略 dpi_range，只加载该 actual_dpi 的模型，并按比值强制缩放。
+    include_single_only: 单张识别才加载 single_only 分类器（如 LOWRES-WBC-CLS）。
+    平扫保持 False，只定位。可选分类器不存在时跳过，结果退回定位。
     """
     try:
         assert_inference_allowed()
@@ -668,9 +665,19 @@ def run_cell_image_infer(
     forced_dpi = int(force_model_dpi) if force_model_dpi is not None else None
 
     if forced_dpi is not None:
-        resolved = resolve_models_by_actual_dpi(forced_dpi, smear_type, target_cell_types)
+        resolved = resolve_models_by_actual_dpi(
+            forced_dpi,
+            smear_type,
+            target_cell_types,
+            include_single_only=include_single_only,
+        )
     else:
-        resolved = resolve_models(input_dpi, smear_type, target_cell_types)
+        resolved = resolve_models(
+            input_dpi,
+            smear_type,
+            target_cell_types,
+            include_single_only=include_single_only,
+        )
         if resolved.dpi_unsuitable:
             return {"ok": False, "error": DPI_NOT_SUITABLE}
     requested = _parse_cell_types(target_cell_types)
@@ -733,27 +740,25 @@ def run_cell_image_infer(
             return {"ok": False, "error": str(e)}
 
     infer_dpi = model_dpi if (forced_dpi is not None or scale_ratio != 1.0) else input_dpi
-    # 平扫、单张不传 resolved/route_dpi，仍由 infer 按请求 DPI 选模。
-    force_kwargs: dict[str, Any] = {}
-    if forced_dpi is not None:
-        force_kwargs["resolved"] = resolved
-        force_kwargs["route_dpi"] = model_dpi
+    # 把已解析（并去掉没加载上的可选分类器）的模型传给 infer，避免内部按 DPI 重选时把单张分类器丢掉或给平扫加上。
+    force_kwargs: dict[str, Any] = {
+        "resolved": resolved,
+        "route_dpi": model_dpi,
+    }
     use_714756_filter = any(spec.actual_dpi == 714756 for spec in resolved.detection)
 
     if gpu_id is None:
         gpu_id, _ = resolve_triton_route()
     if ensure_loaded:
-        if forced_dpi is not None:
-            ok, load_err, _ = load_resolved_models(resolved, gpu_id=gpu_id)
-        else:
-            ok, load_err, _ = load_models(
-                input_dpi,
-                smear_type,
-                target_cell_types,
-                gpu_id=gpu_id,
-            )
+        ok, load_err, ready_names = load_resolved_models(resolved, gpu_id=gpu_id)
         if not ok:
             return {"ok": False, "error": load_err}
+        skipped = {name for name in resolved.names if name not in set(ready_names)}
+        if skipped:
+            logger.info("optional models not loaded, detection only: %s", sorted(skipped))
+            resolved = resolved.without_names(skipped)
+            model_names = ",".join(spec.name for spec in resolved.specs)
+        force_kwargs["resolved"] = resolved
 
     try:
         if use_original_bytes:
@@ -825,66 +830,55 @@ def run_cell_image_infer(
     }
 
 
-def _miniapp_guess_preferred(
-    count: int,
-    dpi: int,
-    best_count: int,
-    best_dpi: int | None,
-) -> bool:
-    """细胞更多则替换；数量相同则按 MINIAPP_GUESS_DPI_TIE_PRIORITY 优先。"""
-    if best_dpi is None or count > best_count:
-        return True
-    if count < best_count:
-        return False
-    return _MINIAPP_GUESS_DPI_RANK.get(dpi, 99) < _MINIAPP_GUESS_DPI_RANK.get(int(best_dpi), 99)
-
-
 def run_miniapp_cell_image_infer(
     image_bytes: bytes,
-    smear_type: str,
-    target_cell_types: str,
+    smear_type: str = "BM",
+    target_cell_types: str = "WBC",
     filename: str = "image.jpg",
     *,
     gpu_id: int | None = None,
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI。
-    固定加载 714756 模型，对候选 DPI 强制缩放，直接返回细胞最多的一次。
-    细胞数相同时按 714746、147246、357378、557378 优先。
+    先跑 714756 高倍有核定位+分类，再跑 147246 低倍有核定位+分类。
+    返回细胞更多的一次；数量相同保留高倍结果。
+    低倍分类模型不存在时，该档只做定位。
     """
     best: dict[str, Any] | None = None
     best_dpi: int | None = None
     best_count = -1
     last_error: dict[str, Any] | None = None
+    smear_type = smear_type or "BM"
+    target_cell_types = target_cell_types or "WBC"
 
-    for guess_dpi in MINIAPP_GUESS_DPIS:
+    for model_dpi in MINIAPP_ATTEMPT_DPIS:
         result = run_cell_image_infer(
             image_bytes,
-            guess_dpi,
+            model_dpi,
             smear_type,
             target_cell_types,
             filename=filename,
             gpu_id=gpu_id,
-            force_model_dpi=MINIAPP_MODEL_DPI,
+            include_single_only=True,
         )
         if not result.get("ok"):
             last_error = result
             logger.info(
-                "miniapp guess dpi=%s failed: %s",
-                guess_dpi,
+                "miniapp dpi=%s failed: %s",
+                model_dpi,
                 result.get("error"),
             )
             continue
         count = len(result.get("cell_list") or [])
-        logger.info("miniapp guess dpi=%s cells=%s", guess_dpi, count)
-        if _miniapp_guess_preferred(count, int(guess_dpi), best_count, best_dpi):
+        logger.info("miniapp dpi=%s cells=%s", model_dpi, count)
+        if best is None or count > best_count:
             best = result
-            best_dpi = int(guess_dpi)
+            best_dpi = int(model_dpi)
             best_count = count
 
     if best is None or best_dpi is None:
         return last_error or {"ok": False, "error": "infer failed"}
 
-    logger.info("miniapp pick guess_dpi=%s cells=%s", best_dpi, best_count)
+    logger.info("miniapp pick dpi=%s cells=%s", best_dpi, best_count)
     best["guess_dpi"] = best_dpi
     return best

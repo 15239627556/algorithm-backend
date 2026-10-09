@@ -690,9 +690,11 @@ class TaskService:
             target_cell_types or "",
             filename=filename,
             edge_cell_filter=False,
-            # 与单张识别相同：已加载则跳过，推理服务重启后自动补加载。
+            # 已加载则跳过，推理服务重启后自动补加载。
+            # 平扫不加载 LOWRES-WBC-CLS，只定位。
             ensure_loaded=True,
             allow_dpi_scale=False,
+            include_single_only=False,
         )
         if not result.get("ok"):
             err = result.get("error") or "infer failed"
@@ -1876,6 +1878,8 @@ class TaskService:
             filename=filename,
             edge_cell_filter=_parse_edge_cell_filter_flag(edge_cell_filter),
             test=_parse_test_flag(test),
+            # 单张才尝试低倍 WBC 分类；模型不存在时仍返回定位。
+            include_single_only=True,
         )
         if not result.get("ok"):
             err = result.get("error") or "infer failed"
@@ -1895,17 +1899,17 @@ class TaskService:
             response["warning"] = result["warning"]
         return response
 
-    def get_miniapp_cell_image_result(self, image_file, target_cell_types, smear_type):
+    def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
-        小程序细胞图像分析。不接收 DPI：固定 714756 模型，
-        在候选 DPI 上强制缩放后直接返回细胞最多的结果。
+        小程序细胞图像分析。只必填图片。
+        先 714756 高倍有核定位+分类，再 147246 低倍有核定位+分类，返回细胞更多的一次。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"
         result = run_miniapp_cell_image_infer(
             image_bytes,
             smear_type or "BM",
-            target_cell_types or "",
+            target_cell_types or "WBC",
             filename=filename,
         )
         if not result.get("ok"):

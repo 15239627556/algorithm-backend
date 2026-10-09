@@ -697,6 +697,19 @@ def _pipeline_task_cls(res: dict[str, Any], task: str) -> dict[str, Any]:
     return cls if isinstance(cls, dict) else {}
 
 
+def _wbc_cls_tops_ready(wbc_cls: dict[str, Any] | None, n: int) -> bool:
+    """分类 tops 条数盖住检测框时才按分类结果返回。"""
+    if not wbc_cls or n <= 0:
+        return False
+    tops = wbc_cls.get("tops")
+    if tops is None:
+        return False
+    arr = np.asarray(tops)
+    if arr.size == 0 or arr.ndim == 0:
+        return False
+    return int(arr.shape[0]) >= n
+
+
 def _xyxy_boxes_and_scores(det: dict[str, Any]) -> tuple[Optional[np.ndarray], Optional[np.ndarray], int]:
     """从 task.det 提取 xyxy bboxes 与 scores，返回 (boxes, scores, count)。"""
     if not det:
@@ -885,6 +898,9 @@ def _infer_147246_finalize(
     wbc_pixel_count: int,
     red_pixel_count: int,
     smear_type: str,
+    *,
+    wbc_cls: Optional[dict[str, Any]] = None,
+    classify_wbc: bool = False,
 ) -> dict[str, Any]:
     regions = np.asarray(con_regions, dtype=np.float64)
     if regions.size:
@@ -904,6 +920,7 @@ def _infer_147246_finalize(
         constituency_scores_combined = []
 
     cells: List[Cell] = []
+    cell_list: list = []
     if "WBC" in (algorithm_types or ""):
         if wbc_num > 0 and wbc_boxes is not None:
             s = (
@@ -911,16 +928,56 @@ def _infer_147246_finalize(
                 if wbc_scores is not None
                 else np.ones(wbc_num, dtype=np.float64)
             )
-            cells.extend(
-                _boxes_xyxy_to_cells(
-                    wbc_boxes[:wbc_num],
+            boxes = wbc_boxes[:wbc_num]
+            if classify_wbc and _wbc_cls_tops_ready(wbc_cls, wbc_num):
+                tops_raw = wbc_cls.get("tops") if wbc_cls else None
+                probs_raw = wbc_cls.get("scores") if wbc_cls else None
+                class_ids = np.asarray(tops_raw, dtype=np.int32)[:wbc_num]
+                cprobs_arr = (
+                    np.asarray(probs_raw, dtype=np.float64)[:wbc_num].reshape(wbc_num, -1)
+                    if probs_raw is not None
+                    else None
+                )
+                wbc_names = [
+                    CELL_TYPES_X100.get(200000 + i, ("?", f"cell_{i}"))[1] for i in range(35)
+                ]
+                wbc_cells = _boxes_xyxy_to_cells(
+                    boxes,
+                    s,
+                    class_ids,
+                    200000,
+                    wbc_names,
+                    CELL_TYPES_X100,
+                    class_probs=cprobs_arr,
+                )
+                cells.extend(wbc_cells)
+                cids_arr = np.asarray(class_ids, dtype=np.int32).reshape(wbc_num, -1)
+                n_prob = int(cids_arr.shape[1]) if cids_arr.ndim > 1 else 1
+                cprobs_for_top5 = (
+                    cprobs_arr if cprobs_arr is not None else np.ones((wbc_num, n_prob))
+                )
+                cell_list.extend(
+                    _cells_to_cell_list_top5(
+                        wbc_cells,
+                        cids_arr,
+                        cprobs_for_top5,
+                        200000,
+                        CELL_TYPES_X100,
+                        wbc_names,
+                        smear_type,
+                    )
+                )
+            else:
+                wbc_cells = _boxes_xyxy_to_cells(
+                    boxes,
                     s,
                     np.zeros(wbc_num, dtype=np.int32),
                     100000,
                     ["unclassified"],
                     CELL_TYPES_X40,
                 )
-            )
+                cells.extend(wbc_cells)
+                cell_list.extend(_cells_to_cell_list_single(wbc_cells, smear_type))
     if "MEG" in (algorithm_types or ""):
         if meg_num > 0 and meg_boxes is not None:
             s = (
@@ -928,17 +985,16 @@ def _infer_147246_finalize(
                 if meg_scores is not None
                 else np.ones(meg_num, dtype=np.float64)
             )
-            cells.extend(
-                _boxes_xyxy_to_cells(
-                    meg_boxes[:meg_num],
-                    s,
-                    np.zeros(meg_num, dtype=np.int32),
-                    100001,
-                    ["unclassified"],
-                    CELL_TYPES_X40,
-                )
+            meg_cells = _boxes_xyxy_to_cells(
+                meg_boxes[:meg_num],
+                s,
+                np.zeros(meg_num, dtype=np.int32),
+                100001,
+                ["unclassified"],
+                CELL_TYPES_X40,
             )
-    cell_list = _cells_to_cell_list_single(cells, smear_type)
+            cells.extend(meg_cells)
+            cell_list.extend(_cells_to_cell_list_single(meg_cells, smear_type))
     return {
         "cells": cells,
         "scores": constituency_scores_combined,
@@ -1929,6 +1985,8 @@ def infer(
             wpc,
             rpc,
             smear_type,
+            wbc_cls=_pipeline_task_cls(res_json, "wbc"),
+            classify_wbc=resolved.has_classifier_for("WBC"),
         )
     elif route_dpi == DPI_357378:
         result = _infer_357378_from_pipeline_json(res_json, smear_type)
