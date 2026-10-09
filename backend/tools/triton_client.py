@@ -1891,28 +1891,33 @@ def _post_unified_pipeline_infer(
     algorithm_types: str,
     endpoint: dict,
     test: bool = False,
+    no_cls: bool = False,
 ) -> dict[str, Any]:
     """POST /infer：multipart 传 image + dpi(actual_dpi) + slide_type + task。"""
     url = _pipeline_infer_url(endpoint=endpoint)
     slide_type = normalize_smear_type(smear_type)
     task = _pipeline_task_from_algorithm_types(algorithm_types, route_dpi, smear_type)
+    extra_form = {
+        "dpi": str(route_dpi),
+        "slide_type": slide_type,
+        "task": task,
+    }
+    if no_cls:
+        extra_form["no_cls"] = "true"
     logger.debug(
-        "unified /infer url=%s dpi=%s slide_type=%s task=%s",
+        "unified /infer url=%s dpi=%s slide_type=%s task=%s no_cls=%s",
         url,
         route_dpi,
         slide_type,
         task,
+        no_cls,
     )
     return _post_multipart_pipeline_infer(
         url,
         image_bytes,
         filename,
         PIPELINE_HTTP_TIMEOUT_S,
-        extra_form={
-            "dpi": str(route_dpi),
-            "slide_type": slide_type,
-            "task": task,
-        },
+        extra_form=extra_form,
         test=test,
     )
 
@@ -1927,6 +1932,7 @@ def infer(
     test: bool = False,
     resolved: Optional[ResolvedModels] = None,
     route_dpi: Optional[int] = None,
+    no_cls: bool = False,
 ) -> dict:
     """
     细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
@@ -1965,6 +1971,7 @@ def infer(
         algorithm_types,
         endpoint,
         test=test,
+        no_cls=no_cls,
     )
 
     if route_dpi == DPI_147246:

@@ -11,7 +11,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from backend.tools.MESSAGE_DICT import DPI_NOT_SUITABLE, model_dpi_ranges, model_max_src_by_actual_dpi
+from backend.tools.MESSAGE_DICT import (
+    DPI_NOT_SUITABLE,
+    get_counting_cell_type,
+    model_dpi_ranges,
+    model_max_src_by_actual_dpi,
+)
 from backend.tools.combo_validator import LEGACY_DPI_MAP, _parse_cell_types, normalize_smear_type
 from backend.tools.image_tiling import (
     DEFAULT_TILE_OVERLAP,
@@ -41,17 +46,24 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 # 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
-# 714756 模型试 714756 与其一半；40 倍模型试 147246、一半、2 倍。
+# 714756 模型试原档、一半和 2 倍；40 倍模型试 147246、一半、2 倍。
 # 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
+    (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
 )
+# 破碎细胞及杂质。小程序若第一名是它，改用第二名。
+_MINIAPP_BROKEN_CELL_TYPE = 200029
+_MINIAPP_LOWRES_WARNING = "您上传的图像像素不足，准确度可能会下降"
+# 假定细胞物理边长 20 微米，用原图框反推 DPI；不超过该值才返回像素不足告警。
+_MINIAPP_CELL_UM = 20.0
+_MINIAPP_DPI_WARN_MAX = 350000
 
 # 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
 _DPI_TILE_MIN: dict[int, tuple[int, int]] = {
@@ -451,6 +463,7 @@ def infer_x100_on_bgr(
     test: bool = False,
     resolved: Any = None,
     route_dpi: int | None = None,
+    no_cls: bool = False,
 ) -> dict[str, Any]:
     """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。"""
     h, w = int(bgr.shape[0]), int(bgr.shape[1])
@@ -462,6 +475,8 @@ def infer_x100_on_bgr(
             extra["resolved"] = resolved
         if route_dpi is not None:
             extra["route_dpi"] = route_dpi
+        if no_cls:
+            extra["no_cls"] = True
         return infer(
             tile_bytes,
             dpi=infer_dpi,
@@ -636,6 +651,7 @@ def run_cell_image_infer(
     allow_dpi_scale: bool = True,
     force_model_dpi: int | None = None,
     include_single_only: bool = False,
+    no_cls: bool = False,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -648,6 +664,7 @@ def run_cell_image_infer(
     force_model_dpi: 忽略 dpi_range，只加载该 actual_dpi 的模型，并按比值强制缩放。
     include_single_only: 单张识别才加载 single_only 分类器（如 LOWRES-WBC-CLS）。
     平扫保持 False，只定位。可选分类器不存在时跳过，结果退回定位。
+    no_cls: 为 True 时请求带 no_cls=true，只返回定位框。
     """
     try:
         assert_inference_allowed()
@@ -754,6 +771,8 @@ def run_cell_image_infer(
         "resolved": resolved,
         "route_dpi": model_dpi,
     }
+    if no_cls:
+        force_kwargs["no_cls"] = True
     use_714756_filter = any(spec.actual_dpi == 714756 for spec in resolved.detection)
 
     if gpu_id is None:
@@ -839,6 +858,58 @@ def run_cell_image_infer(
     }
 
 
+def _miniapp_skip_broken_first_top(
+    cell_list: list[dict[str, Any]],
+    smear_type: str,
+) -> list[dict[str, Any]]:
+    """第一名是破碎细胞及杂质且还有第二名时，把第二名提到第一位。"""
+    for item in cell_list:
+        if not isinstance(item, dict):
+            continue
+        tops = item.get("tops")
+        if not isinstance(tops, list) or len(tops) < 2:
+            continue
+        first, second = tops[0], tops[1]
+        if not isinstance(first, dict) or not isinstance(second, dict):
+            continue
+        try:
+            first_type = int(first.get("cell_type"))
+            second_type = int(second.get("cell_type"))
+        except (TypeError, ValueError):
+            continue
+        if first_type != _MINIAPP_BROKEN_CELL_TYPE:
+            continue
+        promoted = dict(second)
+        promoted["count_type"] = get_counting_cell_type(second_type, smear_type)
+        item["tops"] = [promoted, first, *tops[2:]]
+    return cell_list
+
+
+def _miniapp_estimated_dpi(cell_list: list[dict[str, Any]]) -> float | None:
+    """原图细胞框宽、高各自取中位数，再平均，按 20 微米反推 DPI。"""
+    widths: list[float] = []
+    heights: list[float] = []
+    for item in cell_list:
+        if not isinstance(item, dict):
+            continue
+        try:
+            width = float(item["cell_xmax"]) - float(item["cell_xmin"])
+            height = float(item["cell_ymax"]) - float(item["cell_ymin"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        widths.append(width)
+        heights.append(height)
+    if not widths:
+        return None
+    side_px = (float(np.median(widths)) + float(np.median(heights))) / 2.0
+    if side_px <= 0:
+        return None
+    # DPI = 25.4 * 1000 * 像素 / 微米
+    return 25.4 * 1000.0 * side_px / _MINIAPP_CELL_UM
+
+
 def run_miniapp_cell_image_infer(
     image_bytes: bytes,
     smear_type: str = "BM",
@@ -849,12 +920,17 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    用 714756 模型试 714756 及其一半，用 40 倍模型试 147246、一半和 2 倍。
-    返回细胞更多的一次；数量相同按 714756、714756/2、147246、147246/2、147246*2 优先。
+    用 714756 模型试原档、一半和 2 倍，用 40 倍模型试 147246、一半和 2 倍。
+    返回细胞更多的一次；数量相同按 714756、714756/2、714756*2、147246、147246/2、147246*2 优先。
     低倍分类模型不存在时，该档只做定位。
+    若某细胞 tops 第一名是 200029（破碎细胞及杂质）且有第二名，改用第二名。
+    用最终结果原图细胞框的宽、高中位数均值，按细胞 20 微米反推 DPI；
+    反推 DPI 小于等于 350000 时 warning 提示图像像素不足，否则响应不含该字段。
+    猜档请求带 no_cls=true，只比较定位框数量；确定档位后再请求一次完整分类结果。
     """
     best: dict[str, Any] | None = None
     best_dpi: int | None = None
+    best_model: int | None = None
     best_count = -1
     last_error: dict[str, Any] | None = None
     smear_type = smear_type or "BM"
@@ -870,6 +946,7 @@ def run_miniapp_cell_image_infer(
             gpu_id=gpu_id,
             include_single_only=True,
             force_model_dpi=model_dpi,
+            no_cls=True,
         )
         if not result.get("ok"):
             last_error = result
@@ -890,11 +967,41 @@ def run_miniapp_cell_image_infer(
         if best is None or count > best_count:
             best = result
             best_dpi = int(guess_dpi)
+            best_model = int(model_dpi)
             best_count = count
 
-    if best is None or best_dpi is None:
+    if best is None or best_dpi is None or best_model is None:
         return last_error or {"ok": False, "error": "infer failed"}
 
-    logger.info("miniapp pick dpi=%s cells=%s", best_dpi, best_count)
+    logger.info("miniapp pick dpi=%s model=%s cells=%s", best_dpi, best_model, best_count)
+    best = run_cell_image_infer(
+        image_bytes,
+        best_dpi,
+        smear_type,
+        target_cell_types,
+        filename=filename,
+        gpu_id=gpu_id,
+        include_single_only=True,
+        force_model_dpi=best_model,
+    )
+    if not best.get("ok"):
+        return best
+    best["cell_list"] = _miniapp_skip_broken_first_top(
+        list(best.get("cell_list") or []),
+        smear_type,
+    )
     best["guess_dpi"] = best_dpi
+    est_dpi = _miniapp_estimated_dpi(list(best.get("cell_list") or []))
+    if est_dpi is not None and est_dpi <= _MINIAPP_DPI_WARN_MAX:
+        logger.info("miniapp estimated_dpi=%.0f pixel warning", est_dpi)
+        prev = str(best.get("warning") or "").strip()
+        if prev and prev != _MINIAPP_LOWRES_WARNING:
+            best["warning"] = f"{prev}；{_MINIAPP_LOWRES_WARNING}"
+        else:
+            best["warning"] = _MINIAPP_LOWRES_WARNING
+    else:
+        logger.info("miniapp estimated_dpi=%s no pixel warning", est_dpi)
+        warning = best.get("warning")
+        if not warning or warning == _MINIAPP_LOWRES_WARNING:
+            best.pop("warning", None)
     return best
