@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -324,10 +325,35 @@ _docs = "/" if is_doc else None
 _openapi = "/openapi.json" if is_doc else None
 _redoc = "/redoc" if is_doc else None
 
+
+def _resolve_app_version() -> str:
+    """有 manifest.json 时用其中的 version，否则用 config.sufa_version。"""
+    path = os.path.join(root_dir, "manifest.json")
+    if not os.path.isfile(path):
+        return sufa_version
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        app_logger.exception(
+            "Failed to read manifest.json version, keep sufa_version: %s", path
+        )
+        return sufa_version
+    version = ""
+    if isinstance(payload, dict):
+        version = str(payload.get("version") or "").strip()
+    if not version:
+        app_logger.warning("manifest.json has no version, keep sufa_version: %s", path)
+        return sufa_version
+    return version
+
+
+_app_version = _resolve_app_version()
+
 app = FastAPI(
     title="算法服务",
-    version=sufa_version,
-    description=f"{sufa_version}版本，算法服务，端口号为{APP_PORT}",
+    version=_app_version,
+    description=f"{_app_version}版本，算法服务，端口号为{APP_PORT}",
     docs_url=_docs,
     redoc_url=_redoc,
     openapi_url=_openapi,
