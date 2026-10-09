@@ -273,6 +273,34 @@ def apply_coast_penalty(
     return score_map, background_floor
 
 
+def _centers_with_window_inside(
+    user_search_mask: np.ndarray,
+    w: int,
+    h: int,
+    angle: int,
+    kernel_margin: int,
+) -> np.ndarray:
+    """腐蚀用户框，留下「以该格为中心时整个搜索窗都在框内」的中心。"""
+    mask = (user_search_mask > 0).astype(np.uint8)
+    if int(angle) == 0:
+        kernel = np.ones((int(h), int(w)), dtype=np.uint8)
+        return cv2.erode(mask, kernel)
+
+    kernel_size = int(np.sqrt(w**2 + h**2)) + int(kernel_margin)
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    base = np.zeros((kernel_size, kernel_size), dtype=np.uint8)
+    pad_w, pad_h = (kernel_size - int(w)) // 2, (kernel_size - int(h)) // 2
+    base[pad_h : pad_h + int(h), pad_w : pad_w + int(w)] = 1
+    rotation = cv2.getRotationMatrix2D((kernel_size / 2, kernel_size / 2), -float(angle), 1.0)
+    rotated = cv2.warpAffine(
+        base, rotation, (kernel_size, kernel_size), flags=cv2.INTER_NEAREST
+    )
+    if not np.any(rotated):
+        return np.zeros_like(mask)
+    return cv2.erode(mask, rotated)
+
+
 def _search_one_window_angle(
     args: Tuple[
         int,
@@ -371,18 +399,19 @@ def _search_one_window_angle(
         sum_cells = sum_cells_full[pad : pad + rows, pad : pad + cols]
 
     if user_search_mask is not None:
+        inside = _centers_with_window_inside(
+            user_search_mask, w, h, angle, kernel_margin
+        )
+        if not np.any(inside):
+            return None
         sum_scores = sum_scores.copy()
-        sum_scores[user_search_mask == 0] = -1e12
+        sum_scores[inside == 0] = -1e12
 
     _, max_val, _, max_loc = cv2.minMaxLoc(sum_scores)
+    if max_val <= -1e11:
+        return None
     cx, cy = int(max_loc[0]), int(max_loc[1])
     rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
-
-    if user_search_mask is not None:
-        pts_idx = rect_points.astype(np.int32)
-        for px, py in pts_idx:
-            if not (0 <= px < cols and 0 <= py < rows) or user_search_mask[py, px] == 0:
-                return None
 
     # 头尾判定：对旋转后略出网格边界的顶点做裁剪，避免如 x=-1 导致误判为尾部
     cls_x = np.clip(rect_points[:, 0], 0, cols - 1)
@@ -480,17 +509,26 @@ def find_candidate_regions(
 def filter_candidates(
     results: Dict[str, List[SelectionResult]], 
     config: BM40Config,
-    all_cell_count: int
+    all_cell_count: int,
+    *,
+    merge_head_tail: bool = False,
 ) -> List[SelectionResult]:
     """
     结果过滤
     根据细胞数量目标筛选候选区域。
+
+    merge_head_tail 为真时（用户约束框），头尾合成一份再筛数量、比分值。
     """
     # 选区目标：基础目标 * 冗余系数
     target_num = config.target_cell_num_WBC * config.target_ratio
-    
-    # 优先看尾部结果（体尾交界），没有则看头部
-    candidates = results.get("tail_results", []) or results.get("head_results", [])
+
+    head_results = results.get("head_results", [])
+    tail_results = results.get("tail_results", [])
+    if merge_head_tail:
+        candidates = list(tail_results) + list(head_results)
+    else:
+        # 优先看尾部结果（体尾交界），没有则看头部
+        candidates = tail_results or head_results
     if not candidates:
         print("警告：没有可用的候选选区，返回空列表。")
         return []
@@ -553,6 +591,22 @@ def _selection_from_grid_rect(
             [[x, y], [x2, y], [x2, y2], [x, y2]],
             dtype=np.float32,
         ),
+    )
+
+
+def selection_covering_user_mask(
+    user_search_mask: np.ndarray,
+    cell_matrix: np.ndarray,
+    score_map: np.ndarray,
+) -> Optional[SelectionResult]:
+    """搜索窗都放不进用户框时，直接把用户约束框当作选区。"""
+    ys, xs = np.where(user_search_mask > 0)
+    if xs.size == 0:
+        return None
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    return _selection_from_grid_rect(
+        x0, y0, x1 - x0, y1 - y0, cell_matrix, score_map, 0.0
     )
 
 

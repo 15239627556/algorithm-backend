@@ -19,10 +19,10 @@ from .selection import (
     filter_candidates,
     get_valid_score_range,
     select_best_uniform_region,
+    selection_covering_user_mask,
     expand_selection_to_target,
 )
 from .task_region_extraction import (
-    build_bubble_forbidden_mask,
     build_forbidden_mask,
     generate_initial_and_extra_tasks,
 )
@@ -84,7 +84,6 @@ class RBCSamplingPipeline:
         self.best_res = None
         self.task_rects = None
         self.forbidden_mask = None  # label=5 禁区
-        self.bubble_forbidden_mask = None  # 空泡膨胀禁区
         self.user_search_mask = None
 
     def run(
@@ -154,7 +153,6 @@ class RBCSamplingPipeline:
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
         self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
-        self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg)
 
         if all_cell_count < target_num:
             if self.cfg.user_choice_area:
@@ -198,17 +196,28 @@ class RBCSamplingPipeline:
                 results=results,
                 config=self.cfg,
                 all_cell_count=all_cell_count,
+                merge_head_tail=self.user_search_mask is not None,
             )
             print(f"[INFO][RBC] 过滤后的候选区域数量: {len(selected_list)}")
             if os.getenv("SELECT_AREA_DEBUG_CANDIDATES") == "1":
                 print(f"[INFO][RBC] 候选区域: {selected_list}")
 
-            self.best_res = select_best_uniform_region(
-                selected_results=selected_list,
-                cell_matrix=self.cell_matrix,
-                config=self.cfg,
-                score_range=get_valid_score_range(self.grid, self.cfg),
-            )
+            if not selected_list and self.user_search_mask is not None:
+                print("[INFO][RBC] 约束框内放不下搜索窗口，改用用户约束框作为选区。")
+                self.best_res = selection_covering_user_mask(
+                    self.user_search_mask,
+                    self.cell_matrix,
+                    self.grid.finalize(),
+                )
+                if self.best_res is None:
+                    raise ValueError("用户约束框为空，无法生成选区。")
+            else:
+                self.best_res = select_best_uniform_region(
+                    selected_results=selected_list,
+                    cell_matrix=self.cell_matrix,
+                    config=self.cfg,
+                    score_range=get_valid_score_range(self.grid, self.cfg),
+                )
 
         self.best_res = expand_selection_to_target(
             best_res=self.best_res,
@@ -218,14 +227,8 @@ class RBCSamplingPipeline:
             user_search_mask=self.user_search_mask,
         )
 
-        # 生成拍摄区域与有效细胞：与骨髓一致，规避 label=5 ∪ 空泡
+        # 血片只规避 label=5，不做空泡过滤
         region_forbidden = self.forbidden_mask
-        if self.bubble_forbidden_mask is not None:
-            region_forbidden = np.where(
-                (self.forbidden_mask > 0) | (self.bubble_forbidden_mask > 0),
-                1,
-                0,
-            ).astype(np.uint8)
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
             grid=self.grid,

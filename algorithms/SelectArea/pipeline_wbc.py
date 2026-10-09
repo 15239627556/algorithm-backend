@@ -19,6 +19,7 @@ from .selection import (
     filter_candidates, 
     get_valid_score_range,
     select_best_uniform_region,
+    selection_covering_user_mask,
     expand_selection_to_target,
 )
 from .task_region_extraction import (
@@ -225,19 +226,30 @@ class WBCSamplingPipeline:
             selected_list = filter_candidates(
                 results=results,
                 config=self.cfg,
-                all_cell_count=all_cell_count
+                all_cell_count=all_cell_count,
+                merge_head_tail=self.user_search_mask is not None,
             )
-            print(f"[INFO][RBC] 过滤后的候选区域数量: {len(selected_list)}")
+            print(f"[INFO][WBC] 过滤后的候选区域数量: {len(selected_list)}")
             if os.getenv("SELECT_AREA_DEBUG_CANDIDATES") == "1":
-                print(f"[INFO][RBC] 候选区域: {selected_list}")
+                print(f"[INFO][WBC] 候选区域: {selected_list}")
 
-            # 7. 均匀性评估：选出最佳选区
-            self.best_res = select_best_uniform_region(
-                selected_results=selected_list,
-                cell_matrix=self.cell_matrix,
-                config=self.cfg,
-                score_range=get_valid_score_range(self.grid, self.cfg),
-            )
+            # 7. 均匀性评估：选出最佳选区；窗口都放不进用户框时改用约束框本身
+            if not selected_list and self.user_search_mask is not None:
+                print("[INFO][WBC] 约束框内放不下搜索窗口，改用用户约束框作为选区。")
+                self.best_res = selection_covering_user_mask(
+                    self.user_search_mask,
+                    self.cell_matrix,
+                    self.grid.finalize(),
+                )
+                if self.best_res is None:
+                    raise ValueError("用户约束框为空，无法生成选区。")
+            else:
+                self.best_res = select_best_uniform_region(
+                    selected_results=selected_list,
+                    cell_matrix=self.cell_matrix,
+                    config=self.cfg,
+                    score_range=get_valid_score_range(self.grid, self.cfg),
+                )
 
         # 7.5 细胞不足：围着最终选区按行/列外扩，后续 Initial/补拍覆盖扩大后的选区
         self.best_res = expand_selection_to_target(
