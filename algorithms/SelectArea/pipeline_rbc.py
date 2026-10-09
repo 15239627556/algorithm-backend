@@ -154,6 +154,8 @@ class RBCSamplingPipeline:
         search_rects = generate_search_window_sizes(self.cfg)
         self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
 
+        # 用户框总数不够时，先以整框为选区，再允许向外扩出框外
+        expand_beyond_user = False
         if all_cell_count < target_num:
             if self.cfg.user_choice_area:
                 c0, r0 = self.grid.global_to_grid(self.cfg.user_choice_area["x_min"], self.cfg.user_choice_area["y_min"])
@@ -170,6 +172,11 @@ class RBCSamplingPipeline:
                     center_grid=((c0 + c1) // 2, (r0 + r1) // 2),
                     rect_size_grid=(c1 - c0, r1 - r0),
                     vertices_grid=np.array([[c0, r0], [c1, r0], [c1, r1], [c0, r1]]),
+                )
+                expand_beyond_user = True
+                print(
+                    f"[INFO][RBC] 用户框内细胞数 {int(np.sum(sub_cell_matrix))} < 目标 {target_num:.0f}，"
+                    f"以整框为起点向外按行/列扩。"
                 )
             else:
                 self.best_res = SelectionResult(
@@ -225,6 +232,7 @@ class RBCSamplingPipeline:
             grid=self.grid,
             config=self.cfg,
             user_search_mask=self.user_search_mask,
+            confine_to_user_mask=not expand_beyond_user,
         )
 
         # 血片只规避 label=5，不做空泡过滤

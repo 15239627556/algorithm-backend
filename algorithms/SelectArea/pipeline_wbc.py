@@ -169,7 +169,9 @@ class WBCSamplingPipeline:
         self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
         self.bubble_forbidden_mask = build_bubble_forbidden_mask(self.grid, self.cfg)
 
-        # 4. 特殊情况处理：全图细胞不足
+        # 4. 特殊情况处理：全图/用户框细胞不足
+        # 用户框总数不够时，先以整框为选区，再允许向外扩出框外
+        expand_beyond_user = False
         if all_cell_count < target_num:
             rows, cols = self.cell_matrix.shape
             
@@ -195,7 +197,11 @@ class WBCSamplingPipeline:
                     rect_size_grid=(c1 - c0, r1 - r0),
                     vertices_grid=np.array([[c0, r0], [c1, r0], [c1, r1], [c0, r1]])
                 )
-                print(f"[INFO] 细胞不足，但已将选区锁定在用户指定区域。")
+                expand_beyond_user = True
+                print(
+                    f"[INFO] 用户框内细胞数 {int(np.sum(sub_cell_matrix))} < 目标 {target_num:.0f}，"
+                    f"以整框为起点向外按行/列扩。"
+                )
             else:
                 # 无用户选区时，维持原有的全图降级逻辑
                 self.best_res = SelectionResult(
@@ -258,6 +264,7 @@ class WBCSamplingPipeline:
             grid=self.grid,
             config=self.cfg,
             user_search_mask=self.user_search_mask,
+            confine_to_user_mask=not expand_beyond_user,
         )
 
         # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）：规避 label=5 与空泡

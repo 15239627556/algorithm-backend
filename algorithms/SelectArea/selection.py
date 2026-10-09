@@ -616,12 +616,15 @@ def expand_selection_to_target(
     grid: HeatmapGrid,
     config: BM40Config,
     user_search_mask: Optional[np.ndarray] = None,
+    *,
+    confine_to_user_mask: bool = True,
 ) -> SelectionResult:
     """
     最终选区细胞数不足目标时，按补拍方式围着选区一次扩一行/一列。
 
     优先扩进新细胞更多的方向；当前圈没有细胞时，朝选区外仍有细胞的半平面走。
-    受图像边界、用户框和有效评分区约束，不把空玻片吃进去。
+    受图像边界和有效评分区约束。用户框细胞总数已够时，外扩停在框内；
+    用户框细胞总数不足时，允许扩出框外，直到细胞数达到目标。
     """
     target_num = config.target_cell_num_WBC * config.target_ratio
     if best_res is None or best_res.cell_count >= target_num:
@@ -633,7 +636,7 @@ def expand_selection_to_target(
 
     score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
     allow_mask = (build_valid_score_mask(grid, config, score_map) > 0).astype(np.uint8)
-    if user_search_mask is not None:
+    if confine_to_user_mask and user_search_mask is not None:
         allow_mask = cv2.bitwise_and(allow_mask, (user_search_mask > 0).astype(np.uint8))
 
     selection_mask = np.zeros((rows, cols), dtype=np.uint8)
