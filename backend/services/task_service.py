@@ -1901,8 +1901,8 @@ class TaskService:
 
     def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
-        小程序细胞图像分析。只必填图片。
-        先 714756 高倍有核定位+分类，再 147246 低倍有核定位+分类，返回细胞更多的一次。
+        小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
+        714756 模型试原档和一半，40 倍模型试 147246、一半和 2 倍，返回细胞更多的一次。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"

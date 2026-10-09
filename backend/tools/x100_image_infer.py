@@ -40,9 +40,18 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-# 小程序依次尝试的模型档：先高倍有核定位+分类，再低倍有核定位+分类。
-# 细胞数相同时保留先尝试的高倍结果。
-MINIAPP_ATTEMPT_DPIS = (714756, 147246)
+# 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
+# 714756 模型试 714756 与其一半；40 倍模型试 147246、一半、2 倍。
+# 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
+_MINIAPP_MODEL_714756 = 714756
+_MINIAPP_MODEL_147246 = 147246
+MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
+    (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
+    (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
+    (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
+    (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
+    (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
+)
 
 # 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
 _DPI_TILE_MIN: dict[int, tuple[int, int]] = {
@@ -839,9 +848,9 @@ def run_miniapp_cell_image_infer(
     gpu_id: int | None = None,
 ) -> dict[str, Any]:
     """
-    小程序单张识别：不接收 DPI。
-    先跑 714756 高倍有核定位+分类，再跑 147246 低倍有核定位+分类。
-    返回细胞更多的一次；数量相同保留高倍结果。
+    小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
+    用 714756 模型试 714756 及其一半，用 40 倍模型试 147246、一半和 2 倍。
+    返回细胞更多的一次；数量相同按 714756、714756/2、147246、147246/2、147246*2 优先。
     低倍分类模型不存在时，该档只做定位。
     """
     best: dict[str, Any] | None = None
@@ -851,29 +860,36 @@ def run_miniapp_cell_image_infer(
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or "WBC"
 
-    for model_dpi in MINIAPP_ATTEMPT_DPIS:
+    for guess_dpi, model_dpi in MINIAPP_GUESSES:
         result = run_cell_image_infer(
             image_bytes,
-            model_dpi,
+            guess_dpi,
             smear_type,
             target_cell_types,
             filename=filename,
             gpu_id=gpu_id,
             include_single_only=True,
+            force_model_dpi=model_dpi,
         )
         if not result.get("ok"):
             last_error = result
             logger.info(
-                "miniapp dpi=%s failed: %s",
+                "miniapp guess_dpi=%s model=%s failed: %s",
+                guess_dpi,
                 model_dpi,
                 result.get("error"),
             )
             continue
         count = len(result.get("cell_list") or [])
-        logger.info("miniapp dpi=%s cells=%s", model_dpi, count)
+        logger.info(
+            "miniapp guess_dpi=%s model=%s cells=%s",
+            guess_dpi,
+            model_dpi,
+            count,
+        )
         if best is None or count > best_count:
             best = result
-            best_dpi = int(model_dpi)
+            best_dpi = int(guess_dpi)
             best_count = count
 
     if best is None or best_dpi is None:
