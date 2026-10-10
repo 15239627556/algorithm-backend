@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from io import BytesIO
 from typing import Any
@@ -46,7 +47,7 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 # 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
-# 714756 模型试原档、一半、1/4、1/16 和 2 倍；40 倍模型试 147246、一半、1/4、2 倍。
+# 714756 模型试原档、一半、1/4 和 2 倍；40 倍模型试 147246、一半、1/4、2 倍。
 # 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
@@ -54,7 +55,6 @@ MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
-    (_MINIAPP_MODEL_714756 // 16, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
@@ -926,8 +926,9 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    用 714756 模型试原档、一半、1/4、1/16 和 2 倍，用 40 倍模型试 147246、一半、1/4 和 2 倍。
-    返回细胞更多的一次；数量相同按 714756、714756/2、714756/4、714756/16、714756*2、147246、147246/2、147246/4、147246*2 优先。
+    用 714756 模型试原档、一半、1/4 和 2 倍，用 40 倍模型试 147246、一半、1/4 和 2 倍。
+    返回细胞更多的一次；数量相同按 714756、714756/2、714756/4、714756*2、147246、147246/2、147246/4、147246*2 优先。
+    先并发全部 714756 模型档，这批都返回后再并发全部 147246 模型档。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且有第二名，改用第二名。
     用最终结果原图细胞框的宽、高中位数均值，按细胞 20 微米反推 DPI；
@@ -942,8 +943,11 @@ def run_miniapp_cell_image_infer(
     last_error: dict[str, Any] | None = None
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or "WBC"
+    if gpu_id is None:
+        gpu_id, _ = resolve_triton_route()
 
-    for guess_dpi, model_dpi in MINIAPP_GUESSES:
+    def _guess_one(item: tuple[int, int]) -> tuple[int, int, dict[str, Any]]:
+        guess_dpi, model_dpi = item
         result = run_cell_image_infer(
             image_bytes,
             guess_dpi,
@@ -956,27 +960,39 @@ def run_miniapp_cell_image_infer(
             no_cls=True,
             apply_post_filters=False,
         )
-        if not result.get("ok"):
-            last_error = result
+        return int(guess_dpi), int(model_dpi), result
+
+    groups: list[list[tuple[int, int]]] = []
+    for guess_dpi, model_dpi in MINIAPP_GUESSES:
+        if not groups or groups[-1][0][1] != model_dpi:
+            groups.append([])
+        groups[-1].append((guess_dpi, model_dpi))
+
+    for group in groups:
+        with ThreadPoolExecutor(max_workers=len(group)) as pool:
+            outcomes = list(pool.map(_guess_one, group))
+        for guess_dpi, model_dpi, result in outcomes:
+            if not result.get("ok"):
+                last_error = result
+                logger.info(
+                    "miniapp guess_dpi=%s model=%s failed: %s",
+                    guess_dpi,
+                    model_dpi,
+                    result.get("error"),
+                )
+                continue
+            count = len(result.get("cell_list") or [])
             logger.info(
-                "miniapp guess_dpi=%s model=%s failed: %s",
+                "miniapp guess_dpi=%s model=%s cells=%s",
                 guess_dpi,
                 model_dpi,
-                result.get("error"),
+                count,
             )
-            continue
-        count = len(result.get("cell_list") or [])
-        logger.info(
-            "miniapp guess_dpi=%s model=%s cells=%s",
-            guess_dpi,
-            model_dpi,
-            count,
-        )
-        if best is None or count > best_count:
-            best = result
-            best_dpi = int(guess_dpi)
-            best_model = int(model_dpi)
-            best_count = count
+            if best is None or count > best_count:
+                best = result
+                best_dpi = int(guess_dpi)
+                best_model = int(model_dpi)
+                best_count = count
 
     if best is None or best_dpi is None or best_model is None:
         return last_error or {"ok": False, "error": "infer failed"}
