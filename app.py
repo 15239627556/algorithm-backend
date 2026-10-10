@@ -18,7 +18,7 @@ sys.path.append(backend_dir)
 sys.path.append(algorithms_dir)
 sys.path.append(project_dir)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -400,6 +400,18 @@ def health() -> dict[str, Any]:
         body["circuit"] = circuit_snapshot()
     return body
 
+
+@app.get("/manifest")
+def manifest() -> Any:
+    """返回仓库根目录 manifest.json 的内容。"""
+    path = os.path.join(root_dir, "manifest.json")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="failed to read manifest.json") from exc
 
 
 if __name__ == "__main__":

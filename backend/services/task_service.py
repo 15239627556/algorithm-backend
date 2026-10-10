@@ -1902,7 +1902,7 @@ class TaskService:
     def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
         小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
-        714756 模型试原档、一半和 2 倍，40 倍模型试 147246、一半和 2 倍，返回细胞更多的一次。
+        714756 模型试原档、一半、1/4、1/16 和 2 倍，40 倍模型试 147246、一半、1/4 和 2 倍，返回细胞更多的一次。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"
@@ -1926,6 +1926,8 @@ class TaskService:
             "cell_count": len(cell_list),
             "cell_list": cell_list,
             "guess_dpi": result.get("guess_dpi"),
+            "model_dpi": result.get("model_dpi"),
+            "est_dpi": result.get("est_dpi"),
         }
         if result.get("warning"):
             response["warning"] = result["warning"]
