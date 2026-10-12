@@ -214,249 +214,12 @@ dpi_list = [40, 50, 100]
 allow_extensions = ['jpg', 'jpeg', 'gif', 'png']
 
 # =============================================================================
-# 模型目录（新增模型直接在此追加，字段与 DOCS/版本说明.md 对齐）
-# dpi_range: (min, max) 或 None（不限制，分类模型）
-# max_src_w / max_src_h: 原图最大宽高（像素）；None 表示不限
-# pipeline 输出：/infer 按 task 嵌套，见 param_json_out（如 wbc.det.bboxes）
-# output: bboxes=定位, tops=分类, scores=评分, result=其它结构化结果
-# vram_gb: 预估显存（GB）；启动时若存在 manifest.json，按 name 覆盖为 memory-usage-gb
-# camera=flir 时 HIGHRES-WBC-CLS 会被替换为 FLIR 专用分类器（1.5G）
-# optional: 仓库里可能没有；加载失败不中断，单张退回定位
-# single_only: 仅单张识别加载。平扫不加载；若已被单张加载，平扫加载时会卸掉
+# 模型目录只来自仓库根目录 manifest.json 的 models，不再在这里手写一份。
+# dpi 为空：dpi_range 视为不限制；actual_dpi 取 depends_on 里第一个有 dpi 的模型。
+# dpi_range 为 [0, 极大值]、max_src 为 9999999 这类占位，转换成 None（不限制）。
+# output: -CLS 分类，-DET 定位，-CSCORE 评分；roi/dir/cellularity 为 result；其余有 dpi 的算定位。
+# task=cscore 的 targets 为不限制；显存用 memory-usage-gb。
 # =============================================================================
-MODEL_TABLE = [
-    {
-        "name_zh": "5倍脑脊液有核细胞定位",
-        "name": "CSF-35000-WBC",
-        "dpi_range": (30000, 45000),
-        "actual_dpi": 35000,
-        "targets": "WBC",
-        "smear_types": "CSF",
-        "output": "bboxes",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.7,
-    },
-    {
-        "name_zh": "10倍脑脊液有核细胞定位",
-        "name": "CSF-71000-WBC",
-        "dpi_range": (45001, 90000),
-        "actual_dpi": 71000,
-        "targets": "WBC",
-        "smear_types": "CSF",
-        "output": "bboxes",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.4,
-    },
-    {
-        "name_zh": "低倍骨髓/外周血有核细胞定位",
-        "name": "LOWRES-WBC-DET",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "WBC",
-        "smear_types": "BM/PB",
-        "output": "bboxes",
-        "max_src_w": 3200,
-        "max_src_h": 2200,
-        "vram_gb": 4.5,
-    },
-    {
-        "name_zh": "低倍骨髓巨核细胞定位",
-        "name": "LOWRES-MEG-DET",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "MEG",
-        "smear_types": "BM",
-        "output": "bboxes",
-        "max_src_w": 3200,
-        "max_src_h": 2200,
-        "vram_gb": 2.5,
-    },
-    {
-        "name_zh": "高倍巨核细胞定位",
-        "name": "HIGHRES-MEG-DET",
-        "dpi_range": (321640, 750493),
-        "actual_dpi": 357378,
-        "targets": "MEG",
-        "smear_types": "BM",
-        "output": "bboxes",
-        "max_src_w": 2448,
-        "max_src_h": 2048,
-        "vram_gb": 0.2,
-    },
-    {
-        "name_zh": "高倍有核细胞定位",
-        "name": "HIGHRES-WBC-DET",
-        "dpi_range": (321640, 750493),
-        "actual_dpi": 714756,
-        "targets": "WBC",
-        "smear_types": "BM/PB/CSF",
-        "output": "bboxes",
-        "max_src_w": 4896,
-        "max_src_h": 4096,
-        "vram_gb": 0.9,
-    },
-    {
-        "name_zh": "高倍红细胞定位",
-        "name": "HIGHRES-RBC-DET",
-        "dpi_range": (321640, 750493),
-        "actual_dpi": 714756,
-        "targets": "RBC",
-        "smear_types": "PB",
-        "output": "bboxes",
-        "max_src_w": 4896,
-        "max_src_h": 4096,
-        "vram_gb": 2.5,
-    },
-    {
-        "name_zh": "高倍血小板定位",
-        "name": "HIGHRES-PLAT-DET",
-        "dpi_range": (321640, 750493),
-        "actual_dpi": 714756,
-        "targets": "PLAT",
-        "smear_types": "PB",
-        "output": "bboxes",
-        "max_src_w": 4896,
-        "max_src_h": 4096,
-        "vram_gb": 0.8,
-    },
-    {
-        "name_zh": "低倍骨髓/外周血有核细胞分类",
-        "name": "LOWRES-WBC-CLS",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "WBC",
-        "smear_types": "BM/PB",
-        "output": "tops",
-        "max_src_w": 3200,
-        "max_src_h": 2200,
-        "vram_gb": 0.5,
-        "optional": True,
-        "single_only": True,
-    },
-    {
-        "name_zh": "高倍巨核细胞分类",
-        "name": "HIGHRES-MEG-CLS",
-        "dpi_range": None,
-        "actual_dpi": 357378,
-        "targets": "MEG",
-        "smear_types": "BM",
-        "output": "tops",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.1,
-    },
-    {
-        "name_zh": "高倍骨髓/外周血有核细胞分类",
-        "name": "HIGHRES-WBC-CLS",
-        "dpi_range": None,
-        "actual_dpi": 714756,
-        "targets": "WBC",
-        "smear_types": "BM/PB",
-        "output": "tops",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.5,
-    },
-    {
-        "name_zh": "高倍脑脊液有核细胞分类",
-        "name": "HIGHRES-CSF-WBC-CLS",
-        "dpi_range": None,
-        "actual_dpi": 714756,
-        "targets": "WBC",
-        "smear_types": "CSF",
-        "output": "tops",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.5,
-    },
-    {
-        "name_zh": "高倍红细胞分类",
-        "name": "HIGHRES-RBC-CLS",
-        "dpi_range": None,
-        "actual_dpi": 714756,
-        "targets": "RBC",
-        "smear_types": "PB",
-        "output": "tops",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.5,
-    },
-    {
-        "name_zh": "高倍血小板分类",
-        "name": "HIGHRES-PLAT-CLS",
-        "dpi_range": None,
-        "actual_dpi": 714756,
-        "targets": "PLAT",
-        "smear_types": "PB",
-        "output": "tops",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 0.5,
-    },
-    {
-        "name_zh": "低倍骨髓区域评分",
-        "name": "LOWRES-BM-CSCORE",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "不限制",
-        "smear_types": "BM",
-        "output": "scores",
-        "max_src_w": 3200,
-        "max_src_h": 2200,
-        "vram_gb": 0.7,
-    },
-    {
-        "name_zh": "低倍血片区域评分",
-        "name": "LOWRES-PB-CSCORE",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "不限制",
-        "smear_types": "PB",
-        "output": "scores",
-        "max_src_w": 3200,
-        "max_src_h": 2200,
-        "vram_gb": 0.7,
-    },
-    {
-        "name_zh": "骨髓增生程度计算",
-        "name": "LOWRES-CELLULARITY",
-        "dpi_range": (73623, 294492),
-        "actual_dpi": 147246,
-        "targets": "CELLULARITY",
-        "smear_types": "BM/PB",
-        "output": "result",
-        "max_src_w": None,
-        "max_src_h": None,
-        "vram_gb": 1.2,
-    },
-    {
-        "name_zh": "全局图分析",
-        "name": "GLOBAL-IMAGE-ANALYSIS",
-        "dpi_range": None,
-        "actual_dpi": None,
-        "targets": "roi",
-        "smear_types": "BM/PB",
-        "output": "result",
-        "max_src_w": 3200,
-        "max_src_h": 1280,
-        "vram_gb": 1.6,
-    },
-    {
-        "name_zh": "全局图头部朝向识别",
-        "name": "GLOBAL-IMAGE-HEAD-DIR",
-        "dpi_range": None,
-        "actual_dpi": None,
-        "targets": "dir",
-        "smear_types": "BM/PB",
-        "output": "result",
-        "max_src_w": 3200,
-        "max_src_h": 1280,
-        "vram_gb": 1.6,
-    },
-]
-
 _OUTPUT_KIND = {
     "bboxes": "detection",
     "tops": "classification",
@@ -467,6 +230,22 @@ _OUTPUT_KIND = {
 DEFAULT_MODEL_VRAM_GB = 1.5
 DPI_NOT_SUITABLE = "DPI不合适"
 
+# manifest 里用大数表示不限制，避免写进 MODEL_TABLE 后把切块上限抬到假尺寸。
+_UNLIMITED_SRC_PX = 1_000_000
+_UNLIMITED_DPI = 1_000_000_000
+_UNRESTRICTED_TASKS = frozenset({"cscore"})
+_TASK_TARGET = {
+    "wbc": "WBC",
+    "meg": "MEG",
+    "rbc": "RBC",
+    "plat": "PLAT",
+    "cellularity": "CELLULARITY",
+    "roi": "roi",
+    "dir": "dir",
+}
+
+MODEL_TABLE: list[dict] = []
+
 
 def _default_manifest_path() -> str:
     # backend/tools/MESSAGE_DICT.py → 仓库根目录/manifest.json
@@ -474,52 +253,159 @@ def _default_manifest_path() -> str:
     return os.path.join(repo_root, "manifest.json")
 
 
-def apply_manifest_vram(manifest_path: str | None = None) -> int:
-    """
-    若存在 manifest.json，按 models[].name 将 memory-usage-gb 写入 MODEL_TABLE.vram_gb。
-    文件不存在则跳过。返回成功覆盖的条数。
-    """
+def _optional_int(raw) -> int | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _output_of(name: str, tasks: list[str], has_own_dpi: bool) -> str:
+    upper = name.upper()
+    task_keys = {str(task).strip().lower() for task in tasks}
+    if upper.endswith("-CLS"):
+        return "tops"
+    if upper.endswith("-DET"):
+        return "bboxes"
+    if upper.endswith("-CSCORE") or "cscore" in task_keys:
+        return "scores"
+    if task_keys & {"roi", "dir", "cellularity"} or upper.startswith("GLOBAL"):
+        return "result"
+    # CSF-35000-WBC 这类定位模型没有 -DET 后缀，但有自己的 dpi。
+    if has_own_dpi:
+        return "bboxes"
+    return "result"
+
+
+def _targets_of(tasks: list[str]) -> str:
+    labels: list[str] = []
+    for task in tasks:
+        key = str(task).strip().lower()
+        if not key or key in _UNRESTRICTED_TASKS:
+            continue
+        labels.append(_TASK_TARGET.get(key, key.upper()))
+    if not labels:
+        return "不限制"
+    return "/".join(labels)
+
+
+def _smear_types_of(slide_type) -> str:
+    if isinstance(slide_type, str):
+        parts = [part.strip() for part in slide_type.split("/") if part.strip()]
+    elif isinstance(slide_type, list):
+        parts = [str(item).strip() for item in slide_type if str(item).strip()]
+    else:
+        parts = []
+    return "/".join(parts)
+
+
+def _src_limit(raw) -> int | None:
+    value = _optional_int(raw)
+    if value is None or value >= _UNLIMITED_SRC_PX:
+        return None
+    return value
+
+
+def _dpi_by_name(models: list) -> dict[str, int]:
+    found: dict[str, int] = {}
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        dpi = _optional_int(item.get("dpi"))
+        if name and dpi:
+            found[name] = dpi
+    return found
+
+
+def _actual_dpi_of(item: dict, dpi_by_name: dict[str, int]) -> int | None:
+    own = _optional_int(item.get("dpi"))
+    if own:
+        return own
+    for dep in item.get("depends_on") or []:
+        dep_name = str(dep).strip()
+        if dep_name in dpi_by_name:
+            return dpi_by_name[dep_name]
+    return None
+
+
+def _dpi_range_of(item: dict) -> tuple[int, int] | None:
+    # 没有自己的 dpi（分类、全局图）不参与档位区间，避免 [0, 极大值] 冲掉定位模型的范围。
+    if not _optional_int(item.get("dpi")):
+        return None
+    raw = item.get("dpi_range")
+    if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        return None
+    low = _optional_int(raw[0])
+    high = _optional_int(raw[1])
+    if low is None or high is None:
+        return None
+    if low <= 0 and high >= _UNLIMITED_DPI:
+        return None
+    return (low, high)
+
+
+def _vram_of(item: dict) -> float:
+    raw = item.get("memory-usage-gb")
+    try:
+        if raw is None or raw == "":
+            return DEFAULT_MODEL_VRAM_GB
+        return float(raw)
+    except (TypeError, ValueError):
+        _logger.warning("Invalid memory-usage-gb for %s: %r", item.get("name"), raw)
+        return DEFAULT_MODEL_VRAM_GB
+
+
+def _rows_from_manifest_models(models: list) -> list[dict]:
+    dpi_by_name = _dpi_by_name(models)
+    rows: list[dict] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        tasks = item.get("task") or []
+        if isinstance(tasks, str):
+            tasks = [tasks]
+        rows.append(
+            {
+                "name": name,
+                "dpi_range": _dpi_range_of(item),
+                "actual_dpi": _actual_dpi_of(item, dpi_by_name),
+                "targets": _targets_of(list(tasks)),
+                "smear_types": _smear_types_of(item.get("slide_type")),
+                "output": _output_of(name, list(tasks), _optional_int(item.get("dpi")) is not None),
+                "max_src_w": _src_limit(item.get("max_src_w")),
+                "max_src_h": _src_limit(item.get("max_src_h")),
+                "vram_gb": _vram_of(item),
+            }
+        )
+    return rows
+
+
+def load_model_table_from_manifest(manifest_path: str | None = None) -> int:
+    """用 manifest.json 的 models 重建 MODEL_TABLE。文件不存在或读失败时保持原表。"""
     path = manifest_path or _default_manifest_path()
     if not os.path.isfile(path):
-        _logger.info("manifest.json not found, keep MODEL_TABLE vram_gb: %s", path)
+        _logger.info("manifest.json not found, MODEL_TABLE unchanged: %s", path)
         return 0
-
     try:
         with open(path, encoding="utf-8") as f:
             payload = json.load(f)
     except Exception:
         _logger.exception("Failed to read manifest.json: %s", path)
         return 0
+    rows = _rows_from_manifest_models(payload.get("models") or [])
+    MODEL_TABLE.clear()
+    MODEL_TABLE.extend(rows)
+    _logger.info("MODEL_TABLE loaded from manifest.json (%s entries): %s", len(rows), path)
+    return len(rows)
 
-    usage_by_name: dict[str, float] = {}
-    for item in payload.get("models") or []:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name") or "").strip()
-        raw = item.get("memory-usage-gb")
-        if not name or raw is None or raw == "":
-            continue
-        try:
-            usage_by_name[name] = float(raw)
-        except (TypeError, ValueError):
-            _logger.warning("Invalid memory-usage-gb for %s: %r", name, raw)
 
-    updated = 0
-    for row in MODEL_TABLE:
-        name = str(row.get("name") or "").strip()
-        if name not in usage_by_name:
-            continue
-        new_vram = usage_by_name[name]
-        old_vram = row.get("vram_gb")
-        row["vram_gb"] = new_vram
-        updated += 1
-        _logger.info(
-            "MODEL_TABLE[%s].vram_gb %s -> %s (manifest memory-usage-gb)",
-            name,
-            old_vram,
-            new_vram,
-        )
-    return updated
+load_model_table_from_manifest()
 
 
 def model_dpi_ranges() -> dict[int, tuple[int, int]]:
