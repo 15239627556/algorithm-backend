@@ -1,5 +1,11 @@
+import multiprocessing
+import queue
+
 import pyscipopt
 import numpy as np
+
+# 顶层合并时按细胞分块计算覆盖，避免一次分配 n_rects × n_points 的稠密矩阵。
+COVERAGE_CHUNK_SIZE = 2000
 
 
 
@@ -96,6 +102,91 @@ def solve_set_cover(aff):
     model.optimize()
     selected = [j for j in range(n_rects) if model.getVal(vars[j]) > 0.5]
     return selected
+
+
+def solve_set_cover_chunked(rects, points, chunk_size=COVERAGE_CHUNK_SIZE):
+    """
+    顶层合并用：按细胞分块做覆盖关系，模式去重后再交给 SCIP。
+    约束与一次建成完整矩阵后去重相同，但不保留整张 bool 矩阵。
+    """
+    n_rects = int(rects.shape[0])
+    n_points = int(points.shape[0])
+    if n_rects == 0 or n_points == 0:
+        return []
+
+    model = pyscipopt.Model("Set Cover")
+    model.setParam("display/verblevel", 0)
+    var_list = [model.addVar(vtype="B", name=f"rect_{i}") for i in range(n_rects)]
+    seen = set()
+    cons_i = 0
+    for start in range(0, n_points, chunk_size):
+        aff = affinity_matrix(rects, points[start:start + chunk_size])
+        patterns = np.unique(aff.T, axis=0)
+        del aff
+        packed = np.packbits(patterns, axis=1)
+        for pattern, bits in zip(patterns, packed):
+            key = bits.tobytes()
+            if key in seen:
+                continue
+            seen.add(key)
+            covering = np.flatnonzero(pattern)
+            assert covering.size > 0, "No covering rects for coverage pattern {}".format(cons_i)
+            model.addCons(
+                pyscipopt.quicksum(var_list[i] for i in covering) >= 1,
+                name=f"cover_pattern_{cons_i}",
+            )
+            cons_i += 1
+
+    if cons_i == 0:
+        return []
+    model.setObjective(pyscipopt.quicksum(var_list), "minimize")
+    model.optimize()
+    return [j for j in range(n_rects) if model.getVal(var_list[j]) > 0.5]
+
+
+def _solve_subprocess_entry(result_q, points, image_r, params):
+    try:
+        rects = solve(points, image_r, params, rec_depth=0, _in_child=True)
+        result_q.put(("ok", rects))
+    except Exception as exc:
+        result_q.put(("err", "{}: {}".format(type(exc).__name__, exc)))
+
+
+def _solve_in_subprocess(points, image_r, params):
+    """在子进程中跑顶层 solve。子进程被杀掉时只让本次调用失败，不带走当前进程。"""
+    # forkserver 从单独的服务进程派生，避免在 web 的多线程 worker 里 fork，
+    # 也不会在子进程里重新执行主模块。
+    ctx = multiprocessing.get_context("forkserver")
+    result_q = ctx.Queue()
+    proc = ctx.Process(
+        target=_solve_subprocess_entry,
+        args=(result_q, points, image_r, params),
+    )
+    proc.start()
+    status = None
+    payload = None
+    while proc.is_alive():
+        try:
+            status, payload = result_q.get(timeout=0.5)
+            break
+        except queue.Empty:
+            continue
+    proc.join()
+    if status is None:
+        try:
+            status, payload = result_q.get_nowait()
+        except queue.Empty:
+            raise RuntimeError(
+                "视野求解子进程异常退出，exitcode={}。".format(proc.exitcode)
+            )
+    if status != "ok":
+        raise RuntimeError("视野求解失败: {}".format(payload))
+    if proc.exitcode not in (0, None):
+        raise RuntimeError(
+            "视野求解子进程异常退出，exitcode={}。".format(proc.exitcode)
+        )
+    return payload
+
 
 def generate_candidate_rects(image_r, points, params: SetCoverSolverParameter):
     # generate sliding windows
@@ -218,13 +309,24 @@ def _estimate_windows(image_r: np.ndarray, params: SetCoverSolverParameter,
     return nx * ny
 
 
-def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParameter, rec_depth: int = 0):
+def solve(
+    points: np.ndarray,
+    image_r: np.ndarray,
+    params: SetCoverSolverParameter,
+    rec_depth: int = 0,
+    *,
+    _in_child: bool = False,
+):
     """
     修改要点：
     1) 进入每个递归节点先把 image_r 收紧到点的包围盒（_tighten_to_points）。
     2) base case 不仅看“点数/最小尺寸”，还要看“候选窗口规模”是否 <= MAX_WINDOWS。
     3) 若窗口规模过大，则继续分治，直到规模可控再进入 base case。
+    4) 对外的顶层调用放进子进程；子进程退出时向调用方抛错。
     """
+    if rec_depth == 0 and not _in_child:
+        return _solve_in_subprocess(points, image_r, params)
+
     # 仅保留当前 image_r 覆盖到的点
     idx = rect_contains(image_r, points)
     points = points[idx]
@@ -316,8 +418,7 @@ def solve(points: np.ndarray, image_r: np.ndarray, params: SetCoverSolverParamet
         return np.empty((0, 4), dtype=np.int32)
 
     if rec_depth == 0:
-        aff = affinity_matrix(rects, points)
-        selected = solve_set_cover(aff)
+        selected = solve_set_cover_chunked(rects, points)
         rects = rects[selected]
         if params.refine_rects:
             rects = refine_rects(rects, points, params)

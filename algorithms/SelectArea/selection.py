@@ -317,7 +317,7 @@ def _search_one_window_angle(
         int,
         float,
     ]
-) -> Optional[Tuple[int, bool, SelectionResult]]:
+) -> Optional[Tuple[int, Optional[SelectionResult], Optional[SelectionResult]]]:
     (
         order_idx,
         w,
@@ -398,35 +398,71 @@ def _search_one_window_angle(
         sum_scores = sum_scores_full[pad : pad + rows, pad : pad + cols]
         sum_cells = sum_cells_full[pad : pad + rows, pad : pad + cols]
 
+    inside = None
     if user_search_mask is not None:
         inside = _centers_with_window_inside(
             user_search_mask, w, h, angle, kernel_margin
         )
         if not np.any(inside):
             return None
-        sum_scores = sum_scores.copy()
-        sum_scores[inside == 0] = -1e12
 
-    _, max_val, _, max_loc = cv2.minMaxLoc(sum_scores)
-    if max_val <= -1e11:
-        return None
-    cx, cy = int(max_loc[0]), int(max_loc[1])
-    rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
+    def _best_result(center_mask: Optional[np.ndarray]) -> Optional[SelectionResult]:
+        if center_mask is None:
+            scores = sum_scores
+        else:
+            if not np.any(center_mask):
+                return None
+            scores = sum_scores.copy()
+            scores[center_mask == 0] = -1e12
 
-    # 头尾判定：对旋转后略出网格边界的顶点做裁剪，避免如 x=-1 导致误判为尾部
-    cls_x = np.clip(rect_points[:, 0], 0, cols - 1)
-    extreme_x = float(np.max(cls_x) if orientation == 0 else np.min(cls_x))
-    in_head = head_crop_rect.x <= extreme_x <= head_crop_rect.x2
+        _, max_val, _, max_loc = cv2.minMaxLoc(scores)
+        if max_val <= -1e11:
+            return None
+        cx, cy = int(max_loc[0]), int(max_loc[1])
+        rect_points = cv2.boxPoints(((cx, cy), (w, h), float(angle)))
+        return SelectionResult(
+            area_score=max_val / area_pixels,
+            cell_count=int(sum_cells[cy, cx]),
+            angle=-angle,
+            center_grid=(cx, cy),
+            rect_size_grid=(w, h),
+            vertices_grid=rect_points,
+        )
 
-    res = SelectionResult(
-        area_score=max_val / area_pixels,
-        cell_count=int(sum_cells[cy, cx]),
-        angle=-angle,
-        center_grid=(cx, cy),
-        rect_size_grid=(w, h),
-        vertices_grid=rect_points,
-    )
-    return order_idx, in_head, res
+    # 用户框内不分头尾，只在「整窗都落在框内」的中心集合里取最高分。
+    if inside is not None:
+        return order_idx, None, _best_result(inside)
+
+    # 无用户框时，每种尺寸分别在头部、尾部取最高分，避免全图最高分在头部时
+    # 同尺寸的尾部次高分窗口被直接丢失。
+    local_points = cv2.boxPoints(((0.0, 0.0), (w, h), float(angle)))
+    x_coords = np.arange(cols, dtype=np.float32)
+    if orientation == 0:  # 头部在右
+        extreme_x = x_coords + float(np.max(local_points[:, 0]))
+        head_cols = extreme_x >= float(head_crop_rect.x)
+    else:  # 头部在左
+        extreme_x = x_coords + float(np.min(local_points[:, 0]))
+        head_cols = extreme_x <= float(head_crop_rect.x2)
+
+    head_mask = np.broadcast_to(head_cols[None, :], (rows, cols))
+    tail_mask = np.logical_not(head_mask)
+    return order_idx, _best_result(head_mask), _best_result(tail_mask)
+
+
+def _search_sizes_for_scale(config: BM40Config, scale: float) -> List[Tuple[int, int]]:
+    """按一个面积倍率生成全部宽高比窗口，用于目标数量附近的自适应细化。"""
+    one_tile_grid_area = (config.tile_w * config.tile_h) / (config.cell_size ** 2)
+    target_grid_area = max(float(scale), 0.01) * one_tile_grid_area
+    sizes = set()
+    for rw, rh in config.window_aspect_ratios:
+        w = max(1, int(round(np.sqrt(target_grid_area * rw / rh))))
+        h = max(1, int(round(np.sqrt(target_grid_area * rh / rw))))
+        if w % 2 == 0:
+            w += 1
+        if h % 2 == 0:
+            h += 1
+        sizes.add((w, h))
+    return sorted(sizes, key=lambda size: (size[0] * size[1], size[0]))
 
 def find_candidate_regions(
     grid: HeatmapGrid,
@@ -466,41 +502,118 @@ def find_candidate_regions(
 
     head_results: List[SelectionResult] = []
     tail_results: List[SelectionResult] = []
+    seen_sizes = set()
+    next_order = 0
 
-    tasks = [
-        (
-            order_idx,
-            w,
-            h,
-            angle,
-            adjusted_score_map,
-            cell_matrix,
-            user_search_mask,
-            head_crop_rect,
-            orientation,
-            background_floor,
-            config.kernel_margin,
-            rows,
-            cols,
-        )
-        for order_idx, (w, h, angle) in enumerate(
-            (w, h, angle) for (w, h) in search_rects for angle in config.get_angles()
-        )
-    ]
+    def _run_sizes(
+        sizes: List[Tuple[int, int]],
+    ) -> Tuple[List[SelectionResult], List[SelectionResult]]:
+        nonlocal next_order
+        new_sizes = [size for size in sizes if size not in seen_sizes]
+        if not new_sizes:
+            return [], []
+        seen_sizes.update(new_sizes)
+        tasks = [
+            (
+                next_order + order_idx,
+                w,
+                h,
+                angle,
+                adjusted_score_map,
+                cell_matrix,
+                user_search_mask,
+                head_crop_rect,
+                orientation,
+                background_floor,
+                config.kernel_margin,
+                rows,
+                cols,
+            )
+            for order_idx, (w, h, angle) in enumerate(
+                (w, h, angle)
+                for (w, h) in new_sizes
+                for angle in config.get_angles()
+            )
+        ]
+        next_order += len(tasks)
+        cpu_count = os.cpu_count() or 1
+        max_workers = min(len(tasks), max(1, min(8, cpu_count)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            ordered_results = list(executor.map(_search_one_window_angle, tasks))
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(len(tasks), max(1, min(8, cpu_count)))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        ordered_results = list(executor.map(_search_one_window_angle, tasks))
+        added_head: List[SelectionResult] = []
+        added_tail: List[SelectionResult] = []
+        for item in ordered_results:
+            if item is None:
+                continue
+            _, head_res, tail_res = item
+            if head_res is not None:
+                head_results.append(head_res)
+                added_head.append(head_res)
+            if tail_res is not None:
+                tail_results.append(tail_res)
+                added_tail.append(tail_res)
+        return added_head, added_tail
 
-    for item in ordered_results:
-        if item is None:
-            continue
-        _, in_head, res = item
-        if in_head:
-            head_results.append(res)
-        else:
-            tail_results.append(res)
+    _run_sizes(search_rects)
+
+    # 当前最小搜索尺寸仍远超目标时，向更小面积搜索；找到目标上下限之间
+    # 的完整窗口后停止。用户框存在时，候选统一放在 tail_results 中。
+    target_num = float(config.target_cell_num_WBC * config.target_ratio)
+    upper_limit = target_num * (1.0 + float(config.select_ratio_init))
+
+    def _preferred() -> List[SelectionResult]:
+        if user_search_mask is not None:
+            return tail_results + head_results
+        return tail_results or head_results
+
+    def _preferred_added(
+        added: Tuple[List[SelectionResult], List[SelectionResult]],
+    ) -> List[SelectionResult]:
+        added_head, added_tail = added
+        if user_search_mask is not None:
+            return added_tail + added_head
+        return added_tail if tail_results else added_head
+
+    def _has_target_band(items: List[SelectionResult]) -> bool:
+        return any(target_num <= item.cell_count <= upper_limit for item in items)
+
+    preferred = _preferred()
+    if (
+        preferred
+        and not _has_target_band(preferred)
+        and min(item.cell_count for item in preferred) > upper_limit
+    ):
+        configured_scales = config.get_search_area_scales()
+        high_scale = float(min(configured_scales)) if configured_scales else 1.0
+        low_scale = high_scale
+
+        # 先逐次减半，找到细胞数不再全部超过上限的低端尺度。
+        for _ in range(6):
+            low_scale *= 0.5
+            latest = _preferred_added(
+                _run_sizes(_search_sizes_for_scale(config, low_scale))
+            )
+            preferred = _preferred()
+            if _has_target_band(preferred):
+                break
+            if latest and min(item.cell_count for item in latest) <= upper_limit:
+                break
+            high_scale = low_scale
+
+        # 已跨过目标但没有正好命中时，在两个尺度之间二分细化。
+        if not _has_target_band(_preferred()) and low_scale < high_scale:
+            for _ in range(6):
+                mid_scale = 0.5 * (low_scale + high_scale)
+                new_items = _preferred_added(
+                    _run_sizes(_search_sizes_for_scale(config, mid_scale))
+                )
+                if _has_target_band(_preferred()):
+                    break
+                if new_items and min(item.cell_count for item in new_items) > upper_limit:
+                    high_scale = mid_scale
+                else:
+                    low_scale = mid_scale
 
     return {"head_results": head_results, "tail_results": tail_results}
 
@@ -533,29 +646,32 @@ def filter_candidates(
         print("警告：没有可用的候选选区，返回空列表。")
         return []
 
-    select_ratio = config.select_ratio_init
-    selected = []
-    
-    while not selected:
-        # 定义当前的搜索上限
-        upper_limit = target_num * (1 + select_ratio)
-        
-        # 寻找细胞数落在 [target_num, upper_limit] 的区域
-        selected = [item for item in candidates if target_num <= item.cell_count <= upper_limit]
-        
-        if selected:
-            break
-            
-        # 如果当前上限已经超过了全图总细胞数，说明再扩大比例也没有意义了
-        if upper_limit > all_cell_count:
-            print(f"提示：搜索上限({upper_limit:.0f})已超过全图总数({all_cell_count})，返回细胞数最多的选区。")
-            # 此时返回细胞数量最接近全图（即最大）的选区
-            return [max(candidates, key=lambda x: x.cell_count)]
-            
-        # 找不到则扩大步进比例
-        select_ratio *= 2
-            
-    return selected
+    upper_limit = target_num * (1 + config.select_ratio_init)
+    selected = [
+        item for item in candidates
+        if target_num <= item.cell_count <= upper_limit
+    ]
+    if selected:
+        return selected
+
+    # 自适应尺寸仍没有命中时：只要存在满足目标的完整候选，就选细胞数
+    # 最接近目标的一档，避免为了追求分值把选区无限放大。
+    enough = [item for item in candidates if item.cell_count >= target_num]
+    if enough:
+        nearest_count = min(item.cell_count for item in enough)
+        print(
+            f"提示：未找到细胞数位于 [{target_num:.0f}, {upper_limit:.0f}] 的候选，"
+            f"使用满足目标且最接近目标的完整选区（{nearest_count} 个细胞）。"
+        )
+        return [item for item in enough if item.cell_count == nearest_count]
+
+    # 所有完整候选都不足目标时，选择细胞数最多的一档，随后由外扩逻辑补足。
+    max_count = max(item.cell_count for item in candidates)
+    print(
+        f"提示：所有完整候选均不足目标 {target_num:.0f}，"
+        f"使用细胞数最多的候选（{max_count}）并执行外扩。"
+    )
+    return [item for item in candidates if item.cell_count == max_count]
 
 
 def _selection_from_grid_rect(

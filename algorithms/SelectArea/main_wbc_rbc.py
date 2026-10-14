@@ -139,13 +139,16 @@ def run_one_project(
 
     if not skip_viz and pipeline.best_res is not None and pipeline.grid is not None:
         visualize = visualize_wbc_results if is_bm else visualize_rbc_results
-        visualize(
+        visualize_kwargs = dict(
             best_res=pipeline.best_res,
             tasks=tasks,
             grid_info=pipeline.grid,
             user_search_mask=pipeline.user_search_mask,
             save_path_base=out_dir,
         )
+        if not is_bm:
+            visualize_kwargs["pre_expand_res"] = pipeline.pre_expand_res
+        visualize(**visualize_kwargs)
 
     summary: Dict[str, Any] = {
         "out_key": proj.out_key,

@@ -30,13 +30,15 @@ from .project_info import load_dpi_and_orientation
 @dataclass(frozen=True)
 class VizConfig:
     # 输入与输出路径配置
-    # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/data2025063005.json"  # scale=4.0
-    # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/83a1a79fefba4f9dab89c0a7ee48ad6b.json" # scale=1.0
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/20260807_project/00fba2154bb74682a4a2133f82ed7f37/00fba2154bb74682a4a2133f82ed7f37.json"
-    roi_path: str | None = None
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/8650db72d7bd4014b323ce719296e1f5.json"
+    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/8650db72d7bd4014b323ce719296e1f5.roi.npz"
+    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/output"
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+        
+    # roi_path: str | None = None
     # 默认优先使用 NPZ；可用 SELECT_AREA_INPUT_SOURCE=json 强制走旧 JSON 路径。
-    input_source: str = "json"
-    out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
+    input_source: str = "roi"
 
     def get_color(self, region_name: str) -> str:
         """

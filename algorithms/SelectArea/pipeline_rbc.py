@@ -82,6 +82,7 @@ class RBCSamplingPipeline:
         self.grid = None
         self.cell_matrix = None
         self.best_res = None
+        self.pre_expand_res = None
         self.task_rects = None
         self.forbidden_mask = None  # label=5 禁区
         self.user_search_mask = None
@@ -226,6 +227,7 @@ class RBCSamplingPipeline:
                     score_range=get_valid_score_range(self.grid, self.cfg),
                 )
 
+        pre_expand = self.best_res
         self.best_res = expand_selection_to_target(
             best_res=self.best_res,
             cell_matrix=self.cell_matrix,
@@ -234,6 +236,8 @@ class RBCSamplingPipeline:
             user_search_mask=self.user_search_mask,
             confine_to_user_mask=not expand_beyond_user,
         )
+        if self.best_res is not pre_expand:
+            self.pre_expand_res = pre_expand
 
         # 血片只规避 label=5，不做空泡过滤
         region_forbidden = self.forbidden_mask

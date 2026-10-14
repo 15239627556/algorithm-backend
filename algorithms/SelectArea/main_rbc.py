@@ -27,11 +27,17 @@ from .project_info import load_dpi_and_orientation
 @dataclass(frozen=True)
 class VizConfigRBC:
     # 这里改成你自己的测试 json
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/血片评分测试/20260828008/0a76c831e8c74d91b63f29d6d4fcb45a.json"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/AI调用报错/20261012006/9ede437fdd58476db39c3476b62e4822.json"
     # 设置为 .roi.npz 时优先直接读取 RoiDataset；None 时保持 JSON 输入方式。
     # roi_path: str | None = None
-    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/血片评分测试/20260828008/0a76c831e8c74d91b63f29d6d4fcb45a.roi.npz"
-    out_dir: str = "/home/ubuntu/VScodeProjects/algorithm-backend/algorithms/SelectArea/output"
+    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/AI调用报错/20261012006/9ede437fdd58476db39c3476b62e4822.roi.npz"
+    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/AI调用报错/20261012006/output"
+
+    # json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/医院血片选厚区/01/2bc28021d92541c0a2a960be71cc8657.json"
+    # # 设置为 .roi.npz 时优先直接读取 RoiDataset；None 时保持 JSON 输入方式。
+    # # roi_path: str | None = None
+    # roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/医院血片选厚区/01/2bc28021d92541c0a2a960be71cc8657.roi.npz"
+    # out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/医院血片选厚区/01/output"
     result_json_name: str = "results_rbc.json"
 
     def get_color(self, region_name: str) -> str:
@@ -52,6 +58,7 @@ def visualize_results(
     save_path_base: Path,
     user_search_mask: np.ndarray | None = None,
     head_crop_rect: Rect | None = None,
+    pre_expand_res: SelectionResult | None = None,
 ) -> None:
     if not tasks:
         print("[WARNING][RBC] 无采样任务，跳过可视化生成。")
@@ -113,6 +120,18 @@ def visualize_results(
         zorder=10,
     )
     ax2.add_patch(polygon)
+
+    if pre_expand_res is not None:
+        polygon_pre = patches.Polygon(
+            pre_expand_res.vertices_grid,
+            linewidth=2,
+            edgecolor="orange",
+            facecolor="none",
+            linestyle="--",
+            label="Selection Before Expand",
+            zorder=11,
+        )
+        ax2.add_patch(polygon_pre)
     ax2.set_title("Figure 2 (RBC): Final Selection, Head Crop & User Constraint")
     ax2.legend(loc="upper right")
     fig2.savefig(save_path_base / "fig2_selection_rbc.png", dpi=200, bbox_inches="tight")
@@ -192,11 +211,14 @@ def main() -> None:
         print(f"[INFO][RBC] 成功加载项目: {smear_type}")
 
     # 血片选区仍按有核细胞数量进行选区
+    user_choice_area={'x_min': 27767, 'y_min': 18637, 'x_max': 47791, 'y_max': 28661}
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
+                        user_choice_area=user_choice_area,
                         dpi=info.dpi,
-                        x100_rect_width=362,
-                        x100_rect_height=272,
-                        heatmap_orientation=info.heatmap_orientation,
+                        x100_rect_width=391,
+                        x100_rect_height=293,
+                        # heatmap_orientation=info.heatmap_orientation,
+                        heatmap_orientation=0,
                         View_type="wbc", 
                         Smear_type=smear_type,
                         tile_w=info.tile_w,
@@ -231,6 +253,7 @@ def main() -> None:
             grid_info=pipeline.grid,
             user_search_mask=pipeline.user_search_mask,
             head_crop_rect=head_crop_rect,
+            pre_expand_res=pipeline.pre_expand_res,
             save_path_base=out_dir,
         )
 
