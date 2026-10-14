@@ -1903,6 +1903,8 @@ class TaskService:
         """
         小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
         714756 模型试原档、一半、1/4 和 2 倍，40 倍模型试 147246、一半、1/4 和 2 倍，返回细胞更多的一次。
+        猜档只比较定位框数量；大图需要切块时只取中心一块。
+        完整结果做靠边过滤，最多返回 100 个细胞。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"
