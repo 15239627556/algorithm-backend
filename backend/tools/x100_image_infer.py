@@ -47,18 +47,18 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 # 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
-# 714756 模型试原档、一半、1/4 和 2 倍；40 倍模型试 147246、一半、1/4、2 倍。
+# 714756 模型试原档、一半和 2 倍；40 倍模型试 147246、一半和 2 倍。1/4 档暂时关闭。
 # 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
-    (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
+    # (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),  # 178689，暂时关闭
     (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
-    (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),
+    # (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),  # 36811，暂时关闭
     (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
 )
 # 破碎细胞及杂质。小程序若第一名是它且分类置信度低于 0.9，改用第二名；大于等于 0.9 仍放第一位。
@@ -68,7 +68,7 @@ _MINIAPP_LOWRES_WARNING = "您上传的图像像素不足，准确度可能会�
 # 假定细胞物理边长 20 微米，用原图框反推 DPI；不超过该值才返回像素不足告警。
 _MINIAPP_CELL_UM = 20.0
 _MINIAPP_DPI_WARN_MAX = 350000
-# 小程序最终响应最多返回这么多细胞，多出的按原顺序丢掉。
+# 小程序最终响应最多返回这么多细胞，留离图像中心最近的。
 _MINIAPP_MAX_CELLS = 100
 
 # 切块最小尺寸（文档未规定 max 以外的 min，沿用历史值）
@@ -470,10 +470,8 @@ def infer_x100_on_bgr(
     resolved: Any = None,
     route_dpi: int | None = None,
     no_cls: bool = False,
-    one_tile: bool = False,
 ) -> dict[str, Any]:
-    """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。
-    one_tile 为 True 且需要切块时，只推理中心一块。"""
+    """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。"""
     h, w = int(bgr.shape[0]), int(bgr.shape[1])
 
     def _run_infer(tile_bytes: bytes) -> dict[str, Any]:
@@ -502,17 +500,6 @@ def infer_x100_on_bgr(
 
     if w <= max_w and h <= max_h:
         return _run_infer(encode_bgr_jpeg(bgr))
-
-    if one_tile:
-        tile_w = min(w, max_w)
-        tile_h = min(h, max_h)
-        x0 = max(0, (w - tile_w) // 2)
-        y0 = max(0, (h - tile_h) // 2)
-        logger.info(
-            "one-tile infer: %dx%d center (%d,%d) %dx%d",
-            w, h, x0, y0, tile_w, tile_h,
-        )
-        return _run_infer(encode_bgr_jpeg(bgr[y0:y0 + tile_h, x0:x0 + tile_w]))
 
     ys = tile_ranges_1d(h, max_h, DEFAULT_TILE_OVERLAP)
     xs = tile_ranges_1d(w, max_w, DEFAULT_TILE_OVERLAP)
@@ -570,38 +557,6 @@ def infer_x100_on_bgr(
     return result
 
 
-def _crop_center_for_one_tile(
-    bgr: np.ndarray,
-    scale_ratio: float,
-    max_w: int,
-    max_h: int,
-) -> tuple[np.ndarray, bool]:
-    """缩放后会超过模型最大尺寸时，只保留中心一块对应的原图区域。"""
-    height, width = int(bgr.shape[0]), int(bgr.shape[1])
-    if max_w <= 0 or max_h <= 0 or scale_ratio <= 0:
-        return bgr, False
-    scaled_w = max(1, int(round(width * scale_ratio)))
-    scaled_h = max(1, int(round(height * scale_ratio)))
-    if scaled_w <= max_w and scaled_h <= max_h:
-        return bgr, False
-    crop_w = width if scaled_w <= max_w else min(width, max(1, int(round(max_w / scale_ratio))))
-    crop_h = height if scaled_h <= max_h else min(height, max(1, int(round(max_h / scale_ratio))))
-    x0 = max(0, (width - crop_w) // 2)
-    y0 = max(0, (height - crop_h) // 2)
-    return bgr[y0:y0 + crop_h, x0:x0 + crop_w].copy(), True
-
-
-def _clamp_center_to_max(bgr: np.ndarray, max_w: int, max_h: int) -> np.ndarray:
-    height, width = int(bgr.shape[0]), int(bgr.shape[1])
-    if max_w <= 0 or max_h <= 0 or (width <= max_w and height <= max_h):
-        return bgr
-    tile_w = min(width, max_w)
-    tile_h = min(height, max_h)
-    x0 = max(0, (width - tile_w) // 2)
-    y0 = max(0, (height - tile_h) // 2)
-    return bgr[y0:y0 + tile_h, x0:x0 + tile_w].copy()
-
-
 def prepare_x100_bgr(
     image_bytes: bytes,
     input_dpi: int,
@@ -609,13 +564,11 @@ def prepare_x100_bgr(
     *,
     allow_dpi_scale: bool = True,
     scale_ratio: float | None = None,
-    one_tile: bool = False,
 ) -> tuple[np.ndarray, int, int, float, int, int, int, int, int]:
     """
     解码、按 DPI 比值缩放，并在必要时黑底居中填充至模型最小尺寸。
     返回 (bgr, orig_w, orig_h, scale_ratio, model_dpi, max_w, max_h, pad_x, pad_y)。
     scale_ratio 已给定时直接使用，不再按 dpi_range 重算。
-    one_tile: 缩放后超过模型最大尺寸时，只取中心一块再缩放，避免整图切块。
     """
     model_dpi = int(actual_dpi)
     limits = model_tile_limits(model_dpi)
@@ -628,29 +581,13 @@ def prepare_x100_bgr(
     if bgr is None:
         raise ValueError("cannot decode image")
 
+    orig_h, orig_w = int(bgr.shape[0]), int(bgr.shape[1])
     if scale_ratio is None:
         scale_ratio = compute_dpi_scale_ratio(input_dpi, model_dpi) if allow_dpi_scale else 1.0
     else:
         scale_ratio = float(scale_ratio)
-    if one_tile and limits is not None:
-        full_h, full_w = int(bgr.shape[0]), int(bgr.shape[1])
-        bgr, cropped = _crop_center_for_one_tile(bgr, scale_ratio, max_w, max_h)
-        if cropped:
-            logger.info(
-                "one-tile crop: src=%dx%d crop=%dx%d scale=%.4f max=%dx%d",
-                full_w,
-                full_h,
-                int(bgr.shape[1]),
-                int(bgr.shape[0]),
-                scale_ratio,
-                max_w,
-                max_h,
-            )
-    orig_h, orig_w = int(bgr.shape[0]), int(bgr.shape[1])
     if scale_ratio != 1.0:
         bgr = scale_bgr(bgr, scale_ratio)
-    if one_tile:
-        bgr = _clamp_center_to_max(bgr, max_w, max_h)
 
     pad_x, pad_y = 0, 0
     if limits is not None:
@@ -725,7 +662,6 @@ def run_cell_image_infer(
     no_cls: bool = False,
     apply_post_filters: bool = True,
     apply_small_wbc_filter: bool = True,
-    one_tile: bool = False,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -741,7 +677,6 @@ def run_cell_image_infer(
     no_cls: 为 True 时请求带 no_cls=true，只返回定位框。
     apply_post_filters: 为 False 时不做靠边过滤和 714756 过小有核过滤。
     apply_small_wbc_filter: 为 False 时仍做靠边过滤，但跳过 714756 小于 6 微米的有核过滤。
-    one_tile: 为 True 且缩放后超过模型最大尺寸时，只推理中心一块。
     """
     try:
         assert_inference_allowed()
@@ -838,7 +773,6 @@ def run_cell_image_infer(
                 model_dpi,
                 allow_dpi_scale=allow_dpi_scale,
                 scale_ratio=scale_ratio,
-                one_tile=one_tile,
             )
         except ValueError as e:
             return {"ok": False, "error": str(e)}
@@ -889,7 +823,6 @@ def run_cell_image_infer(
                 max_w=max_w,
                 max_h=max_h,
                 test=test,
-                one_tile=one_tile,
                 **force_kwargs,
             )
     except PipelineUnavailable as e:
@@ -997,6 +930,65 @@ def _miniapp_estimated_dpi(cell_list: list[dict[str, Any]]) -> float | None:
     return 25.4 * 1000.0 * side_px / _MINIAPP_CELL_UM
 
 
+def _miniapp_center_dist2(item: dict[str, Any], cx: float, cy: float) -> float:
+    try:
+        x = (float(item["cell_xmin"]) + float(item["cell_xmax"])) / 2.0
+        y = (float(item["cell_ymin"]) + float(item["cell_ymax"])) / 2.0
+    except (KeyError, TypeError, ValueError):
+        return float("inf")
+    return (x - cx) ** 2 + (y - cy) ** 2
+
+
+def _miniapp_keep_near_center(
+    cell_list: list[dict[str, Any]],
+    cells: list,
+    orig_w: int,
+    orig_h: int,
+    limit: int,
+) -> tuple[list[dict[str, Any]], list]:
+    """留下离原图中心最近的 limit 个细胞，cell_list 与 cells 按同一批框对齐。"""
+    if orig_w > 0 and orig_h > 0:
+        cx, cy = float(orig_w) / 2.0, float(orig_h) / 2.0
+    else:
+        xs: list[float] = []
+        ys: list[float] = []
+        for item in cell_list:
+            try:
+                xs.append((float(item["cell_xmin"]) + float(item["cell_xmax"])) / 2.0)
+                ys.append((float(item["cell_ymin"]) + float(item["cell_ymax"])) / 2.0)
+            except (KeyError, TypeError, ValueError):
+                continue
+        cx = (min(xs) + max(xs)) / 2.0 if xs else 0.0
+        cy = (min(ys) + max(ys)) / 2.0 if ys else 0.0
+    order = sorted(
+        range(len(cell_list)),
+        key=lambda i: _miniapp_center_dist2(cell_list[i], cx, cy),
+    )
+    keep_idx = order[:limit]
+    kept_list = [cell_list[i] for i in keep_idx]
+    if len(cells) == len(cell_list):
+        return kept_list, [cells[i] for i in keep_idx]
+    buckets: dict[tuple[int, int, int, int], list] = {}
+    for cell in cells:
+        key = (int(cell.cell_xmin), int(cell.cell_ymin), int(cell.cell_xmax), int(cell.cell_ymax))
+        buckets.setdefault(key, []).append(cell)
+    kept_cells = []
+    for item in kept_list:
+        try:
+            key = (
+                int(item["cell_xmin"]),
+                int(item["cell_ymin"]),
+                int(item["cell_xmax"]),
+                int(item["cell_ymax"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        bucket = buckets.get(key)
+        if bucket:
+            kept_cells.append(bucket.pop(0))
+    return kept_list, kept_cells
+
+
 def run_miniapp_cell_image_infer(
     image_bytes: bytes,
     smear_type: str = "BM",
@@ -1007,17 +999,17 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    用 714756 模型试原档、一半、1/4 和 2 倍，用 40 倍模型试 147246、一半、1/4 和 2 倍。
-    返回细胞更多的一次；数量相同按 714756、714756/2、714756/4、714756*2、147246、147246/2、147246/4、147246*2 优先。
+    用 714756 模型试原档、一半和 2 倍，用 40 倍模型试 147246、一半和 2 倍。1/4 档暂时关闭。
+    返回细胞更多的一次；数量相同按 714756、714756/2、714756*2、147246、147246/2、147246*2 优先。
     先并发全部 714756 模型档，这批都返回后再并发全部 147246 模型档。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且分类置信度低于 0.9、还有第二名，改用第二名；大于等于 0.9 仍放第一位。
     用最终结果原图细胞框的宽、高中位数均值，按细胞 20 微米反推 DPI；
     反推 DPI 小于等于 350000 时 warning 提示图像像素不足，否则响应不含该字段。
-    猜档请求带 no_cls=true，只比较定位框数量。图片缩放后超过模型尺寸、需要切块时，只取中心一块对比，不整图识别。
+    猜档请求带 no_cls=true，只比较定位框数量；大图按模型最大尺寸切整图。
     确定档位后再对整图请求一次完整分类结果。
     完整结果做靠边过滤，不做 714756 小于 6 微米的有核过滤。
-    反推 DPI 用过滤后的全部细胞；响应最多返回 100 个，多出的按原顺序截断。
+    反推 DPI 用过滤后的全部细胞；响应最多返回 100 个，留离原图中心最近的。
     """
     best: dict[str, Any] | None = None
     best_dpi: int | None = None
@@ -1042,7 +1034,6 @@ def run_miniapp_cell_image_infer(
             force_model_dpi=model_dpi,
             no_cls=True,
             apply_post_filters=False,
-            one_tile=True,
         )
         return int(guess_dpi), int(model_dpi), result
 
@@ -1117,14 +1108,20 @@ def run_miniapp_cell_image_infer(
         if not warning or warning == _MINIAPP_LOWRES_WARNING:
             best.pop("warning", None)
     cell_list = list(best.get("cell_list") or [])
+    cells = list(best.get("cells") or [])
     if len(cell_list) > _MINIAPP_MAX_CELLS:
-        logger.info(
-            "miniapp truncate cells %s -> %s",
-            len(cell_list),
+        kept_list, kept_cells = _miniapp_keep_near_center(
+            cell_list,
+            cells,
+            int(best.get("orig_w") or 0),
+            int(best.get("orig_h") or 0),
             _MINIAPP_MAX_CELLS,
         )
-        best["cell_list"] = cell_list[:_MINIAPP_MAX_CELLS]
-        cells = list(best.get("cells") or [])
-        if len(cells) == len(cell_list):
-            best["cells"] = cells[:_MINIAPP_MAX_CELLS]
+        logger.info(
+            "miniapp truncate cells %s -> %s near center",
+            len(cell_list),
+            len(kept_list),
+        )
+        best["cell_list"] = kept_list
+        best["cells"] = kept_cells
     return best
