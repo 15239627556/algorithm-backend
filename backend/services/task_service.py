@@ -1902,8 +1902,8 @@ class TaskService:
     def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
         小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
-        714756 模型试原档、一半和 2 倍，40 倍模型试 147246、一半和 2 倍，1/4 档暂时关闭，返回细胞更多的一次。
-        猜档按整图切块比较定位框数量。完整结果做靠边过滤，最多返回离原图中心最近的 100 个细胞。
+        714756 模型试原档、一半、1/4 和 2 倍，40 倍模型试 147246、一半、1/4 和 2 倍，返回细胞更多的一次。
+        猜档按整图切块比较定位框数量。完整结果的 714756 和低倍都按原图边缘 1% 做靠边过滤，最多返回离原图中心最近的 100 个细胞。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"

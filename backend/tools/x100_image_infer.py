@@ -47,18 +47,18 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 # 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
-# 714756 模型试原档、一半和 2 倍；40 倍模型试 147246、一半和 2 倍。1/4 档暂时关闭。
+# 714756 模型试原档、一半、1/4 和 2 倍；40 倍模型试 147246、一半、1/4 和 2 倍。
 # 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
-    # (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),  # 178689，暂时关闭
+    (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
-    # (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),  # 36811，暂时关闭
+    (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
 )
 # 破碎细胞及杂质。小程序若第一名是它且分类置信度低于 0.9，改用第二名；大于等于 0.9 仍放第一位。
@@ -626,6 +626,7 @@ def _apply_post_filters(
     use_714756_filter: bool,
     edge_cell_filter: bool,
     small_wbc_filter: bool = True,
+    use_edge_1pct: bool = False,
 ) -> list[dict[str, Any]]:
     if not cell_list:
         return cell_list
@@ -636,6 +637,12 @@ def _apply_post_filters(
                 cell_list = filter_cell_dicts_small_wbc_714756(cell_list, input_dpi)
         except Exception as e:
             logger.warning("714756 cell filter skipped: %s", e)
+        return cell_list
+    if use_edge_1pct:
+        try:
+            cell_list = filter_cell_dicts_edge_elongated_1pct(cell_list, orig_w, orig_h)
+        except Exception as e:
+            logger.warning("edge 1pct filter skipped: %s", e)
         return cell_list
     if edge_cell_filter:
         try:
@@ -662,6 +669,7 @@ def run_cell_image_infer(
     no_cls: bool = False,
     apply_post_filters: bool = True,
     apply_small_wbc_filter: bool = True,
+    use_edge_1pct: bool = False,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -677,6 +685,8 @@ def run_cell_image_infer(
     no_cls: 为 True 时请求带 no_cls=true，只返回定位框。
     apply_post_filters: 为 False 时不做靠边过滤和 714756 过小有核过滤。
     apply_small_wbc_filter: 为 False 时仍做靠边过滤，但跳过 714756 小于 6 微米的有核过滤。
+    use_edge_1pct: 为 True 且不是 714756 模型时，靠边过滤改用原图 1% 且长宽比 >= 1.5。
+    仅小程序低倍最终结果打开，单张和平扫仍用距边 1 像素或 5 像素细长框规则。
     """
     try:
         assert_inference_allowed()
@@ -850,6 +860,7 @@ def run_cell_image_infer(
             use_714756_filter=use_714756_filter,
             edge_cell_filter=False if use_714756_filter else edge_cell_filter,
             small_wbc_filter=apply_small_wbc_filter,
+            use_edge_1pct=use_edge_1pct,
         )
         keep = {_bbox_key(d) for d in cell_list}
         cells = [
@@ -999,8 +1010,8 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    用 714756 模型试原档、一半和 2 倍，用 40 倍模型试 147246、一半和 2 倍。1/4 档暂时关闭。
-    返回细胞更多的一次；数量相同按 714756、714756/2、714756*2、147246、147246/2、147246*2 优先。
+    用 714756 模型试原档、一半、1/4 和 2 倍，用 40 倍模型试 147246、一半、1/4 和 2 倍。
+    返回细胞更多的一次；数量相同按 714756、714756/2、714756/4、714756*2、147246、147246/2、147246/4、147246*2 优先。
     先并发全部 714756 模型档，这批都返回后再并发全部 147246 模型档。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且分类置信度低于 0.9、还有第二名，改用第二名；大于等于 0.9 仍放第一位。
@@ -1008,7 +1019,8 @@ def run_miniapp_cell_image_infer(
     反推 DPI 小于等于 350000 时 warning 提示图像像素不足，否则响应不含该字段。
     猜档请求带 no_cls=true，只比较定位框数量；大图按模型最大尺寸切整图。
     确定档位后再对整图请求一次完整分类结果。
-    完整结果做靠边过滤，不做 714756 小于 6 微米的有核过滤。
+    完整结果做靠边过滤：714756 与低倍都用原图边缘 1% 且长宽比 >= 1.5，不做 714756 小于 6 微米的有核过滤。
+    单张和平扫的低倍仍用距边 1 像素或 5 像素细长框规则。
     反推 DPI 用过滤后的全部细胞；响应最多返回 100 个，留离原图中心最近的。
     """
     best: dict[str, Any] | None = None
@@ -1084,6 +1096,7 @@ def run_miniapp_cell_image_infer(
         force_model_dpi=best_model,
         apply_post_filters=True,
         apply_small_wbc_filter=False,
+        use_edge_1pct=True,
     )
     if not best.get("ok"):
         return best
