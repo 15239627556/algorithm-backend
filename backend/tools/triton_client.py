@@ -55,19 +55,12 @@ logger = logging.getLogger(__name__)
 
 # 细胞检测走 multi_pipeline_server：POST /infer，Form 传 actual_dpi。
 # actual_dpi 来自 MODEL_TABLE 命中的定位模型，不是 Triton 仓库模型名。
-DPI_147246 = 147246
-DPI_357378 = 357378
-DPI_714756 = 714756
-DPI_35000 = 35000
-DPI_71000 = 71000
-DPI_144750 = 144750  # 遗留请求值，落在 147246 区间
 
 # CF 检测统一输出未分类脑脊液细胞
 CSF_UNCLASSIFIED_CELL_TYPE = 100007
 # 图片增强/滤镜（x40 超分辨率滤镜深度学习模式）
 MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 
-_PIPELINE_DPI_VALUES = frozenset({147246, 357378, 714756, 35000, 71000})
 _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 GLOBAL_IMAGE_ANALYSIS_MODEL = "GLOBAL-IMAGE-ANALYSIS"
 GLOBAL_IMAGE_HEAD_DIR_MODEL = "GLOBAL-IMAGE-HEAD-DIR"
@@ -489,16 +482,52 @@ _triton_client_lock = threading.Lock()
 
 
 def _infer_route_dpi(resolved: ResolvedModels) -> int | None:
-    """从 MODEL_TABLE 命中的模型取 /infer 的 dpi 参数（actual_dpi）。"""
-    actuals = {spec.actual_dpi for spec in resolved.detection}
-    if not actuals:
-        actuals = {spec.actual_dpi for spec in resolved.score}
-    if not actuals:
-        return None
-    for dpi in (DPI_147246, DPI_35000, DPI_71000, DPI_357378, DPI_714756):
-        if dpi in actuals:
-            return dpi
-    return next(iter(actuals))
+    """从已解析模型取 /infer 的 dpi，即 manifest 里的 actual_dpi。"""
+    for spec in (*resolved.detection, *resolved.score):
+        if spec.actual_dpi:
+            return int(spec.actual_dpi)
+    return None
+
+
+def _specs_at_dpi(resolved: ResolvedModels, route_dpi: int) -> list:
+    dpi = int(route_dpi)
+    return [spec for spec in resolved.specs if int(spec.actual_dpi or 0) == dpi]
+
+
+def _uses_csf_result(resolved: ResolvedModels, route_dpi: int) -> bool:
+    """该档定位模型在 manifest 里只服务 CSF 时，用脑脊液结果解析。"""
+    specs = [spec for spec in resolved.detection if int(spec.actual_dpi or 0) == int(route_dpi)]
+    if not specs:
+        return False
+    return all(spec.smear_types == frozenset({"CSF"}) for spec in specs)
+
+
+def _result_family(resolved: ResolvedModels, route_dpi: int) -> str:
+    """按 manifest 命中模型的名称选择返回格式，不比较写死的 DPI 数值。"""
+    if _uses_csf_result(resolved, route_dpi):
+        return "csf"
+    names = [spec.name.upper() for spec in _specs_at_dpi(resolved, route_dpi)]
+    if any(name.startswith("HIGHRES") for name in names):
+        return "highres"
+    if any(name.startswith("LOWRES") for name in names):
+        return "lowres"
+    dets = [
+        spec
+        for spec in resolved.detection
+        if int(spec.actual_dpi or 0) == int(route_dpi)
+    ]
+    if dets and all(spec.targets == frozenset({"MEG"}) for spec in dets):
+        return "meg"
+    return ""
+
+
+def _should_append_cscore(resolved: ResolvedModels, route_dpi: int) -> bool:
+    """低倍或评分模型才在 BM/PB 的 wbc、meg 请求上补 cscore。"""
+    for spec in _specs_at_dpi(resolved, route_dpi):
+        name = spec.name.upper()
+        if name.startswith("LOWRES") or name.endswith("-CSCORE"):
+            return True
+    return False
 
 
 def get_model_by_dpi(
@@ -518,8 +547,9 @@ def get_model_by_dpi(
 
 def _pipeline_task_from_algorithm_types(
     algorithm_types: str,
-    route_dpi: int,
     smear_type: str,
+    *,
+    include_cscore: bool = False,
 ) -> str:
     """
     将 target_cell_types / algorithm_types 转为 multi_pipeline /infer 的 task 字段。
@@ -546,7 +576,7 @@ def _pipeline_task_from_algorithm_types(
 
     st = normalize_smear_type(smear_type)
     if (
-        route_dpi == DPI_147246
+        include_cscore
         and st in ("BM", "PB")
         and seen.intersection({"wbc", "meg"})
         and "cscore" not in seen
@@ -1291,7 +1321,7 @@ def _build_plat_extra(
     *,
     w_px: float = 0.0,
     h_px: float = 0.0,
-    dpi: int = DPI_714756,
+    dpi: int,
 ) -> dict[str, Any]:
     """写入 extra：形态/分布/颜色及对应置信度；大小异常由框尺寸与 DPI 计算。"""
     extra: dict[str, Any] = {}
@@ -1316,7 +1346,7 @@ def _build_red_rbc_extra(
     *,
     w_px: float = 0.0,
     h_px: float = 0.0,
-    dpi: int = DPI_714756,
+    dpi: int,
 ) -> dict[str, Any]:
     """写入 extra：结构/颜色/形态/聚集及对应置信度；大小异常由框尺寸与 DPI 计算。"""
     extra: dict[str, Any] = {}
@@ -1446,7 +1476,7 @@ def _infer_714756_bm_from_pipeline_json(
     res: dict[str, Any],
     smear_type: str,
     *,
-    dpi: int = DPI_714756,
+    dpi: int,
     resolved: Optional[ResolvedModels] = None,
 ) -> dict[str, Any]:
     # logger.info("714756_bm pipeline 原始返回:\n%s", res)
@@ -1892,11 +1922,16 @@ def _post_unified_pipeline_infer(
     endpoint: dict,
     test: bool = False,
     no_cls: bool = False,
+    include_cscore: bool = False,
 ) -> dict[str, Any]:
     """POST /infer：multipart 传 image + dpi(actual_dpi) + slide_type + task。"""
     url = _pipeline_infer_url(endpoint=endpoint)
     slide_type = normalize_smear_type(smear_type)
-    task = _pipeline_task_from_algorithm_types(algorithm_types, route_dpi, smear_type)
+    task = _pipeline_task_from_algorithm_types(
+        algorithm_types,
+        smear_type,
+        include_cscore=include_cscore,
+    )
     extra_form = {
         "dpi": str(route_dpi),
         "slide_type": slide_type,
@@ -1957,12 +1992,13 @@ def infer(
             "测试熔断：已触发全部推理服务重启，暂不接收图片推理"
         )
 
-    if route_dpi is None or route_dpi not in _PIPELINE_DPI_VALUES:
+    if route_dpi is None:
         result = {"cells": [], "scores": [], "cell_list": []}
         if warning:
             result["warning"] = warning
         return result
 
+    family = _result_family(resolved, route_dpi)
     res_json = _post_unified_pipeline_infer(
         image_bytes,
         filename,
@@ -1972,9 +2008,12 @@ def infer(
         endpoint,
         test=test,
         no_cls=no_cls,
+        include_cscore=_should_append_cscore(resolved, route_dpi),
     )
 
-    if route_dpi == DPI_147246:
+    if family == "csf":
+        result = _infer_csf_from_pipeline_json(res_json, smear_type)
+    elif family == "lowres":
         wbc_boxes, wbc_scores, wbc_num, meg_boxes, meg_scores, meg_num, cr, cs, cg, wpc, rpc = (
             _parse_pipeline_json_147246(res_json)
         )
@@ -1995,14 +2034,12 @@ def infer(
             wbc_cls=_pipeline_task_cls(res_json, "wbc"),
             classify_wbc=resolved.has_classifier_for("WBC"),
         )
-    elif route_dpi == DPI_357378:
+    elif family == "meg":
         result = _infer_357378_from_pipeline_json(res_json, smear_type)
-    elif route_dpi == DPI_714756:
+    elif family == "highres":
         result = _infer_714756_bm_from_pipeline_json(
             res_json, smear_type, dpi=dpi, resolved=resolved
         )
-    elif route_dpi in (DPI_35000, DPI_71000):
-        result = _infer_csf_from_pipeline_json(res_json, smear_type)
     else:
         result = {"cells": [], "scores": [], "cell_list": []}
 
@@ -2127,6 +2164,16 @@ def infer_global_image(
     )
 
 
+def _actual_dpi_of_model(name: str) -> int | None:
+    """从 manifest 载入的目录取指定模型的 actual_dpi。"""
+    from backend.tools.model_control import get_model_catalog
+
+    for spec in get_model_catalog():
+        if spec.name == name and spec.actual_dpi:
+            return int(spec.actual_dpi)
+    return None
+
+
 def infer_cellularity(
     image_bytes: bytes,
     filename: str = "tile.jpg",
@@ -2135,7 +2182,7 @@ def infer_cellularity(
     save_heatmap: bool = False,
 ) -> dict[str, Any]:
     """
-    骨髓增生程度：multi_pipeline_server POST /infer（dpi=147246, task=cellularity）。
+    骨髓增生程度：multi_pipeline_server POST /infer（dpi 取 LOWRES-CELLULARITY 的 manifest dpi, task=cellularity）。
     只依赖 LOWRES-CELLULARITY，不走定位/评分完整 pipeline。
     传图前居中补边至固定尺寸 2448x2048。
     save_heatmap=True 时请求推理服务返回 cellularity.color_map。
@@ -2146,6 +2193,14 @@ def infer_cellularity(
         return {"ok": False, "error": str(e), "infer_ms": 0.0, "pad_ms": 0.0}
     if not image_bytes:
         return {"ok": False, "error": "empty image payload", "infer_ms": 0.0, "pad_ms": 0.0}
+    cellularity_dpi = _actual_dpi_of_model("LOWRES-CELLULARITY")
+    if cellularity_dpi is None:
+        return {
+            "ok": False,
+            "error": "LOWRES-CELLULARITY 未在 manifest.json 中配置 dpi",
+            "infer_ms": 0.0,
+            "pad_ms": 0.0,
+        }
     t_pad0 = time.perf_counter()
     try:
         image_bytes = _pad_image_bytes_to_cell_analysis_size(image_bytes)
@@ -2160,7 +2215,7 @@ def infer_cellularity(
     gpu_id, endpoint = _resolve_triton_route(gpu_id)
     url = _pipeline_infer_url(endpoint=endpoint)
     extra_form = {
-        "dpi": str(DPI_147246),
+        "dpi": str(cellularity_dpi),
         "slide_type": normalize_smear_type(smear_type),
         "task": "cellularity",
     }
