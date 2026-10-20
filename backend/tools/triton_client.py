@@ -489,9 +489,10 @@ def _infer_route_dpi(resolved: ResolvedModels) -> int | None:
     return None
 
 
-def _specs_at_dpi(resolved: ResolvedModels, route_dpi: int) -> list:
-    dpi = int(route_dpi)
-    return [spec for spec in resolved.specs if int(spec.actual_dpi or 0) == dpi]
+# 这三档返回结构和模型名前缀无关，仍按 manifest 里的 actual_dpi 选择解析。
+_FORMAT_DPI_LOWRES = 147246
+_FORMAT_DPI_MEG = 357378
+_FORMAT_DPI_HIGHRES = 714756
 
 
 def _uses_csf_result(resolved: ResolvedModels, route_dpi: int) -> bool:
@@ -503,31 +504,23 @@ def _uses_csf_result(resolved: ResolvedModels, route_dpi: int) -> bool:
 
 
 def _result_family(resolved: ResolvedModels, route_dpi: int) -> str:
-    """按 manifest 命中模型的名称选择返回格式，不比较写死的 DPI 数值。"""
-    if _uses_csf_result(resolved, route_dpi):
-        return "csf"
-    names = [spec.name.upper() for spec in _specs_at_dpi(resolved, route_dpi)]
-    if any(name.startswith("HIGHRES") for name in names):
-        return "highres"
-    if any(name.startswith("LOWRES") for name in names):
+    """147246 / 357378 / 714756 按档位解析；其余 CSF 定位模型按 manifest 的涂片类型解析。"""
+    dpi = int(route_dpi)
+    if dpi == _FORMAT_DPI_LOWRES:
         return "lowres"
-    dets = [
-        spec
-        for spec in resolved.detection
-        if int(spec.actual_dpi or 0) == int(route_dpi)
-    ]
-    if dets and all(spec.targets == frozenset({"MEG"}) for spec in dets):
+    if dpi == _FORMAT_DPI_MEG:
         return "meg"
+    if dpi == _FORMAT_DPI_HIGHRES:
+        return "highres"
+    if _uses_csf_result(resolved, dpi):
+        return "csf"
     return ""
 
 
 def _should_append_cscore(resolved: ResolvedModels, route_dpi: int) -> bool:
-    """低倍或评分模型才在 BM/PB 的 wbc、meg 请求上补 cscore。"""
-    for spec in _specs_at_dpi(resolved, route_dpi):
-        name = spec.name.upper()
-        if name.startswith("LOWRES") or name.endswith("-CSCORE"):
-            return True
-    return False
+    """147246 的 BM/PB 有核、巨核请求补 cscore。"""
+    del resolved
+    return int(route_dpi) == _FORMAT_DPI_LOWRES
 
 
 def get_model_by_dpi(

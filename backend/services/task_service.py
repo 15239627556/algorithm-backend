@@ -1859,21 +1859,100 @@ class TaskService:
             'rect_count_input': len(rects),
         }
 
+    def _load_or_create_task_project(self, task_id: str, smear_type: str) -> SmearProject:
+        """任务模式写细胞：优先读已有项目 JSON，没有则按涂片类型新建。"""
+        path = _task_project_path(task_id)
+        if os.path.exists(path):
+            return SmearProject.load_json(path)
+        return SmearProject(smear_type=smear_type)
+
+    def _save_analyze_cells_to_project(
+        self,
+        task_id: str,
+        smear_type: str,
+        dpi: int,
+        filename: str,
+        position_xmin: int,
+        position_ymin: int,
+        position_xmax: int,
+        position_ymax: int,
+        result: dict,
+    ) -> None:
+        """把本次识别的细胞挂到位置框对应的瓦片上，并写入 {task_id}.json。"""
+        x = int(position_xmin)
+        y = int(position_ymin)
+        w = int(position_xmax) - x
+        h = int(position_ymax) - y
+        project = self._load_or_create_task_project(task_id, smear_type)
+        layer = project.get_layer(int(dpi))
+        tile = None
+        for one in layer.iter_tiles():
+            if one.x == x and one.y == y and one.w == w and one.h == h:
+                tile = one
+                break
+        cells = [c for c in (result.get("cells") or []) if isinstance(c, Cell)]
+        scores = _ensure_json_serializable(result.get("scores") or [])
+        if tile is None:
+            tile = layer.add_tile(
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                image_path=filename,
+                extra_meta={"scores": scores},
+            )
+        else:
+            tile.image_path = filename or tile.image_path
+            tile.meta = dict(tile.meta or {})
+            tile.meta["scores"] = scores
+        # 细胞坐标相对这张图，全局坐标由瓦片左上角换算。同一位置再次识别时替换，避免重复累加。
+        tile.cells = cells
+        project.save_json(_task_project_path(task_id))
+        _project_cache_set(task_id, project)
+
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,
                              edge_cell_filter, smear_type,
                              position_xmin, position_ymin, position_xmax, position_ymax,
                              test=False):
         """
         细胞图像分析。支持两种模式：
-        - 任务模式：task_id + position 必填，结果保存到项目
+        - 任务模式：task_id + position 必填，细胞写入 {task_id}.json
         - 单张识别：无 task_id，dpi+algorithm_types 必填，直接返回推理结果
         """
+        info = None
+        if task_id:
+            info, err = _require_task_info(task_id)
+            if err:
+                return err
+            if not smear_type:
+                smear_type = info.get("smear_type") or "BM"
+            if any(v is None for v in (
+                position_xmin, position_ymin, position_xmax, position_ymax,
+            )):
+                err = (
+                    "Task mode requires position_xmin, position_ymin, "
+                    "position_xmax, position_ymax"
+                )
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": err,
+                    "reason": err,
+                }
+            if int(position_xmax) <= int(position_xmin) or int(position_ymax) <= int(position_ymin):
+                err = "Invalid position: xmax/ymax must be greater than xmin/ymin"
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": err,
+                    "reason": err,
+                }
+        else:
+            smear_type = smear_type or "BM"
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"
         result = run_cell_image_infer(
             image_bytes,
             int(dpi),
-            smear_type or "BM",
+            smear_type,
             target_cell_types or "",
             filename=filename,
             edge_cell_filter=_parse_edge_cell_filter_flag(edge_cell_filter),
@@ -1888,6 +1967,26 @@ class TaskService:
                 "ret_desc": err,
                 "reason": err,
             }
+        if task_id:
+            try:
+                self._save_analyze_cells_to_project(
+                    task_id,
+                    smear_type,
+                    int(dpi),
+                    filename,
+                    int(position_xmin),
+                    int(position_ymin),
+                    int(position_xmax),
+                    int(position_ymax),
+                    result,
+                )
+            except Exception as e:
+                logger.exception("save analyze cells failed task_id=%s: %s", task_id, e)
+                return {
+                    "ret_code": RetCode.CLIENT_ERROR.value,
+                    "ret_desc": str(e),
+                    "reason": str(e),
+                }
         cell_list = result.get("cell_list") or []
         response = {
             "ret_code": RetCode.API_SUCCESS.value,
