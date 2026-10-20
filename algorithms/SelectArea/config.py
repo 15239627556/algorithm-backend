@@ -116,10 +116,9 @@ class BM40Config:
     CF_cell_type: int = field(default=100007, init=False)  # 脑脊液未分类细胞类型 
 
     # --- 脑脊液 FOCUS_POINT 选区 ---
-    focus_point: int = 9  # 主团内平铺视野数（通常为 n^2，如 4/9）
-    cf_dense_close_ksize: int = field(default=5, init=False)  # 密度连通闭运算核
-    # 质量心累积覆盖比例：从密度加权质心由近及远纳入格子，至覆盖该比例细胞后取外接框
-    cf_dense_mass_frac: float = field(default=0.95, init=False)
+    focus_point: int = 9  # task_rect 内平铺视野数（通常为 n^2，如 4/9）
+    # task_rect：细胞中心 x、y 各裁掉两端该比例，取中间范围（2% 时框内约 92% 细胞）
+    cf_dense_quantile_trim: float = field(default=0.02, init=False)
     cf_fov_refine_steps: int = field(default=5, init=False)  # 子区内滑动步长 = 视野边长 / steps
 
     def get_search_area_scales(self) -> Tuple[float, ...]:

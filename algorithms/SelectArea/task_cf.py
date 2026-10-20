@@ -35,90 +35,25 @@ def find_densest_cell_rect(
     all_cells_array: np.ndarray,
 ) -> Tuple[int, int, int, int]:
     """
-    从细胞密度矩阵提取主细胞团的全局轴对齐矩形 [xmin, ymin, xmax, ymax]。
+    细胞分布的全局轴对齐矩形 [xmin, ymin, xmax, ymax]。
 
-    1) 非零格闭运算后取最大连通域（主团）；
-    2) 在主团内以密度加权质心为中心，由近及远累积细胞质量，
-       至覆盖 cf_dense_mass_frac（默认 95%）后取外接框。
-       可抑制边角稀疏细胞把框撑满整幅 ROI，又避免相对峰值抠核过狠。
+    细胞中心的 x、y 各按分位数裁掉两端 cf_dense_quantile_trim（默认 2%），
+    中间范围即为 task_rect。不依赖连通团：细胞分散成多团时不会只框住一团，
+    边缘少量稀疏细胞也会被裁掉而不撑大框。
     """
     if cell_matrix.size == 0 or float(np.sum(cell_matrix)) <= 0:
         raise ValueError("细胞密度矩阵为空，无法提取密集区")
+    if all_cells_array.size == 0:
+        raise ValueError("细胞为空，无法提取密集区")
 
-    k = max(1, int(getattr(config, "cf_dense_close_ksize", 5)))
-    kernel = (
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)) if k > 1 else None
-    )
-
-    binary = (cell_matrix > 0).astype(np.uint8)
-    if kernel is not None:
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-    rows, cols = cell_matrix.shape
-    if num <= 1:
-        main_mask = cell_matrix > 0
-    else:
-        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        main_mask = labels == largest
-
-    if not np.any(main_mask):
-        raise ValueError("主团为空，无法提取密集区")
-
-    # --- 质量心累积覆盖 ---
-    ys, xs = np.where(main_mask & (cell_matrix > 0))
-    if ys.size == 0:
-        ys, xs = np.where(main_mask)
-        weights = np.ones(ys.size, dtype=np.float64)
-    else:
-        weights = cell_matrix[ys, xs].astype(np.float64)
-
-    mass_frac = float(getattr(config, "cf_dense_mass_frac", 0.90))
-    mass_frac = min(max(mass_frac, 0.5), 1.0)
-
-    if ys.size == 1 or mass_frac >= 1.0 - 1e-9:
-        sel_ys, sel_xs = ys, xs
-    else:
-        cy = float(np.average(ys, weights=weights))
-        cx = float(np.average(xs, weights=weights))
-        d2 = (ys.astype(np.float64) - cy) ** 2 + (xs.astype(np.float64) - cx) ** 2
-        order = np.argsort(d2, kind="mergesort")
-        cum = np.cumsum(weights[order])
-        total = float(cum[-1])
-        k_keep = int(np.searchsorted(cum, mass_frac * total, side="left")) + 1
-        k_keep = max(1, min(k_keep, order.size))
-        keep = order[:k_keep]
-        sel_ys, sel_xs = ys[keep], xs[keep]
-
-    core_mask = np.zeros_like(main_mask, dtype=bool)
-    core_mask[sel_ys, sel_xs] = True
-    gx0, gx1 = int(sel_xs.min()), int(sel_xs.max()) + 1
-    gy0, gy1 = int(sel_ys.min()), int(sel_ys.max()) + 1
-
-    cs = float(grid.cell_size)
-    ox, oy = float(grid.origin_x), float(grid.origin_y)
+    trim = float(getattr(config, "cf_dense_quantile_trim", 0.02))
+    trim = min(max(trim, 0.0), 0.45)
     centers = 0.5 * (all_cells_array[:, 0:2] + all_cells_array[:, 2:4])
-    gxs = ((centers[:, 0] - ox) // cs).astype(np.int32)
-    gys = ((centers[:, 1] - oy) // cs).astype(np.int32)
-    in_blob = (
-        (gxs >= 0)
-        & (gxs < cols)
-        & (gys >= 0)
-        & (gys < rows)
-        & core_mask[np.clip(gys, 0, rows - 1), np.clip(gxs, 0, cols - 1)]
-    )
-
-    if np.any(in_blob):
-        sub = all_cells_array[in_blob]
-        xmin = int(math.floor(float(sub[:, 0].min())))
-        ymin = int(math.floor(float(sub[:, 1].min())))
-        xmax = int(math.ceil(float(sub[:, 2].max())))
-        ymax = int(math.ceil(float(sub[:, 3].max())))
-    else:
-        xmin = int(round(ox + gx0 * cs))
-        ymin = int(round(oy + gy0 * cs))
-        xmax = int(round(ox + gx1 * cs))
-        ymax = int(round(oy + gy1 * cs))
+    lo, hi = 100.0 * trim, 100.0 * (1.0 - trim)
+    xmin = int(math.floor(float(np.percentile(centers[:, 0], lo))))
+    ymin = int(math.floor(float(np.percentile(centers[:, 1], lo))))
+    xmax = int(math.ceil(float(np.percentile(centers[:, 0], hi))))
+    ymax = int(math.ceil(float(np.percentile(centers[:, 1], hi))))
 
     if xmax <= xmin:
         xmax = xmin + 1
