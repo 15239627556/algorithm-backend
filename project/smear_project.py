@@ -96,11 +96,41 @@ class SmearProject:
     def save_json(self, path: str) -> str:
         """
         使用 JSON 持久化（推荐，可跨版本 / 跨语言）。
-        编码为 UTF-8；与标准库 json 产出格式兼容，可由任意 JSON 解析器读取。
+        按瓦片流式写入，避免 to_dict() 与整段字节同时驻留内存。
+        先写临时文件，完成后原子替换，中途退出不会留下半截最终文件。
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(orjson.dumps(self.to_dict()))
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        try:
+            with open(tmp, "wb") as f:
+                f.write(b'{"version":1,"smear_type":')
+                f.write(orjson.dumps(self.smear_type))
+                f.write(b',"layers":[')
+                for layer_index, layer in enumerate(self.layers):
+                    if layer_index:
+                        f.write(b",")
+                    f.write(b'{"dpi":')
+                    f.write(orjson.dumps(layer.dpi))
+                    f.write(b',"tiles":{')
+                    first_tile = True
+                    for uid, tile in layer.tiles.items():
+                        if first_tile:
+                            first_tile = False
+                        else:
+                            f.write(b",")
+                        f.write(orjson.dumps(uid))
+                        f.write(b":")
+                        f.write(orjson.dumps(tile.to_dict()))
+                    f.write(b"}}")
+                f.write(b"]}")
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         return "save success"
 
     @classmethod

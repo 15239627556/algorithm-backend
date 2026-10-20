@@ -48,13 +48,23 @@ class RoiDataset:
     wbc_cell_matrix: Optional[np.ndarray] = None
 
     @classmethod
-    def from_project(cls, project: SmearProject, dpi: int) -> RoiDataset:
+    def from_project(
+        cls,
+        project: SmearProject,
+        dpi: int,
+        *,
+        precompute_heatmap: bool = True,
+    ) -> RoiDataset:
         layer = project.get_layer(dpi)
         if layer is None:
             return cls(smear_type=project.smear_type, dpi=dpi)
 
         tiles: list[Tile] = []
-        cell_rows: list[tuple] = []
+        n_cells = 0
+        for tile in layer.tiles.values():
+            n_cells += len(tile.cells)
+        cells = np.empty(n_cells, dtype=CELL_DTYPE)
+        cursor = 0
 
         for tile in layer.tiles.values():
             tiles.append(Tile(
@@ -70,7 +80,7 @@ class RoiDataset:
             tx = 0 if tile.x is None else int(tile.x)
             ty = 0 if tile.y is None else int(tile.y)
             for cell in tile.cells:
-                cell_rows.append((
+                cells[cursor] = (
                     cell.cell_xmin + tx,
                     cell.cell_ymin + ty,
                     cell.cell_xmax + tx,
@@ -78,15 +88,12 @@ class RoiDataset:
                     cell.cell_type,
                     cell.class_confidence,
                     cell.bbox_confidence,
-                ))
+                )
+                cursor += 1
 
-        if cell_rows:
-            cells = np.array(cell_rows, dtype=CELL_DTYPE)
+        if n_cells:
             order = np.argsort(cells["cell_type"], kind="stable")
             cells = cells[order]
-        else:
-            cells = np.empty(0, dtype=CELL_DTYPE)
-
         type_index = _build_type_index(cells)
         roi = cls(
             smear_type=project.smear_type,
@@ -95,7 +102,8 @@ class RoiDataset:
             cells=cells,
             type_index=type_index,
         )
-        roi.ensure_precomputed_heatmap()
+        if precompute_heatmap:
+            roi.ensure_precomputed_heatmap()
         return roi
 
     def to_project(self) -> "SmearProject":

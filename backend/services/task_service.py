@@ -1,3 +1,4 @@
+import gc
 import os
 import shutil
 import threading
@@ -759,7 +760,11 @@ class TaskService:
             )
             try:
                 dpi = info.get("dpi", 144750)
-                RoiDataset.from_project(project, dpi).save(_task_roi_npz_path(task_id))
+                roi = RoiDataset.from_project(project, dpi, precompute_heatmap=False)
+                # JSON 已落盘，释放细胞对象后再算热力图，避免两份细胞同时驻留
+                del project
+                gc.collect()
+                roi.save(_task_roi_npz_path(task_id))
                 logger.info(
                     "save_roi_npz task_id=%s ms=%.2f",
                     task_id[:8],
