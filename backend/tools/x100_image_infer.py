@@ -46,9 +46,10 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-# 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按优先级排列。
-# 714756 模型试原档、一半、1/4 和 2 倍；40 倍模型试 147246、一半、1/4 和 2 倍。
-# 不走单张接口的 dpi_range 缩放限制。细胞数相同则保留更靠前的一档。
+# 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按模型分组、组内按优先级排列。
+# 先用 714756 试原档、一半、1/4 和 2 倍；只要有定位框就用该模型，取框最多的挡位。
+# 714756 各挡都没有定位框时，再用 40 倍模型试 147246、一半、1/4 和 2 倍，同样取框最多的挡位。
+# 不走单张接口的 dpi_range 缩放限制。同一模型内框数相同则保留更靠前的一档。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
@@ -1010,9 +1011,9 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    用 714756 模型试原档、一半、1/4 和 2 倍，用 40 倍模型试 147246、一半、1/4 和 2 倍。
-    返回细胞更多的一次；数量相同按 714756、714756/2、714756/4、714756*2、147246、147246/2、147246/4、147246*2 优先。
-    先并发全部 714756 模型档，这批都返回后再并发全部 147246 模型档。
+    先并发 714756 模型的原档、一半、1/4 和 2 倍。只要任一挡有定位框，就用 714756，
+    并取框最多的挡位，不再试低倍。714756 各挡都没有定位框时，再并发 40 倍模型的
+    147246、一半、1/4 和 2 倍，取框最多的挡位。同一模型内框数相同按更靠前的挡位优先。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且分类置信度低于 0.9、还有第二名，改用第二名；大于等于 0.9 仍放第一位。
     用最终结果原图细胞框的宽、高中位数均值，按细胞 20 微米反推 DPI；
@@ -1080,6 +1081,9 @@ def run_miniapp_cell_image_infer(
                 best_dpi = int(guess_dpi)
                 best_model = int(model_dpi)
                 best_count = count
+        # 高倍有定位框就不再和低倍比数量，避免高倍图被低倍模型抢走。
+        if best_model == _MINIAPP_MODEL_714756 and best_count >= 1:
+            break
 
     if best is None or best_dpi is None or best_model is None:
         return last_error or {"ok": False, "error": "infer failed"}
