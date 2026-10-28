@@ -134,6 +134,8 @@ curl http://localhost:3090/health
 | `APP_HOST` / `FLASK_HOST` | `0.0.0.0` | 监听地址 |
 | `APP_PORT` / `FLASK_PORT` | `3090` | 监听端口 |
 | `THREAD_POOL_SIZE` | `256` | anyio 线程池（阻塞推理 / IO 并发上限） |
+| `TILE_UPLOAD_CONCURRENCY` | `16` | 同时驻留内存的平扫图数量，多出来的上传在读 body 前排队 |
+| `ROI_SELECTION_CONCURRENCY` | `1` | 单个 worker 内同时进行的选区次数 |
 
 ### Triton / 推理
 
@@ -159,7 +161,6 @@ curl http://localhost:3090/health
 | `PLT_SWITCH` | 关闭 | 血小板相关逻辑 |
 | `CELLULARITY_FILE_PATH_PREFIX` | `/mnt/d/data/result` | 增生分析原图目录前缀 |
 | `UPDATE_COORDINATES_ASYNC_FINISH` | `1` | 坐标更新后后台异步合并 / 去重 |
-| `ROI_DATASET_CACHE_TTL_SEC` | 见代码 | ROI 数据集内存缓存 TTL |
 
 ## 统一返回格式
 

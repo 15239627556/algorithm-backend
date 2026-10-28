@@ -139,5 +139,37 @@ FLASK_PORT = APP_PORT
 
 THREAD_POOL_SIZE = int(os.environ.get("THREAD_POOL_SIZE", "256"))
 
-sufa_version = "v1.0.2"
+# 同时驻留内存的平扫图数量。2448×2048 解码约 15MB，默认 16 大约三百 MB。
+# 槽位在读 body 之前占用，多出来的上传在连接上排队，不会先把整图收进进程。
+TILE_UPLOAD_CONCURRENCY = max(1, int(os.environ.get("TILE_UPLOAD_CONCURRENCY", "16")))
+
+# 单个 worker 内同时进行的选区次数。每次会映射整份 roi.npz。
+ROI_SELECTION_CONCURRENCY = max(1, int(os.environ.get("ROI_SELECTION_CONCURRENCY", "1")))
+
+# ========== 运维平台（Eureka + 统一配置）==========
+# 注册中心在安装时配置。研发环境默认下面这个地址。
+# 算法名确定后不要改：Eureka 的 app 用这里的大写名，vipAddress 和配置路径用它的小写。
+yunwei_plat = os.environ.get("YUNWEI_PLAT", "http://192.168.31.80:9000/").strip()
+sufa_name = "SUANFA_AI"
+# manifest.json 没有 version 时才回退到这里
+sufa_version = "v1.0.3"
+# 是否显示文档
 is_doc = True
+
+# 统一配置环境 / 分支。平台默认 dev、master，生产用环境变量覆盖。
+yunwei_profile = os.environ.get("YUNWEI_PROFILE", "dev").strip() or "dev"
+yunwei_label = os.environ.get("YUNWEI_LABEL", "master").strip() or "master"
+# 拉取配置的应用名，与算法名相同：/{app}/{profile}/{label}
+yunwei_config_app = sufa_name
+# 后续鉴权。为空则不发送；有值后注册、心跳、查实例、拉配置都带 X-Micro-Token。
+yunwei_micro_token = os.environ.get("X_MICRO_TOKEN", "").strip()
+yunwei_user = os.environ.get("YUNWEI_USER", "").strip()
+yunwei_password = os.environ.get("YUNWEI_PASSWORD", "")
+# metadata.zone。不填则写 default。
+yunwei_zone = os.environ.get("YUNWEI_ZONE", "").strip()
+# 注册用的可达 IP。不填则在 WSL 里取宿主机 Windows 的局域网 IP。
+yunwei_ip = os.environ.get("SUFA_IP", "").strip()
+# 注册中心上公布的端口。进程仍听 APP_PORT，对外健康检查固定 9703。
+yunwei_advertise_port = 9703
+# 退出时先标 OUT_OF_SERVICE，等待这么多秒再注销，给网关缓存过期。
+yunwei_drain_seconds = max(0, int(os.environ.get("YUNWEI_DRAIN_SECONDS", "60")))

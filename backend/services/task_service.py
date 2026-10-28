@@ -47,90 +47,11 @@ _CELLULARITY_ANALYSIS_HEIGHT_MM = 7.0
 _CELLULARITY_MAX_IMAGES = 100
 _CELLULARITY_MAX_WORKERS = 6
 
-# 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准
+# 进程内 task_info 缓存：仅 upload_image 热路径使用，其余接口以磁盘落盘为准。
+# 只留未完成任务，完成即删；超过上限丢掉最早写入的一项。
+_TASK_INFO_CACHE_MAX = 32
 _task_info_cache: dict[str, dict] = {}
 _task_info_cache_lock = threading.Lock()
-
-# 进程内 ROI 数据集缓存：/roi_selection 热路径，每个 uvicorn worker 独立一份
-_roi_dataset_cache: dict[str, tuple[RoiDataset, float]] = {}
-_roi_dataset_cache_lock = threading.Lock()
-_ROI_DATASET_CACHE_TTL_SEC = 5 * 60  # 5 min
-
-# 进程内 SmearProject 缓存：/roi_selection 等选区 pipeline 热路径
-_project_cache: dict[str, tuple[SmearProject, float]] = {}
-_project_cache_lock = threading.Lock()
-
-
-def _roi_dataset_cache_ttl_sec() -> float:
-    raw = os.environ.get("ROI_DATASET_CACHE_TTL_SEC", str(_ROI_DATASET_CACHE_TTL_SEC)).strip()
-    try:
-        ttl = float(raw)
-    except ValueError:
-        ttl = float(_ROI_DATASET_CACHE_TTL_SEC)
-    return max(0.0, ttl)
-
-
-def _roi_cache_get(task_id: str) -> RoiDataset | None:
-    """读取本进程 ROI 缓存；过期则淘汰；命中则滑动续期 TTL。"""
-    now = time.monotonic()
-    ttl = _roi_dataset_cache_ttl_sec()
-    with _roi_dataset_cache_lock:
-        entry = _roi_dataset_cache.get(task_id)
-        if entry is None:
-            return None
-        roi, expires_at = entry
-        if now >= expires_at:
-            del _roi_dataset_cache[task_id]
-            return None
-        _roi_dataset_cache[task_id] = (roi, now + ttl)
-        return roi
-
-
-def _roi_cache_set(task_id: str, roi: RoiDataset) -> None:
-    """写入本进程 ROI 缓存（TTL 默认 5min，可用 ROI_DATASET_CACHE_TTL_SEC 覆盖）。"""
-    ttl = _roi_dataset_cache_ttl_sec()
-    expires_at = time.monotonic() + ttl
-    with _roi_dataset_cache_lock:
-        _roi_dataset_cache[task_id] = (roi, expires_at)
-    logger.info(
-        "roi cache_set pid=%s task_id=%s ttl_sec=%.0f cells=%d tiles=%d",
-        os.getpid(),
-        task_id[:8],
-        ttl,
-        roi.cells.size,
-        len(roi.tiles),
-    )
-
-
-def _project_cache_get(task_id: str) -> SmearProject | None:
-    """读取本进程 SmearProject 缓存；过期则淘汰；命中则滑动续期 TTL。"""
-    now = time.monotonic()
-    ttl = _roi_dataset_cache_ttl_sec()
-    with _project_cache_lock:
-        entry = _project_cache.get(task_id)
-        if entry is None:
-            return None
-        project, expires_at = entry
-        if now >= expires_at:
-            del _project_cache[task_id]
-            return None
-        _project_cache[task_id] = (project, now + ttl)
-        return project
-
-
-def _project_cache_set(task_id: str, project: SmearProject) -> None:
-    """写入本进程 SmearProject 缓存（TTL 与 ROI 缓存一致）。"""
-    ttl = _roi_dataset_cache_ttl_sec()
-    expires_at = time.monotonic() + ttl
-    with _project_cache_lock:
-        _project_cache[task_id] = (project, expires_at)
-    logger.info(
-        "project cache_set pid=%s task_id=%s ttl_sec=%.0f layers=%d",
-        os.getpid(),
-        task_id[:8],
-        ttl,
-        len(project.layers),
-    )
 
 
 def _async_finish_after_update_coordinates() -> bool:
@@ -199,8 +120,19 @@ def _save_task_info(task_id: str, info: dict) -> None:
     with open(tmp, "wb") as f:
         f.write(orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY))
     os.replace(tmp, path)
+    _remember_task_info(task_id, payload)
+
+
+def _remember_task_info(task_id: str, info: dict) -> None:
+    """未完成任务才进缓存，并限制条数。"""
     with _task_info_cache_lock:
-        _task_info_cache[task_id] = dict(payload)
+        if info.get("finished"):
+            _task_info_cache.pop(task_id, None)
+            return
+        _task_info_cache.pop(task_id, None)
+        _task_info_cache[task_id] = dict(info)
+        while len(_task_info_cache) > _TASK_INFO_CACHE_MAX:
+            _task_info_cache.pop(next(iter(_task_info_cache)))
 
 
 def _load_task_info_from_disk(task_id: str) -> dict | None:
@@ -220,8 +152,7 @@ def _load_task_info_cached(task_id: str) -> dict | None:
             return dict(cached)
     data = _load_task_info_from_disk(task_id)
     if data is not None:
-        with _task_info_cache_lock:
-            _task_info_cache[task_id] = dict(data)
+        _remember_task_info(task_id, data)
     return data
 
 
@@ -242,6 +173,127 @@ def _read_tile_result(task_id: str, row_index: int, col_index: int) -> dict | No
         return None
     with open(path, "rb") as f:
         return orjson.loads(f.read())
+
+
+# 进程被杀掉时，后台合并线程和内存里的 tiles_msg 一起消失。
+# 坐标落到 tmp，重启后若分块目录还在，就用这两份数据继续合并。
+_MERGE_ATTEMPT_LIMIT = 3
+
+
+def _update_coordinates_payload_path(task_id: str) -> str:
+    return os.path.join(tmp_folder, task_id, "update_coordinates.json")
+
+
+def _merge_lock_path(task_id: str) -> str:
+    return os.path.join(tmp_folder, task_id, "merge.lock")
+
+
+def _atomic_write_json(path: str, payload: dict) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(orjson.dumps(payload))
+    os.replace(tmp, path)
+
+
+def _save_update_coordinates_payload(task_id: str, tiles_msg: list) -> None:
+    """把 update_coordinates 入参落到 tmp/{task_id}/update_coordinates.json。"""
+    path = _update_coordinates_payload_path(task_id)
+    existing = _load_update_coordinates_payload(task_id) or {}
+    payload = {
+        "task_id": task_id,
+        "tiles_msg": list(tiles_msg or []),
+        "attempts": int(existing.get("attempts") or 0),
+        "saved_at": time.time(),
+    }
+    _atomic_write_json(path, payload)
+    logger.info(
+        "saved update_coordinates payload task_id=%s tiles=%s path=%s",
+        task_id[:8],
+        len(payload["tiles_msg"]),
+        path,
+    )
+
+
+def _load_update_coordinates_payload(task_id: str) -> dict | None:
+    path = _update_coordinates_payload_path(task_id)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = orjson.loads(f.read())
+    except Exception:
+        logger.exception("failed to read update_coordinates payload task_id=%s", task_id[:8])
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _remove_update_coordinates_payload(task_id: str) -> None:
+    path = _update_coordinates_payload_path(task_id)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        logger.warning("failed to remove update_coordinates payload %s: %s", path, e)
+
+
+def _bump_merge_attempt(task_id: str) -> int:
+    """合并开始前把尝试次数 +1 写回坐标文件，便于重启后限制重试。"""
+    data = _load_update_coordinates_payload(task_id) or {"task_id": task_id, "tiles_msg": []}
+    attempts = int(data.get("attempts") or 0) + 1
+    data["attempts"] = attempts
+    data["last_attempt_at"] = time.time()
+    _atomic_write_json(_update_coordinates_payload_path(task_id), data)
+    return attempts
+
+
+class _TryFileLock:
+    """跨进程非阻塞锁。拿到后一直持有到 release；进程退出时由操作系统释放。"""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self._fh = None
+
+    def try_acquire(self) -> bool:
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        fh = open(self.path, "a+b")
+        if fh.tell() == 0:
+            fh.write(b"\0")
+            fh.flush()
+        fh.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fh.close()
+            return False
+        self._fh = fh
+        return True
+
+    def release(self) -> None:
+        fh = self._fh
+        self._fh = None
+        if fh is None:
+            return
+        try:
+            fh.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
 
 
 def _cells_to_dicts(cells) -> list[dict]:
@@ -318,28 +370,19 @@ def _require_task_info_for_upload(task_id: str) -> tuple[dict | None, dict | Non
 
 def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, dict | None]:
     """
-    选区 pipeline 热路径：进程缓存 → roi.npz → roi.pkl → 大 JSON。
+    选区 pipeline：每次从 roi.npz → roi.pkl → 大 JSON 读取，不在进程内保留。
     返回 (project, info, error_response)。
     """
     info, err = _require_task_info(task_id)
     if err:
         return None, None, err
 
-    cached = _project_cache_get(task_id)
-    if cached is not None:
-        logger.debug("project cache_hit pid=%s task_id=%s", os.getpid(), task_id[:8])
-        return cached, info, None
-
     npz_path = _task_roi_npz_path(task_id)
     if os.path.exists(npz_path):
         try:
             t0 = time.time()
-            roi = _roi_cache_get(task_id)
-            if roi is None:
-                roi = RoiDataset.load(npz_path)
-                _roi_cache_set(task_id, roi)
+            roi = RoiDataset.load(npz_path)
             project = roi.to_project()
-            _project_cache_set(task_id, project)
             logger.info(
                 "project load_npz pid=%s task_id=%s ms=%.2f cells=%d tiles=%d",
                 os.getpid(),
@@ -362,7 +405,6 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
         try:
             t0 = time.time()
             project = SmearProject.load_pickle(pkl_path)
-            _project_cache_set(task_id, project)
             logger.info(
                 "project load_pickle pid=%s task_id=%s ms=%.2f",
                 os.getpid(),
@@ -388,7 +430,6 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
     try:
         t0 = time.time()
         project = SmearProject.load_json(path)
-        _project_cache_set(task_id, project)
         logger.info(
             "project load_json pid=%s task_id=%s ms=%.2f",
             os.getpid(),
@@ -407,18 +448,13 @@ def _require_project(task_id: str) -> tuple[SmearProject | None, dict | None, di
 
 def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, dict | None]:
     """
-    ROI 热路径：本 worker 进程缓存（TTL 5min）→ roi.npz → roi.pkl → 大 JSON。
-    用于 /get_task_result；多 worker 下各进程独立加载并缓存。
+    每次从 roi.npz → roi.pkl → 大 JSON 读取，请求结束后即可释放。
+    用于 /roi_selection、/get_task_result。
     返回 (RoiDataset, info, error_response)。
     """
     info, err = _require_task_info(task_id)
     if err:
         return None, None, err
-
-    cached = _roi_cache_get(task_id)
-    if cached is not None:
-        logger.debug("roi cache_hit pid=%s task_id=%s", os.getpid(), task_id[:8])
-        return cached, info, None
 
     dpi = info.get("dpi", 144750)
 
@@ -435,7 +471,6 @@ def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, 
                 roi.cells.size,
                 len(roi.tiles),
             )
-            _roi_cache_set(task_id, roi)
             return roi, info, None
         except Exception as e:
             logger.warning(
@@ -457,7 +492,6 @@ def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, 
                 task_id[:8],
                 (time.time() - t0) * 1000,
             )
-            _roi_cache_set(task_id, roi)
             return roi, info, None
         except Exception as e:
             logger.warning(
@@ -479,7 +513,6 @@ def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, 
             task_id[:8],
             (time.time() - t0) * 1000,
         )
-        _roi_cache_set(task_id, roi)
         return roi, info, None
     except Exception as e:
         logger.exception("roi json convert failed task_id=%s: %s", task_id[:8], e)
@@ -488,6 +521,70 @@ def _require_roi_dataset(task_id: str) -> tuple[RoiDataset | None, dict | None, 
             "ret_desc": f"Failed to load ROI dataset: {e}",
             "reason": str(e),
         }
+
+
+def resume_interrupted_coordinate_merges() -> None:
+    """启动时续跑：分块目录和 update_coordinates 入参都还在、且任务未完成。"""
+    if not os.path.isdir(upload_folder):
+        return
+    service = TaskService()
+    resumed = 0
+    for name in os.listdir(upload_folder):
+        task_dir = os.path.join(upload_folder, name)
+        tiles_dir = os.path.join(task_dir, "tiles")
+        if not os.path.isdir(tiles_dir):
+            continue
+        payload = _load_update_coordinates_payload(name)
+        if not payload:
+            continue
+        tiles_msg = payload.get("tiles_msg")
+        if not isinstance(tiles_msg, list) or not tiles_msg:
+            continue
+        info = _load_task_info_from_disk(name)
+        if info is None:
+            logger.warning(
+                "resume skip, task info missing task_id=%s tiles_dir=%s",
+                name[:8],
+                tiles_dir,
+            )
+            continue
+        if info.get("finished"):
+            _remove_update_coordinates_payload(name)
+            continue
+        attempts = int(payload.get("attempts") or 0)
+        if attempts >= _MERGE_ATTEMPT_LIMIT:
+            logger.error(
+                "resume skip, merge attempts exhausted task_id=%s attempts=%s",
+                name[:8],
+                attempts,
+            )
+            info["task_status"] = RetCode.TASK_TIMEOUT.value
+            try:
+                _save_task_info(name, info)
+            except Exception:
+                logger.exception(
+                    "failed to persist abandoned merge status task_id=%s",
+                    name[:8],
+                )
+            continue
+        logger.info(
+            "resume merge after restart task_id=%s tiles=%s attempts=%s",
+            name[:8],
+            len(tiles_msg),
+            attempts,
+        )
+        snapshot = dict(info)
+        msg = list(tiles_msg)
+        tid = name
+        _run_in_background(
+            lambda tid=tid, msg=msg, snapshot=snapshot: service._merge_and_finish(
+                tid, msg, snapshot
+            ),
+            name=f"resume-merge-{tid[:8]}",
+        )
+        resumed += 1
+    if resumed:
+        logger.info("resume merge scheduled count=%s", resumed)
 
 
 class TaskService:
@@ -613,26 +710,66 @@ class TaskService:
         return project, info, failed_tiles
 
     def _merge_and_finish(self, task_id: str, tiles_msg: list, info: dict) -> list:
-        """合并坐标并 finish；供同步/后台线程共用。"""
-        try:
-            project, info, failed_tiles = self._build_project_from_tiles(task_id, tiles_msg, info)
-            if failed_tiles:
-                logger.warning(
-                    "update_coordinates failed_tiles task_id=%s count=%s sample=%s",
-                    task_id[:8],
-                    len(failed_tiles),
-                    failed_tiles[:3],
-                )
-            self._finish_task_impl(task_id, project, info)
-            return failed_tiles
-        except Exception as e:
-            info['task_status'] = RetCode.TASK_TIMEOUT.value
-            try:
-                _save_task_info(task_id, info)
-            except Exception:
-                logger.exception("failed to persist task status after merge error")
-            logger.exception("_merge_and_finish error task_id=%s: %s", task_id[:8], e)
+        """合并坐标并 finish；供同步/后台线程/重启续跑共用。"""
+        lock = _TryFileLock(_merge_lock_path(task_id))
+        if not lock.try_acquire():
+            logger.info("merge skipped, lock held task_id=%s", task_id[:8])
             return []
+        try:
+            fresh = _load_task_info_from_disk(task_id)
+            if fresh is None:
+                logger.warning("merge aborted, task info missing task_id=%s", task_id[:8])
+                return []
+            if fresh.get("finished"):
+                logger.info("merge skipped, already finished task_id=%s", task_id[:8])
+                _remove_update_coordinates_payload(task_id)
+                return []
+            payload = _load_update_coordinates_payload(task_id) or {}
+            attempts_done = int(payload.get("attempts") or 0)
+            if attempts_done >= _MERGE_ATTEMPT_LIMIT:
+                logger.error(
+                    "merge abandoned task_id=%s attempts=%s",
+                    task_id[:8],
+                    attempts_done,
+                )
+                fresh["task_status"] = RetCode.TASK_TIMEOUT.value
+                try:
+                    _save_task_info(task_id, fresh)
+                except Exception:
+                    logger.exception("failed to persist abandoned merge status")
+                return []
+            attempts = _bump_merge_attempt(task_id)
+            logger.info(
+                "merge start task_id=%s tiles=%s attempt=%s",
+                task_id[:8],
+                len(tiles_msg or []),
+                attempts,
+            )
+            info = dict(fresh)
+            try:
+                project, info, failed_tiles = self._build_project_from_tiles(task_id, tiles_msg, info)
+                if failed_tiles:
+                    logger.warning(
+                        "update_coordinates failed_tiles task_id=%s count=%s sample=%s",
+                        task_id[:8],
+                        len(failed_tiles),
+                        failed_tiles[:3],
+                    )
+                # 只把唯一引用交给 finish，里面才能在写 npz 前释放细胞对象
+                handoff = [project]
+                del project
+                self._finish_task_impl(task_id, handoff, info)
+                return failed_tiles
+            except Exception as e:
+                info["task_status"] = RetCode.TASK_TIMEOUT.value
+                try:
+                    _save_task_info(task_id, info)
+                except Exception:
+                    logger.exception("failed to persist task status after merge error")
+                logger.exception("_merge_and_finish error task_id=%s: %s", task_id[:8], e)
+                return []
+        finally:
+            lock.release()
 
     def update_coordinates(self, task_id, tiles_msg):
         """按 tiles_msg 读取分块 json，写入全局坐标后合并为大项目并 finish。"""
@@ -641,6 +778,13 @@ class TaskService:
             return err
 
         tiles_msg = list(tiles_msg or [])
+        try:
+            _save_update_coordinates_payload(task_id, tiles_msg)
+        except Exception:
+            logger.exception(
+                "failed to persist update_coordinates payload task_id=%s",
+                task_id[:8],
+            )
         async_finish = _async_finish_after_update_coordinates()
         if async_finish:
             info_snapshot = dict(info)
@@ -722,8 +866,9 @@ class TaskService:
             response['warning'] = result["warning"]
         return response
 
-    def _finish_task_impl(self, task_id: str, project: SmearProject, info: dict) -> None:
-        """去重、过滤、落盘为大 JSON + 更新 info（后台可跑，不依赖内存任务表）。"""
+    def _finish_task_impl(self, task_id: str, project_holder: list, info: dict) -> None:
+        """去重后只落 roi.npz 和 info。npz 写失败则任务保持未完成，分块目录留着供重启续跑。"""
+        project = project_holder.pop()
         t5 = time.time()
         try:
             dpi = info.get('dpi', 144750)
@@ -751,42 +896,31 @@ class TaskService:
                 task_id[:8],
                 (t9 - t6) * 1000,
             )
-            project.save_json(_task_project_path(task_id))
+            roi = RoiDataset.from_project(project, dpi, precompute_heatmap=False)
+            # 细胞已进 numpy 表，先丢掉 Python 对象再算热力图、写 npz
+            del project
+            gc.collect()
+            roi.save(_task_roi_npz_path(task_id))
+            del roi
             t7 = time.time()
             logger.info(
-                "save_json task_id=%s ms=%.2f",
+                "save_roi_npz task_id=%s ms=%.2f",
                 task_id[:8],
                 (t7 - t9) * 1000,
             )
-            try:
-                dpi = info.get("dpi", 144750)
-                roi = RoiDataset.from_project(project, dpi, precompute_heatmap=False)
-                # JSON 已落盘，释放细胞对象后再算热力图，避免两份细胞同时驻留
-                del project
-                gc.collect()
-                roi.save(_task_roi_npz_path(task_id))
-                logger.info(
-                    "save_roi_npz task_id=%s ms=%.2f",
-                    task_id[:8],
-                    (time.time() - t7) * 1000,
-                )
-            except Exception as e:
-                logger.warning(
-                    "save_roi_npz failed task_id=%s (roi will fallback to json/pkl): %s",
-                    task_id[:8],
-                    e,
-                )
             info['task_status'] = RetCode.TASK_FINISHED.value
             info['finished'] = True
             info.pop('matcher', None)
             _save_task_info(task_id, info)
-            # 大 JSON / info 落盘成功后清理分块临时目录 uploads/{task_id}/
+            # npz / info 落盘成功后清理分块临时目录 uploads/{task_id}/
+            # 坐标入参一并删掉，避免下次启动把已完成任务再合并一遍。
             tile_tmp_root = os.path.join(upload_folder, task_id)
             try:
                 shutil.rmtree(tile_tmp_root, ignore_errors=False)
                 logger.info("removed tile temp dir task_id=%s path=%s", task_id[:8], tile_tmp_root)
             except Exception as e:
                 logger.warning("failed to remove tile temp dir %s: %s", tile_tmp_root, e)
+            _remove_update_coordinates_payload(task_id)
             t8 = time.time()
             logger.info(
                 "save_task_info task_id=%s ms=%.2f finish_total_ms=%.2f",
@@ -1767,12 +1901,11 @@ class TaskService:
         _save_task_info(task_id, info)
         roi_ms = (time.perf_counter() - t_roi0) * 1000.0
         logger.info(
-            "roi_selection finished task_id=%s task_list_num=%d largest_task_rect=%s ms=%.2f task_list=%s",
+            "roi_selection finished task_id=%s task_list_num=%d largest_task_rect=%s ms=%.2f",
             task_id,
             len(final_task_list),
             largest_task_rect,
             roi_ms,
-            str(final_task_list),
         )
         if not task_rect:
             task_rect = [
@@ -1913,7 +2046,6 @@ class TaskService:
         # 细胞坐标相对这张图，全局坐标由瓦片左上角换算。同一位置再次识别时替换，避免重复累加。
         tile.cells = cells
         project.save_json(_task_project_path(task_id))
-        _project_cache_set(task_id, project)
 
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,
                              edge_cell_filter, smear_type,
@@ -2006,7 +2138,7 @@ class TaskService:
     def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
         小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
-        714756 和 147246 都试原档、一半、1/4 和 2 倍。不缩放或放大 2 倍有框时只在这两挡里取框最多的，这两挡都没有才按框数比其余挡。高倍有框就不再试低倍。
+        714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。得分 = 定位框数量 × 权重，高倍每挡 7，低倍每挡 2。取得分最高的一挡；得分相同先留高倍，同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
         猜档按整图切块比较定位框数量。完整结果的 714756 和低倍都按原图边缘 1% 做靠边过滤，最多返回离原图中心最近的 100 个细胞。
         """
         image_bytes = image_file.read()

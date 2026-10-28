@@ -46,23 +46,24 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 
 logger = logging.getLogger(__name__)
 
-# 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)，按模型分组、组内按优先级排列。
-# 714756 和 147246 都试原档、一半、1/4 和 2 倍。原档是不缩放，一半是放大 2 倍。
-# 不缩放或放大 2 倍有定位框时，只在这两挡里取框最多的，其余挡不参与。
-# 这两挡都没有框时，才在 1/4 和 2 倍里按框数取最多的。框数相同保留更靠前的一挡。
-# 先跑 714756。任一挡有框就用 714756，不再试 147246。714756 都没有框才跑 147246，规则相同。
+# 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)。
+# 714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。原档不缩放。
+# 八挡都跑。得分 = 定位框数量 × 权重。714756 每挡权重 7，147246 每挡权重 2。
+# 取得分最高的一挡。得分相同先留高倍；同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
 # 不走单张接口的 dpi_range 缩放限制。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
+_MINIAPP_WEIGHT_714756 = 7
+_MINIAPP_WEIGHT_147246 = 2
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
-    (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
+    (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
-    (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
+    (_MINIAPP_MODEL_147246 // 4, _MINIAPP_MODEL_147246),
 )
 # 破碎细胞及杂质。小程序若第一名是它且分类置信度低于 0.9，改用第二名；大于等于 0.9 仍放第一位。
 _MINIAPP_BROKEN_CELL_TYPE = 200029
@@ -1003,43 +1004,52 @@ def _miniapp_keep_near_center(
     return kept_list, kept_cells
 
 
-def _miniapp_preferred_guess(guess_dpi: int, model_dpi: int) -> bool:
-    """原档不缩放，以及假定 DPI 为一半时的放大 2 倍。"""
-    model_dpi = int(model_dpi)
+def _miniapp_guess_weight(model_dpi: int) -> int:
+    if int(model_dpi) == _MINIAPP_MODEL_714756:
+        return _MINIAPP_WEIGHT_714756
+    return _MINIAPP_WEIGHT_147246
+
+
+def _miniapp_guess_score(model_dpi: int, count: int) -> int:
+    return int(count) * _miniapp_guess_weight(model_dpi)
+
+
+def _miniapp_scale_rank(guess_dpi: int, model_dpi: int) -> int:
+    """同一模型内的挡位顺序：不缩放、放大 2 倍、缩小一半、放大 4 倍。"""
     guess_dpi = int(guess_dpi)
-    return guess_dpi == model_dpi or guess_dpi == model_dpi // 2
+    model_dpi = int(model_dpi)
+    if guess_dpi == model_dpi:
+        return 0
+    if guess_dpi == model_dpi // 2:
+        return 1
+    if guess_dpi == model_dpi * 2:
+        return 2
+    if guess_dpi == model_dpi // 4:
+        return 3
+    return 4
 
 
 def _miniapp_choose_guess(
     candidates: list[tuple[int, int, dict[str, Any], int]],
 ) -> tuple[int, int, dict[str, Any], int] | None:
     """
-    同一模型的猜档里选一挡。candidates 按 MINIAPP_GUESSES 顺序，项为
-    (guess_dpi, model_dpi, result, count)。
-    不缩放或放大 2 倍有定位框时，只在这两挡里取框最多的。
-    这两挡都没有框时，才在其余挡里按框数取最多的。
-    框数相同保留更靠前的一挡。全部是 0 框时返回第一挡。
+    八挡一起比。项为 (guess_dpi, model_dpi, result, count)。
+    得分 = 定位框数量 × 权重，714756 为 7，147246 为 2，取得分最高的一挡。
+    得分相同先留高倍。同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
     """
     if not candidates:
         return None
-    preferred = [
-        item for item in candidates
-        if _miniapp_preferred_guess(item[0], item[1]) and item[3] >= 1
-    ]
-    if preferred:
-        pool = preferred
-    else:
-        pool = [
-            item for item in candidates
-            if not _miniapp_preferred_guess(item[0], item[1]) and item[3] >= 1
-        ]
-    if not pool:
-        pool = candidates
-    chosen = pool[0]
-    for item in pool[1:]:
-        if item[3] > chosen[3]:
-            chosen = item
-    return chosen
+
+    def _sort_key(item: tuple[int, int, dict[str, Any], int]) -> tuple[int, int, int]:
+        guess_dpi, model_dpi, _result, count = item
+        highres_first = 0 if int(model_dpi) == _MINIAPP_MODEL_714756 else 1
+        return (
+            -_miniapp_guess_score(model_dpi, count),
+            highres_first,
+            _miniapp_scale_rank(guess_dpi, model_dpi),
+        )
+
+    return min(candidates, key=_sort_key)
 
 
 def run_miniapp_cell_image_infer(
@@ -1052,10 +1062,9 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    714756 和 147246 都试原档、一半、1/4 和 2 倍。原档不缩放，一半是放大 2 倍。
-    不缩放或放大 2 倍有定位框时，只在这两挡里取框最多的。这两挡都没有框时，
-    才在其余挡里按框数取最多的。框数相同保留更靠前的一挡。
-    先并发 714756。任一挡有定位框就用 714756，不再试低倍。都没有框时再并发 147246，规则相同。
+    714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。原档不缩放。
+    八挡都跑，得分 = 定位框数量 × 权重。714756 每挡权重 7，147246 每挡权重 2。
+    取得分最高的一挡。得分相同先留高倍；同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且分类置信度低于 0.9、还有第二名，改用第二名；大于等于 0.9 仍放第一位。
     用最终结果原图细胞框的宽、高中位数均值，按细胞 20 微米反推 DPI；
@@ -1066,10 +1075,6 @@ def run_miniapp_cell_image_infer(
     单张和平扫的低倍仍用距边 1 像素或 5 像素细长框规则。
     反推 DPI 用过滤后的全部细胞；响应最多返回 100 个，留离原图中心最近的。
     """
-    best: dict[str, Any] | None = None
-    best_dpi: int | None = None
-    best_model: int | None = None
-    best_count = -1
     last_error: dict[str, Any] | None = None
     smear_type = smear_type or "BM"
     target_cell_types = target_cell_types or "WBC"
@@ -1098,10 +1103,10 @@ def run_miniapp_cell_image_infer(
             groups.append([])
         groups[-1].append((guess_dpi, model_dpi))
 
+    candidates: list[tuple[int, int, dict[str, Any], int]] = []
     for group in groups:
         with ThreadPoolExecutor(max_workers=len(group)) as pool:
             outcomes = list(pool.map(_guess_one, group))
-        candidates: list[tuple[int, int, dict[str, Any], int]] = []
         for guess_dpi, model_dpi, result in outcomes:
             if not result.get("ok"):
                 last_error = result
@@ -1113,29 +1118,28 @@ def run_miniapp_cell_image_infer(
                 )
                 continue
             count = len(result.get("cell_list") or [])
+            weight = _miniapp_guess_weight(model_dpi)
             logger.info(
-                "miniapp guess_dpi=%s model=%s cells=%s",
+                "miniapp guess_dpi=%s model=%s cells=%s weight=%s score=%s",
                 guess_dpi,
                 model_dpi,
                 count,
+                weight,
+                count * weight,
             )
             candidates.append((int(guess_dpi), int(model_dpi), result, count))
-        chosen = _miniapp_choose_guess(candidates)
-        if chosen is not None:
-            guess_dpi, model_dpi, result, count = chosen
-            if best is None or count > best_count:
-                best = result
-                best_dpi = guess_dpi
-                best_model = model_dpi
-                best_count = count
-        # 高倍任一挡有定位框就用高倍，不再拿低倍的框数来比。
-        if best_model == _MINIAPP_MODEL_714756 and best_count >= 1:
-            break
 
-    if best is None or best_dpi is None or best_model is None:
+    chosen = _miniapp_choose_guess(candidates)
+    if chosen is None:
         return last_error or {"ok": False, "error": "infer failed"}
-
-    logger.info("miniapp pick dpi=%s model=%s cells=%s", best_dpi, best_model, best_count)
+    best_dpi, best_model, _probe, best_count = chosen
+    logger.info(
+        "miniapp pick dpi=%s model=%s cells=%s score=%s",
+        best_dpi,
+        best_model,
+        best_count,
+        _miniapp_guess_score(best_model, best_count),
+    )
     best = run_cell_image_infer(
         image_bytes,
         best_dpi,

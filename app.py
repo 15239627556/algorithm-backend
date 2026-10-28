@@ -1,5 +1,7 @@
+import asyncio
 import json
 import os
+import signal
 import sys
 import time
 import atexit
@@ -310,7 +312,28 @@ async def lifespan(_app: FastAPI):
     except Exception:
         app_logger.exception("Failed to reset inference circuit on startup")
 
+    try:
+        from backend.services.task_service import resume_interrupted_coordinate_merges
+
+        resume_interrupted_coordinate_merges()
+    except Exception:
+        app_logger.exception("Failed to resume interrupted coordinate merges")
+
+    try:
+        from backend.tools.yunwei_client import start_yunwei
+
+        start_yunwei(_app_version)
+    except Exception:
+        app_logger.exception("运维平台注册线程启动失败")
+
     yield
+
+    try:
+        from backend.tools.yunwei_client import stop_yunwei
+
+        await asyncio.to_thread(stop_yunwei)
+    except Exception:
+        app_logger.exception("运维平台注销失败")
 
 
 _docs = "/" if is_doc else None
@@ -406,9 +429,115 @@ def manifest() -> Any:
         raise HTTPException(status_code=500, detail="failed to read manifest.json") from exc
 
 
+def _signal_name(sig_no: int) -> str:
+    try:
+        return signal.Signals(sig_no).name
+    except (ValueError, AttributeError):
+        return {
+            6: "SIGABRT",
+            7: "SIGBUS",
+            9: "SIGKILL",
+            11: "SIGSEGV",
+            15: "SIGTERM",
+        }.get(sig_no, f"SIG{sig_no}")
+
+
+def _worker_exit_reason(
+    exitcode: int | None,
+    *,
+    parent_killed: bool,
+    healthcheck_s: float,
+    will_restart: bool,
+) -> str:
+    """把 uvicorn 子进程退出码翻译成能写进 error.log 的原因。"""
+    tail = "父进程将拉起新 worker" if will_restart else "父进程不再拉起 worker，并停止"
+    if parent_killed:
+        return (
+            f"进程还在，但 {healthcheck_s:g} 秒内没有回应健康检查，"
+            f"父进程已将其强制结束。exitcode={exitcode}。{tail}"
+        )
+    if exitcode is None:
+        return f"进程已经不在，但没有读到退出码。{tail}"
+    if exitcode == 0:
+        return f"进程自己正常退出，exitcode=0。{tail}"
+    if exitcode == 3:
+        return f"worker 启动失败，exitcode=3。{tail}"
+    unsigned = exitcode & 0xFFFFFFFF
+    ntstatus = {
+        0xC0000005: "ACCESS_VIOLATION，访问了无效内存，多半是本地库崩溃",
+        0xC0000409: "STATUS_STACK_BUFFER_OVERRUN，栈被破坏",
+    }
+    if unsigned in ntstatus:
+        return f"{ntstatus[unsigned]}，exitcode={exitcode}。{tail}"
+    if exitcode < 0 and -exitcode <= 64:
+        name = _signal_name(-exitcode)
+        hints = {
+            "SIGKILL": "强制杀掉（kill -9 或内核内存杀手），进程来不及写 traceback。",
+            "SIGTERM": "外部要求停止（systemd、容器或人工 kill）。",
+            "SIGSEGV": "段错误，多半是解码或推理的本地库崩溃。",
+            "SIGABRT": "本地库调用了 abort。",
+            "SIGBUS": "总线错误，多半是本地库访问了无效内存。",
+        }
+        hint = hints.get(name, "被该信号终止，Python 里通常没有 traceback。")
+        return f"被 {name} 终止，exitcode={exitcode}。{hint}{tail}"
+    return f"进程以 exitcode={exitcode} 退出。{tail}"
+
+
+def _install_worker_exit_logger() -> None:
+    """workers>1 时，父进程发现子进程退出后把退出码和原因写入 error.log。
+
+    只对 `python app.py` 生效：这条命令的父进程会执行本文件。
+    直接 `uvicorn app:app --workers 2` 时父进程不导入 app，钩子装不上。
+    """
+    import uvicorn.main as uvicorn_main
+    import uvicorn.supervisors.multiprocess as multiprocess
+    from uvicorn.supervisors.multiprocess import Multiprocess
+
+    # 新版本在 uvicorn.config，旧版本在 multiprocess 模块里，再早的版本固定是退出码 3。
+    try:
+        from uvicorn.config import STARTUP_FAILURE
+    except ImportError:
+        STARTUP_FAILURE = getattr(multiprocess, "STARTUP_FAILURE", 3)
+
+    original = Multiprocess.keep_subprocess_alive
+    if getattr(original, "_logs_worker_exit", False):
+        return
+
+    def keep_subprocess_alive(self) -> None:
+        watched: list[tuple[Any, bool]] = []
+        for process in list(self.processes):
+            watched.append((process, process.process.is_alive()))
+        original(self)
+        current = set(self.processes)
+        healthcheck_s = float(getattr(self.config, "timeout_worker_healthcheck", 5))
+        for process, was_alive in watched:
+            exitcode = process.exitcode
+            replaced = process not in current
+            startup_failure = exitcode == STARTUP_FAILURE
+            if not replaced and not startup_failure:
+                continue
+            parent_killed = was_alive and exitcode not in (None, 0, STARTUP_FAILURE)
+            will_restart = replaced and not startup_failure
+            app_logger.error(
+                "uvicorn worker 退出 pid=%s exitcode=%s reason=%s",
+                process.pid,
+                exitcode,
+                _worker_exit_reason(
+                    exitcode,
+                    parent_killed=parent_killed,
+                    healthcheck_s=healthcheck_s,
+                    will_restart=will_restart,
+                ),
+            )
+
+    keep_subprocess_alive._logs_worker_exit = True  # type: ignore[attr-defined]
+    Multiprocess.keep_subprocess_alive = keep_subprocess_alive  # type: ignore[method-assign]
+    uvicorn_main.Multiprocess = Multiprocess
+
+
 if __name__ == "__main__":
     import uvicorn
-    # workers>1 时各进程独立 ROI 缓存（TTL 5min，见 task_service._roi_cache_*）
+    _install_worker_exit_logger()
     uvicorn.run(
         "app:app",
         host=APP_HOST,

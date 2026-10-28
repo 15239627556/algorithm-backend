@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from io import BytesIO
 from typing import Any, Optional
 
@@ -5,6 +7,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
+from config import ROI_SELECTION_CONCURRENCY, TILE_UPLOAD_CONCURRENCY
 from backend.services.task_service import TaskService
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.triton_client import (
@@ -20,6 +23,11 @@ _BINARY_CONTENT_TYPES = frozenset({
 })
 
 taskService = TaskService()
+
+# 读 body 之前占槽，避免几百张平扫图同时进内存。
+_tile_upload_slots = asyncio.Semaphore(TILE_UPLOAD_CONCURRENCY)
+# 选区会映射整份 npz，同一 worker 内串行。
+_roi_selection_slots = threading.Semaphore(ROI_SELECTION_CONCURRENCY)
 
 task = APIRouter(prefix="/api/v1/smear_analysis", tags=["任务相关接口"])
 
@@ -214,6 +222,11 @@ def create_task(body: CreateTaskBody):
     ),
 )
 async def upload_tile(request: Request):
+    async with _tile_upload_slots:
+        return await _upload_tile_body(request)
+
+
+async def _upload_tile_body(request: Request):
     # 同一路由需兼容 multipart 与裸二进制，故手动解析，避免 Form 抢占 body
     if _is_binary_tile_upload(request):
         tid = request.query_params.get("task_id")
@@ -311,6 +324,13 @@ def roi_selection(body: RoiSelectionBody):
     kwargs = body.kwargs.model_dump() if body.kwargs else {}
     required_num = body.required_num.model_dump(exclude_none=True) if body.required_num else {}
     user_choice_area = body.user_choice_area.model_dump() if body.user_choice_area else None
+    with _roi_selection_slots:
+        return _roi_selection_locked(
+            body, kwargs, required_num, user_choice_area,
+        )
+
+
+def _roi_selection_locked(body, kwargs, required_num, user_choice_area):
     result = taskService.get_task_list_x100(
         task_id=body.task_id,
         task_type=body.task_type,
@@ -573,10 +593,9 @@ def analyze_cell_image(
     summary="小程序细胞图像分析",
     description=(
         "只必填 image_file。target_cell_types 默认 WBC，smear_type 默认 BM。"
-        "不受单张接口 DPI 缩放区间限制。714756 和 147246 都试原档、一半、1/4 和 2 倍。"
-        "原档不缩放，一半是放大 2 倍。这两挡有定位框时只在这两挡里取框最多的；"
-        "都没有框时，才在其余挡里按框数取最多的。框数相同保留更靠前的一挡。"
-        "先跑 714756，任一挡有框就用 714756，不再试低倍。都没有框才跑 147246，规则相同。"
+        "不受单张接口 DPI 缩放区间限制。714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。"
+        "八挡都跑，得分 = 定位框数量 × 权重。714756 每挡权重 7，147246 每挡权重 2。"
+        "取得分最高的一挡。得分相同先留高倍；同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。"
         "低倍分类模型不存在时该档只返回定位。"
         "猜档和最终识别都按模型最大尺寸切整图。"
         "完整结果的 714756 和低倍都按原图边缘 1% 且长宽比 >= 1.5 做靠边过滤，不做 714756 小于 6 微米的有核过滤。"

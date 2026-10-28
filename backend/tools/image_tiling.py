@@ -11,17 +11,32 @@ logger = logging.getLogger(__name__)
 DEFAULT_TILE_OVERLAP = 30
 
 
-def tile_ranges_1d(length: int, max_tile: int, overlap: int) -> List[Tuple[int, int]]:
-    """沿单轴生成切片 [start, end)，end 为开区间；每段长度 <= max_tile，相邻段重叠 overlap。"""
+def tile_ranges_1d(
+    length: int,
+    max_tile: int,
+    overlap: int,
+    min_tile: int = 0,
+) -> List[Tuple[int, int]]:
+    """沿单轴生成切片 [start, end)，end 为开区间。
+
+    每段长度不超过 max_tile，相邻段重叠 overlap。
+    最后一段短于 min_tile 时，把起点前移，使这段长度等于 max_tile，用更大的重叠换合格尺寸。
+    """
     if length <= 0:
         return []
-    if length <= max_tile:
+    if max_tile <= 0 or length <= max_tile:
         return [(0, length)]
-    ov = max(0, overlap)
+    min_span = max(0, min(int(min_tile), int(max_tile)))
+    ov = max(0, min(int(overlap), int(max_tile) - 1))
     ranges: List[Tuple[int, int]] = []
     x0 = 0
-    while True:
+    while x0 < length:
         x1 = min(length, x0 + max_tile)
+        if x1 >= length and ranges and (x1 - x0) < min_span:
+            x0 = max(0, length - max_tile)
+            if ranges[-1][0] == x0:
+                break
+            x1 = length
         ranges.append((x0, x1))
         if x1 >= length:
             break
