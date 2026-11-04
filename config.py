@@ -147,12 +147,13 @@ TILE_UPLOAD_CONCURRENCY = max(1, int(os.environ.get("TILE_UPLOAD_CONCURRENCY", "
 ROI_SELECTION_CONCURRENCY = max(1, int(os.environ.get("ROI_SELECTION_CONCURRENCY", "1")))
 
 # ========== 运维平台（Eureka + 统一配置）==========
-# 注册中心在安装时配置。研发环境默认下面这个地址。
+# 注册中心地址。默认关闭注册；需要接入时用环境变量 YUNWEI_PLAT 配置，例如 http://192.168.31.80:9000/
 # 算法名确定后不要改：Eureka 的 app 用这里的大写名，vipAddress 和配置路径用它的小写。
-yunwei_plat = os.environ.get("YUNWEI_PLAT", "http://192.168.31.80:9000/").strip()
+yunwei_plat = os.environ.get("YUNWEI_PLAT", "").strip()
+# 需要启动运维平台注册时设置环境变量：YUNWEI_PLAT=http://192.168.31.80:9000/
 sufa_name = "SUANFA_AI"
 # manifest.json 没有 version 时才回退到这里
-sufa_version = "v1.0.3"
+sufa_version = "v1.0.4"
 # 是否显示文档
 is_doc = True
 

@@ -9,7 +9,10 @@
    （靠边细长框多为截断目标）。
 
 714756 ±10% 专用（filter_cell_dicts_edge_elongated_1pct）：
-仅对有核(200000-200034)、成熟红(100005/500000-500035)与巨核(100001)：靠边 1% 且 max(w/h,h/w)>=2 → 删除。
+仅对有核(200000-200034)、成熟红(100005/500000-500035)与巨核(100001)：靠边 1% 且 max(w/h,h/w)>=1.5 → 删除。
+
+小程序专用（filter_cell_dicts_elongated_aspect）：
+仅对有核(200000-200034)、成熟红(100005/500000-500035)与巨核(100001)：max(w/h,h/w)>=1.5 → 删除（不看是否靠边）。
 
 714756 ±10% 专用（filter_cell_dicts_small_wbc_714756）：
 仅对有核(200000-200034)：宽、高换算为微米后均 < 6µm → 删除。
@@ -240,6 +243,63 @@ def filter_cell_dicts_edge_elongated_1pct(
             iw,
             ih,
             edge_ratio=edge_ratio,
+            min_aspect_ratio=min_aspect_ratio,
+        ):
+            out.append(d)
+    return out
+
+
+def cell_should_drop_elongated_aspect(
+    xmin: int,
+    ymin: int,
+    xmax: int,
+    ymax: int,
+    *,
+    min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
+) -> bool:
+    """
+    不看是否靠边：细胞框 max(box_w/box_h, box_h/box_w) >= min_aspect_ratio 则丢弃。
+    """
+    box_w = int(xmax) - int(xmin)
+    box_h = int(ymax) - int(ymin)
+    if box_w <= 0 or box_h <= 0:
+        return True
+    aspect = max(float(box_w) / float(box_h), float(box_h) / float(box_w))
+    return aspect >= float(min_aspect_ratio)
+
+
+def filter_cell_dicts_elongated_aspect(
+    cell_list: List[Dict[str, Any]],
+    *,
+    target_types: frozenset = _TYPES_714756_EDGE_ELONGATED,
+    min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
+) -> List[Dict[str, Any]]:
+    """
+    仅对 target_types（默认有核 200000-200034、成熟红 100005/500000-500035、巨核 100001）
+    按长宽比过滤细长框，不要求靠边。其它类型原样保留；无法解析 bbox 的项原样保留。
+    """
+    out: List[Dict[str, Any]] = []
+    for d in cell_list:
+        if not isinstance(d, dict):
+            out.append(d)
+            continue
+        ct = _primary_cell_type_from_dict(d)
+        if ct is None or ct not in target_types:
+            out.append(d)
+            continue
+        try:
+            xmin = int(d["cell_xmin"])
+            ymin = int(d["cell_ymin"])
+            xmax = int(d["cell_xmax"])
+            ymax = int(d["cell_ymax"])
+        except (KeyError, TypeError, ValueError):
+            out.append(d)
+            continue
+        if not cell_should_drop_elongated_aspect(
+            xmin,
+            ymin,
+            xmax,
+            ymax,
             min_aspect_ratio=min_aspect_ratio,
         ):
             out.append(d)

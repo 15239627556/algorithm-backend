@@ -492,7 +492,7 @@ def unload_models_api(body: ModelControlBody):
 async def global_image_analysis(
     request: Request,
     image_file: UploadFile = File(..., description="原图"),
-    smear_type: str = Form(..., description="涂片类型 BM / PB，大小写均可"),
+    smear_type: str = Form(..., description="涂片类型 BM / PB / CF / CSF，大小写均可；CF 视为 CSF"),
     task: str = Form(..., description="roi / dir / roi,dir，大小写均可，逗号或分号分隔"),
 ):
     client_seq = request.headers.get("x-client-seq")

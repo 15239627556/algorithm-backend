@@ -68,7 +68,7 @@ _GLOBAL_TASK_MODELS = {
     "roi": GLOBAL_IMAGE_ANALYSIS_MODEL,
     "dir": GLOBAL_IMAGE_HEAD_DIR_MODEL,
 }
-_VALID_GLOBAL_SMEAR_TYPES = frozenset({"BM", "PB"})
+_VALID_GLOBAL_SMEAR_TYPES = frozenset({"BM", "PB", "CSF"})
 _VALID_GLOBAL_TASKS = frozenset(_GLOBAL_TASK_MODELS.keys())
 _GLOBAL_INFER_SKIP_RESULT_KEYS = frozenset(
     {
@@ -2089,9 +2089,9 @@ def _parse_global_infer_tasks(raw: str) -> tuple[str | None, frozenset[str] | No
 
 
 def _parse_global_smear_type(raw: str) -> tuple[str | None, str | None]:
-    smear_type = (raw or "").strip().upper()
+    smear_type = normalize_smear_type(raw)
     if smear_type not in _VALID_GLOBAL_SMEAR_TYPES:
-        return f"smear_type must be BM or PB, got {raw!r}", None
+        return f"smear_type must be BM, PB or CF/CSF, got {raw!r}", None
     return None, smear_type
 
 
