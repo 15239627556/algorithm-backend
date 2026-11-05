@@ -1901,11 +1901,12 @@ class TaskService:
         _save_task_info(task_id, info)
         roi_ms = (time.perf_counter() - t_roi0) * 1000.0
         logger.info(
-            "roi_selection finished task_id=%s task_list_num=%d largest_task_rect=%s ms=%.2f",
+            "roi_selection finished task_id=%s largest_task_rect=%s ms=%.2f task_list_num=%d task_list=%s",
             task_id,
-            len(final_task_list),
             largest_task_rect,
             roi_ms,
+            len(final_task_list),
+            final_task_list,
         )
         if not task_rect:
             task_rect = [
@@ -2138,8 +2139,8 @@ class TaskService:
     def get_miniapp_cell_image_result(self, image_file, target_cell_types="WBC", smear_type="BM"):
         """
         小程序细胞图像分析。只必填图片，不受单张接口的 DPI 缩放区间限制。
-        714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。得分 = 定位框数量 × 权重，高倍每挡 7，低倍每挡 2。取得分最高的一挡；得分相同先留高倍，同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
-        猜档按整图切块比较定位框数量。完整结果的 714756 和低倍都按原图边缘 1% 做靠边过滤，最多返回离原图中心最近的 100 个细胞。
+        714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。得分 = 定位框数量 × 权重：714756 原档 200，放大 2 倍 14，放大 4 倍 1，缩小一半 7；147246 放大 4 倍 1，其余 147246 挡 2。取得分最高的一挡；得分相同先留高倍，同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
+        猜档按整图切块比较定位框数量。完整结果按长宽比 >= 1.5 做细长框过滤；细胞数小于等于 2 时跳过过滤。最多返回离原图中心最近的 100 个细胞。
         """
         image_bytes = image_file.read()
         filename = getattr(image_file, "filename", None) or "image.jpg"

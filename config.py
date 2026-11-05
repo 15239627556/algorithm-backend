@@ -7,8 +7,39 @@ TRITON_IPS：端点主机列表，顺序即 gpu_id；定点模式用 TRITON_GPU_
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
+
+
+def _manifest_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "manifest.json")
+
+
+def _reserved_memory_from_manifest(default: int = 2) -> int:
+    """从 manifest.json 的 python-server[].memory-usage-gb 读取预留显存；读不到则用 default。"""
+    path = _manifest_path()
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return default
+    if not isinstance(payload, dict):
+        return default
+    entries = payload.get("python-server")
+    if not isinstance(entries, list):
+        return default
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        raw = item.get("memory-usage-gb")
+        if raw is None or raw == "":
+            continue
+        try:
+            return int(float(raw))
+        except (TypeError, ValueError):
+            continue
+    return default
 
 
 def _endpoint(
@@ -64,8 +95,13 @@ else:
 # 最大显存（GB）；可用预算 = max_memory - reserved_memory
 max_memory = int(os.environ.get("MAX_MEMORY", "11"))
 
-# 预留显存（GB）
-reserved_memory = int(os.environ.get("RESERVED_MEMORY", "1"))
+# 预留显存（GB）：默认读 manifest.json python-server[].memory-usage-gb，读不到为 2；
+# 显式设置 RESERVED_MEMORY 时优先生效（运维平台可覆盖）。
+_reserved_env = os.environ.get("RESERVED_MEMORY")
+if _reserved_env is not None and str(_reserved_env).strip() != "":
+    reserved_memory = int(_reserved_env)
+else:
+    reserved_memory = _reserved_memory_from_manifest(default=2)
 
 # 是否保存热力图，默认关闭
 save_heatmap = os.environ.get("SAVE_HEATMAP", "false").strip().lower() not in ("0", "false", "no", "off", "")

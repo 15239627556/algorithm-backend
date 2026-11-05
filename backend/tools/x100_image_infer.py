@@ -48,20 +48,25 @@ from algorithms.SelectArea.dedup_cells_across_tiles import dedup_cells_across_ti
 logger = logging.getLogger(__name__)
 
 # 小程序猜档：(假定拍摄 DPI, 强制使用的模型 actual_dpi)。
-# 714756 试原档、放大 2 倍、缩小一半（不做放大 4 倍）；147246 另加放大 4 倍。原档不缩放。
-# 七挡都跑。得分 = 定位框数量 × 权重。
-# 714756 原档（不缩放）权重 14，其余 714756 挡权重 7，147246 每挡权重 2。
+# 714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。原档不缩放。
+# 八挡都跑。得分 = 定位框数量 × 权重。
+# 714756 原档（不缩放）权重 200，放大 2 倍权重 14，放大 4 倍权重 1，缩小一半权重 7；
+# 147246 放大 4 倍权重 1，其余 147246 挡权重 2。
 # 取得分最高的一挡。得分相同先留高倍；同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
 # 不走单张接口的 dpi_range 缩放限制。
 _MINIAPP_MODEL_714756 = 714756
 _MINIAPP_MODEL_147246 = 147246
 _MINIAPP_WEIGHT_714756 = 7
-_MINIAPP_WEIGHT_714756_NATIVE = 14
+_MINIAPP_WEIGHT_714756_NATIVE = 200
+_MINIAPP_WEIGHT_714756_X2 = 14
+_MINIAPP_WEIGHT_714756_X4 = 1
 _MINIAPP_WEIGHT_147246 = 2
+_MINIAPP_WEIGHT_147246_X4 = 1
 MINIAPP_GUESSES: tuple[tuple[int, int], ...] = (
     (_MINIAPP_MODEL_714756, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 // 2, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_714756 * 2, _MINIAPP_MODEL_714756),
+    (_MINIAPP_MODEL_714756 // 4, _MINIAPP_MODEL_714756),
     (_MINIAPP_MODEL_147246, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 // 2, _MINIAPP_MODEL_147246),
     (_MINIAPP_MODEL_147246 * 2, _MINIAPP_MODEL_147246),
@@ -686,6 +691,7 @@ def run_cell_image_infer(
     apply_small_wbc_filter: bool = True,
     use_edge_1pct: bool = False,
     use_elongated_aspect: bool = False,
+    skip_post_filters_if_cells_le: int | None = None,
 ) -> dict[str, Any]:
     """
     平扫 upload_image 与单张 get_task_result_x100 共用：
@@ -704,6 +710,8 @@ def run_cell_image_infer(
     use_edge_1pct: 为 True 且不是 714756 模型时，靠边过滤改用原图 1% 且长宽比 >= 1.5。
     use_elongated_aspect: 为 True 时按长宽比 >= 1.5 过滤细长框，不看是否靠边；优先于靠边规则。
     仅小程序最终结果打开，单张和平扫仍用距边 1 像素或 5 像素 / 靠边 1% 细长框规则。
+    skip_post_filters_if_cells_le: 细胞数小于等于该值时跳过事后过滤，避免过滤后变 0。
+    小程序传 2；单张/平扫默认 None，始终按规则过滤。
     """
     try:
         assert_inference_allowed()
@@ -869,22 +877,32 @@ def run_cell_image_infer(
         cell_list = map_cell_list_from_scaled(cell_list, scale_ratio)
     cells, cell_list = _sync_cells_and_cell_list(cells, cell_list)
     if apply_post_filters:
-        cell_list = _apply_post_filters(
-            cell_list,
-            orig_w=orig_w,
-            orig_h=orig_h,
-            input_dpi=input_dpi,
-            use_714756_filter=use_714756_filter,
-            edge_cell_filter=False if use_714756_filter else edge_cell_filter,
-            small_wbc_filter=apply_small_wbc_filter,
-            use_edge_1pct=use_edge_1pct,
-            use_elongated_aspect=use_elongated_aspect,
-        )
-        keep = {_bbox_key(d) for d in cell_list}
-        cells = [
-            c for c in cells
-            if (int(c.cell_xmin), int(c.cell_ymin), int(c.cell_xmax), int(c.cell_ymax)) in keep
-        ]
+        if (
+            skip_post_filters_if_cells_le is not None
+            and len(cell_list) <= int(skip_post_filters_if_cells_le)
+        ):
+            logger.info(
+                "skip post filters: cells=%s <= %s",
+                len(cell_list),
+                skip_post_filters_if_cells_le,
+            )
+        else:
+            cell_list = _apply_post_filters(
+                cell_list,
+                orig_w=orig_w,
+                orig_h=orig_h,
+                input_dpi=input_dpi,
+                use_714756_filter=use_714756_filter,
+                edge_cell_filter=False if use_714756_filter else edge_cell_filter,
+                small_wbc_filter=apply_small_wbc_filter,
+                use_edge_1pct=use_edge_1pct,
+                use_elongated_aspect=use_elongated_aspect,
+            )
+            keep = {_bbox_key(d) for d in cell_list}
+            cells = [
+                c for c in cells
+                if (int(c.cell_xmin), int(c.cell_ymin), int(c.cell_xmax), int(c.cell_ymax)) in keep
+            ]
 
     warning = model_warning or result.get("warning")
     return {
@@ -1024,7 +1042,13 @@ def _miniapp_guess_weight(guess_dpi: int, model_dpi: int) -> int:
     if model_dpi == _MINIAPP_MODEL_714756:
         if guess_dpi == _MINIAPP_MODEL_714756:
             return _MINIAPP_WEIGHT_714756_NATIVE
+        if guess_dpi == _MINIAPP_MODEL_714756 // 2:
+            return _MINIAPP_WEIGHT_714756_X2
+        if guess_dpi == _MINIAPP_MODEL_714756 // 4:
+            return _MINIAPP_WEIGHT_714756_X4
         return _MINIAPP_WEIGHT_714756
+    if guess_dpi == _MINIAPP_MODEL_147246 // 4:
+        return _MINIAPP_WEIGHT_147246_X4
     return _MINIAPP_WEIGHT_147246
 
 
@@ -1051,8 +1075,9 @@ def _miniapp_choose_guess(
     candidates: list[tuple[int, int, dict[str, Any], int]],
 ) -> tuple[int, int, dict[str, Any], int] | None:
     """
-    七挡一起比。项为 (guess_dpi, model_dpi, result, count)。
-    得分 = 定位框数量 × 权重：714756 原档 14，其余 714756 挡 7，147246 挡 2。
+    八挡一起比。项为 (guess_dpi, model_dpi, result, count)。
+    得分 = 定位框数量 × 权重：714756 原档 200，放大 2 倍 14，放大 4 倍 1，缩小一半 7；
+    147246 放大 4 倍 1，其余 147246 挡 2。
     取得分最高的一挡。得分相同先留高倍。同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
     """
     if not candidates:
@@ -1080,9 +1105,10 @@ def run_miniapp_cell_image_infer(
 ) -> dict[str, Any]:
     """
     小程序单张识别：不接收 DPI，也不受单张接口的 dpi_range 缩放限制。
-    714756 试原档、放大 2 倍、缩小一半（不做放大 4 倍）；147246 另加放大 4 倍。原档不缩放。
-    七挡都跑，得分 = 定位框数量 × 权重。
-    714756 原档（不缩放）权重 14，其余 714756 挡权重 7，147246 每挡权重 2。
+    714756 和 147246 都试原档、放大 2 倍、缩小一半、放大 4 倍。原档不缩放。
+    八挡都跑，得分 = 定位框数量 × 权重。
+    714756 原档（不缩放）权重 200，放大 2 倍权重 14，放大 4 倍权重 1，缩小一半权重 7；
+    147246 放大 4 倍权重 1，其余 147246 挡权重 2。
     取得分最高的一挡。得分相同先留高倍；同一模型再按不缩放、放大 2 倍、缩小一半、放大 4 倍。
     低倍分类模型不存在时，该档只做定位。
     若某细胞 tops 第一名是 200029（破碎细胞及杂质）且分类置信度低于 0.9、还有第二名，改用第二名；大于等于 0.9 仍放第一位。
@@ -1092,6 +1118,7 @@ def run_miniapp_cell_image_infer(
     确定档位后再对整图请求一次完整分类结果。
     完整结果做细长框过滤：714756 与低倍都只按长宽比 >= 1.5 删除，不看是否靠边；
     不做 714756 小于 6 微米的有核过滤。
+    过滤前细胞数小于等于 2 时跳过该过滤，避免过滤后变成 0 个细胞。
     单张和平扫的低倍仍用距边 1 像素或 5 像素细长框规则。
     反推 DPI 用过滤后的全部细胞；响应最多返回 100 个，留离原图中心最近的。
     """
@@ -1172,6 +1199,7 @@ def run_miniapp_cell_image_infer(
         apply_post_filters=True,
         apply_small_wbc_filter=False,
         use_elongated_aspect=True,
+        skip_post_filters_if_cells_le=2,
     )
     if not best.get("ok"):
         return best
