@@ -182,6 +182,11 @@ TILE_UPLOAD_CONCURRENCY = max(1, int(os.environ.get("TILE_UPLOAD_CONCURRENCY", "
 # 单个 worker 内同时进行的选区次数。每次会映射整份 roi.npz。
 ROI_SELECTION_CONCURRENCY = max(1, int(os.environ.get("ROI_SELECTION_CONCURRENCY", "1")))
 
+# uploads 根目录落盘保留上限：超出时按 mtime 删最旧的。
+UPLOADS_MAX_NPZ = max(1, int(os.environ.get("UPLOADS_MAX_NPZ", "200")))
+UPLOADS_MAX_JSON = max(1, int(os.environ.get("UPLOADS_MAX_JSON", "200")))  # .info.json
+UPLOADS_MAX_PROJECT_JSON = max(1, int(os.environ.get("UPLOADS_MAX_PROJECT_JSON", "50")))  # {task_id}.json
+
 # ========== 运维平台（Eureka + 统一配置）==========
 # 注册中心地址。默认关闭注册；需要接入时用环境变量 YUNWEI_PLAT 配置，例如 http://192.168.31.80:9000/
 # 算法名确定后不要改：Eureka 的 app 用这里的大写名，vipAddress 和配置路径用它的小写。

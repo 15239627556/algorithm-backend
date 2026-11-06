@@ -12,7 +12,13 @@ from typing import Dict, Any, Optional
 
 import numpy as np
 import orjson
-from config import cellularity_file_path_prefix, save_heatmap as default_save_heatmap
+from config import (
+    UPLOADS_MAX_JSON,
+    UPLOADS_MAX_NPZ,
+    UPLOADS_MAX_PROJECT_JSON,
+    cellularity_file_path_prefix,
+    save_heatmap as default_save_heatmap,
+)
 
 from backend.tools.MESSAGE_DICT import RetCode, RetDesc
 from backend.tools.public_methods import thread_decorator, upload_folder, tmp_folder
@@ -89,6 +95,102 @@ def _ensure_json_serializable(obj):
 
 def _task_info_path(task_id: str) -> str:
     return os.path.join(upload_folder, f"{task_id}.info.json")
+
+
+_uploads_prune_lock = threading.Lock()
+
+
+def _is_uploads_tmp_name(name: str) -> bool:
+    """跳过原子写入产生的临时文件。"""
+    lower = name.lower()
+    return ".tmp" in lower or lower.endswith(".tmp.npz")
+
+
+def _prune_upload_files(match_name, keep: int) -> int:
+    """
+    uploads 根目录下，按 mtime 保留最新 keep 个匹配文件，删掉更旧的。
+    keep=0 表示该类全部删掉。只扫一层，不进子目录（tiles 临时目录不参与）。
+    """
+    keep = max(0, int(keep))
+    try:
+        names = os.listdir(upload_folder)
+    except FileNotFoundError:
+        return 0
+    except OSError as e:
+        logger.warning("prune uploads list failed dir=%s err=%s", upload_folder, e)
+        return 0
+
+    matched: list[tuple[float, str, str]] = []
+    for name in names:
+        if _is_uploads_tmp_name(name):
+            continue
+        if not match_name(name):
+            continue
+        path = os.path.join(upload_folder, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        matched.append((mtime, name, path))
+
+    excess = len(matched) - keep
+    if excess <= 0:
+        return 0
+
+    matched.sort(key=lambda item: item[0])  # 最旧在前
+    deleted = 0
+    for _, name, path in matched[:excess]:
+        try:
+            os.remove(path)
+            deleted += 1
+            logger.info("pruned old upload file: %s", name)
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            logger.warning("failed to prune upload file %s: %s", path, e)
+    return deleted
+
+
+def _is_uploads_npz_name(name: str) -> bool:
+    return name.lower().endswith(".npz")
+
+
+def _is_uploads_info_json_name(name: str) -> bool:
+    return name.lower().endswith(".info.json")
+
+
+def _is_uploads_project_json_name(name: str) -> bool:
+    """{task_id}.json（不含 .info.json）。"""
+    lower = name.lower()
+    return lower.endswith(".json") and not lower.endswith(".info.json")
+
+
+def _prune_uploads_retention() -> None:
+    """
+    存盘后调用：
+    - .roi.npz / .info.json 各最多 UPLOADS_MAX_* 个
+    - {task_id}.json 最多 UPLOADS_MAX_PROJECT_JSON 个（默认 50）
+    超出按 mtime 滚动删除最旧文件。
+    """
+    with _uploads_prune_lock:
+        n_npz = _prune_upload_files(_is_uploads_npz_name, UPLOADS_MAX_NPZ)
+        n_info = _prune_upload_files(_is_uploads_info_json_name, UPLOADS_MAX_JSON)
+        n_project = _prune_upload_files(
+            _is_uploads_project_json_name, UPLOADS_MAX_PROJECT_JSON
+        )
+    if n_npz or n_info or n_project:
+        logger.info(
+            "uploads retention pruned npz=%s info_json=%s project_json=%s "
+            "(keep npz=%s info_json=%s project_json=%s)",
+            n_npz,
+            n_info,
+            n_project,
+            UPLOADS_MAX_NPZ,
+            UPLOADS_MAX_JSON,
+            UPLOADS_MAX_PROJECT_JSON,
+        )
 
 
 def _task_tiles_dir(task_id: str) -> str:
@@ -912,6 +1014,7 @@ class TaskService:
             info['finished'] = True
             info.pop('matcher', None)
             _save_task_info(task_id, info)
+            _prune_uploads_retention()
             # npz / info 落盘成功后清理分块临时目录 uploads/{task_id}/
             # 坐标入参一并删掉，避免下次启动把已完成任务再合并一遍。
             tile_tmp_root = os.path.join(upload_folder, task_id)
@@ -2047,6 +2150,7 @@ class TaskService:
         # 细胞坐标相对这张图，全局坐标由瓦片左上角换算。同一位置再次识别时替换，避免重复累加。
         tile.cells = cells
         project.save_json(_task_project_path(task_id))
+        _prune_uploads_retention()
 
     def get_task_result_x100(self, task_id, image_file, target_cell_types, dpi,
                              edge_cell_filter, smear_type,
