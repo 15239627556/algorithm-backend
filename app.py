@@ -486,7 +486,7 @@ def _worker_exit_reason(
 def _install_worker_exit_logger() -> None:
     """workers>1 时，父进程发现子进程退出后把退出码和原因写入 error.log。
 
-    只对 `python app.py` 生效：这条命令的父进程会执行本文件。
+    只对 run_server.py 启动生效（python app.py 会转到它）。
     直接 `uvicorn app:app --workers 2` 时父进程不导入 app，钩子装不上。
     """
     import uvicorn.main as uvicorn_main
@@ -536,14 +536,6 @@ def _install_worker_exit_logger() -> None:
 
 
 if __name__ == "__main__":
-    import uvicorn
-    _install_worker_exit_logger()
-    uvicorn.run(
-        "app:app",
-        host=APP_HOST,
-        port=APP_PORT,
-        reload=False,
-        workers=2,
-        timeout_keep_alive=50,
-        limit_concurrency=None,
-    )
+    # 求解子进程会重新执行主模块。若主模块是本文件，每次请求都会再导入整个服务。
+    script = os.path.join(root_dir, "run_server.py")
+    os.execv(sys.executable, [sys.executable, script, *sys.argv[1:]])
