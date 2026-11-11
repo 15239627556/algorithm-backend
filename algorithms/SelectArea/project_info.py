@@ -1,5 +1,8 @@
 # project_info.py
-"""从项目 JSON 同目录的 info 文件读取 dpi / heatmap_orientation 等配置。"""
+"""从项目同目录的 info 文件读取 dpi / heatmap_orientation 等配置。
+
+项目文件可以是 {stem}.json、{stem}.roi.npz 或 {stem}.info.json，三者共用同一个 stem。
+"""
 from __future__ import annotations
 
 import json
@@ -16,18 +19,31 @@ class ProjectInfoParams(NamedTuple):
     info_path: Path
 
 
-def resolve_info_path(json_path: Path) -> Optional[Path]:
+_SLIDE_SUFFIXES = (".roi.npz", ".info.json", ".json")
+
+
+def slide_stem(slide_path: Path) -> str:
+    """去掉 .roi.npz / .info.json / .json 后缀，得到项目 stem。"""
+    name = Path(slide_path).name
+    for suffix in _SLIDE_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return Path(slide_path).stem
+
+
+def resolve_info_path(slide_path: Path) -> Optional[Path]:
     """同路径下查找 info：{stem}.info.json 或 info.json。"""
-    json_path = Path(json_path)
+    slide_path = Path(slide_path)
+    stem = slide_stem(slide_path)
     candidates = [
-        json_path.parent / f"{json_path.stem}.info.json",
-        json_path.parent / "info.json",
+        slide_path.parent / f"{stem}.info.json",
+        slide_path.parent / "info.json",
     ]
     # 兼容 *_old.json / *_before_dedup.json：回退到去掉后缀后的 stem.info.json
     for suffix in ("_old", "_before_dedup", "_dedup"):
-        if json_path.stem.endswith(suffix):
-            base = json_path.stem[: -len(suffix)]
-            candidates.append(json_path.parent / f"{base}.info.json")
+        if stem.endswith(suffix):
+            base = stem[: -len(suffix)]
+            candidates.append(slide_path.parent / f"{base}.info.json")
             break
     seen = set()
     for p in candidates:
@@ -40,10 +56,10 @@ def resolve_info_path(json_path: Path) -> Optional[Path]:
     return None
 
 
-def resolve_roi_path(json_path: Path) -> Optional[Path]:
+def resolve_roi_path(slide_path: Path) -> Optional[Path]:
     """同路径下查找 {stem}.roi.npz。"""
-    json_path = Path(json_path)
-    roi = json_path.parent / f"{json_path.stem}.roi.npz"
+    slide_path = Path(slide_path)
+    roi = slide_path.parent / f"{slide_stem(slide_path)}.roi.npz"
     return roi if roi.is_file() else None
 
 
@@ -63,19 +79,19 @@ def info_int(info: Dict[str, Any], key: str, default: Optional[int] = None) -> i
     return int(info[key])
 
 
-def load_dpi_and_orientation(json_path: Path) -> ProjectInfoParams:
+def load_dpi_and_orientation(slide_path: Path) -> ProjectInfoParams:
     """
-    从 json 旁 info 读取运行参数。
+    从项目文件（.json / .roi.npz / .info.json）旁的 info 读取运行参数。
     返回 ProjectInfoParams(dpi, heatmap_orientation, tile_w, tile_h, smear_type, info_path)。
     - heatmap_orientation 缺省为 1（头部在左）
     - tile_width / tile_height 必填
     - smear_type 可选（BM/PB 等）
     """
-    json_path = Path(json_path)
-    info_path = resolve_info_path(json_path)
+    slide_path = Path(slide_path)
+    info_path = resolve_info_path(slide_path)
     if info_path is None:
         raise FileNotFoundError(
-            f"未找到 info 文件（{{stem}}.info.json 或 info.json）: {json_path.parent}"
+            f"未找到 info 文件（{{stem}}.info.json 或 info.json）: {slide_path.parent}"
         )
     info = load_project_info(info_path)
     dpi = info_int(info, "dpi")

@@ -30,17 +30,15 @@ from .project_info import load_dpi_and_orientation
 
 @dataclass(frozen=True)
 class VizConfigCF:
-    json_path: str = (
-        "/home/ubuntu/VScodeProjects/项目json数据/脑脊液十倍平扫数据/1/slide1/"
-        "d4095c7e352d489e8e1daa9006d22d3e.json"
-    )
+    # 新数据只有 .roi.npz 与 .info.json；json_path 仅在 input_source="json" 时需要。
+    json_path: str | None = None
     roi_path: str = (
-        "/home/ubuntu/VScodeProjects/项目json数据/脑脊液十倍平扫数据/1/slide1/"
-        "d4095c7e352d489e8e1daa9006d22d3e.roi.npz"
+        "/home/ubuntu/VScodeProjects/项目json数据/10倍-脑脊液选区/输出外接矩形小/20261030009/"
+        "5582247a7bfa489b96d5171d7e6738b6.roi.npz"
     )
     input_source: str = "roi"
     out_dir: str = (
-        "/home/ubuntu/VScodeProjects/项目json数据/脑脊液十倍平扫数据/1/slide1/output"
+        "/home/ubuntu/VScodeProjects/项目json数据/10倍-脑脊液选区/输出外接矩形小/20261030009/output"
     )
     focus_point: int = 9
     view_width: int = 504
@@ -49,7 +47,7 @@ class VizConfigCF:
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CF FOCUS_POINT SelectArea")
-    p.add_argument("--json", dest="json_path", default=None, help="slide .json 路径")
+    p.add_argument("--json", dest="json_path", default=None, help="slide .json 路径（仅 JSON 输入时需要）")
     p.add_argument("--roi", dest="roi_path", default=None, help="slide .roi.npz 路径")
     p.add_argument("--out-dir", dest="out_dir", default=None, help="结果输出目录")
     p.add_argument("--focus-point", type=int, default=None)
@@ -145,14 +143,16 @@ def main() -> None:
 
     project = None
     roi = None
-    json_path = Path(viz_cfg.json_path)
-    info = load_dpi_and_orientation(json_path)
+    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
+    slide_path = viz_cfg.json_path if input_source == "json" else viz_cfg.roi_path
+    if not slide_path:
+        raise ValueError(f"input_source={input_source!r} 时必须配置对应的 json_path / roi_path")
+    info = load_dpi_and_orientation(Path(slide_path))
     print(
         f"[INFO] 从 info 读取: dpi={info.dpi}, heatmap_orientation={info.heatmap_orientation}, "
         f"tile=({info.tile_w},{info.tile_h}), smear_type={info.smear_type}, info={info.info_path}"
     )
 
-    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
     if input_source == "roi":
         if not viz_cfg.roi_path:
             raise ValueError("input_source='roi' 时必须配置 roi_path")
@@ -162,7 +162,7 @@ def main() -> None:
             raise ValueError("ROI 数据集不含 Tile")
         print(f"[INFO] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     elif input_source == "json":
-        project = SmearProject.load_json(str(json_path))
+        project = SmearProject.load_json(str(slide_path))
         smear_type = info.smear_type or project.smear_type
         layer = project.get_layer(info.dpi)
         if layer is None or not layer.tiles:

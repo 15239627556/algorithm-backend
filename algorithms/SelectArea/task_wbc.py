@@ -137,6 +137,57 @@ def order_tasks_in_group(tasks: List[TaskOutput], config: BM40Config) -> List[Ta
 
 
 
+def _rect_index_containing(
+    gx: int, gy: int, task_rects: List[Tuple[int, int, int, int]]
+) -> Optional[int]:
+    for i, (tx, ty, tw, th) in enumerate(task_rects):
+        if tx <= gx < tx + tw and ty <= gy < ty + th:
+            return i
+    return None
+
+
+def _nearest_rect_index(
+    gx: int, gy: int, task_rects: List[Tuple[int, int, int, int]]
+) -> int:
+    """按网格坐标到矩形的切比雪夫距离取最近的区域矩形。"""
+    def gap(rect: Tuple[int, int, int, int]) -> int:
+        tx, ty, tw, th = rect
+        dx = max(tx - gx, 0, gx - (tx + tw - 1))
+        dy = max(ty - gy, 0, gy - (ty + th - 1))
+        return max(dx, dy)
+
+    return min(range(len(task_rects)), key=lambda i: gap(task_rects[i]))
+
+
+def assign_view_region(
+    view_center_grid: Tuple[int, int],
+    cell_grid_coords: np.ndarray,
+    task_rects: List[Tuple[int, int, int, int]],
+) -> int:
+    """
+    视野归属区域：中心所在矩形 → 视野内细胞多数所在矩形 → 最近矩形。
+
+    外扩/补拍区域常只有 1 格宽，视野中心可能落在细条矩形外；
+    此时不能默认归入 Initial，否则会打乱初始拍摄路径。
+    """
+    if not task_rects:
+        return 0
+    gx, gy = view_center_grid
+    idx = _rect_index_containing(gx, gy, task_rects)
+    if idx is not None:
+        return idx
+
+    votes: Dict[int, int] = defaultdict(int)
+    for cgx, cgy in cell_grid_coords:
+        cell_idx = _rect_index_containing(int(cgx), int(cgy), task_rects)
+        if cell_idx is not None:
+            votes[cell_idx] += 1
+    if votes:
+        return min(votes, key=lambda i: (-votes[i], i))
+
+    return _nearest_rect_index(gx, gy, task_rects)
+
+
 def collect_valid_cells_vectorized(
     all_cells_array: np.ndarray,  # 预先提取好的 (N, 4) 全局细胞矩阵
     best_selection: SelectionResult,
@@ -220,6 +271,10 @@ def generate_wbc_view_tasks(
 
     # 3. 结果构建与区域分配
     used = np.zeros(len(cell_bounds), dtype=bool)
+    cell_grid_coords = np.column_stack([
+        np.floor((centers[:, 0] - grid.origin_x) / grid.cell_size),
+        np.floor((centers[:, 1] - grid.origin_y) / grid.cell_size),
+    ]).astype(np.int64)
     # 内部仍先分组，以便维持各区域内的扫描路径排序
     temp_grouped: List[List[TaskOutput]] = [[] for _ in range(len(task_rects))]
 
@@ -232,7 +287,8 @@ def generate_wbc_view_tasks(
         # a. 视野内细胞匹配（落盘标称尺寸，与实际拍摄视野一致）
         in_x = (centers[:, 0] >= view_xmin) & (centers[:, 0] < view_xmax)
         in_y = (centers[:, 1] >= view_ymin) & (centers[:, 1] < view_ymax)
-        mask = in_x & in_y & (~used)
+        in_view = in_x & in_y
+        mask = in_view & (~used)
         
         current_cell_outputs = []
         if np.any(mask):
@@ -249,14 +305,12 @@ def generate_wbc_view_tasks(
         # b. 区域归属判定与名称映射
         view_cx = (view_xmin + view_xmax) * 0.5
         view_cy = (view_ymin + view_ymax) * 0.5
-        vgx, vgy = grid.global_to_grid(view_cx, view_cy)
-        
-        assigned_idx = 0 
-        for i, (tx, ty, tw, th) in enumerate(task_rects):
-            if tx <= vgx < tx + tw and ty <= vgy < ty + th:
-                assigned_idx = i
-                break
-        
+        assigned_idx = assign_view_region(
+            grid.global_to_grid(view_cx, view_cy),
+            cell_grid_coords[in_view],
+            task_rects,
+        )
+
         # c. 实例化 TaskOutput（标称 x100 尺寸）
         task_obj = TaskOutput(
             task_index=0,  # 占位

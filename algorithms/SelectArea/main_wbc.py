@@ -30,9 +30,9 @@ from .project_info import load_dpi_and_orientation
 @dataclass(frozen=True)
 class VizConfig:
     # 输入与输出路径配置
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/8650db72d7bd4014b323ce719296e1f5.json"
-    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/8650db72d7bd4014b323ce719296e1f5.roi.npz"
-    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/骨髓漏视野/20260901024/output"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/57008613f5bc46ecb8a402480e9551a8.json"
+    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/57008613f5bc46ecb8a402480e9551a8.roi.npz"
+    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/output"
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
         
@@ -210,13 +210,15 @@ def main() -> None:
     viz_cfg = VizConfig()
     project = None
     roi = None
-    json_path = Path(viz_cfg.json_path)
-    info = load_dpi_and_orientation(json_path)
+    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
+    slide_path = viz_cfg.json_path if input_source == "json" else viz_cfg.roi_path
+    if not slide_path:
+        raise ValueError(f"input_source={input_source!r} 时必须配置对应的 json_path / roi_path")
+    info = load_dpi_and_orientation(Path(slide_path))
     print(
         f"[INFO] 从 info 读取: dpi={info.dpi}, heatmap_orientation={info.heatmap_orientation}, "
         f"tile=({info.tile_w},{info.tile_h}), smear_type={info.smear_type}, info={info.info_path}"
     )
-    input_source = os.getenv("SELECT_AREA_INPUT_SOURCE", viz_cfg.input_source).strip().lower()
     if input_source == "roi":
         if not viz_cfg.roi_path:
             raise ValueError("input_source='roi' 时必须配置 roi_path")
@@ -226,7 +228,7 @@ def main() -> None:
             raise ValueError("ROI 数据集不含 Tile")
         print(f"[INFO] 成功加载 ROI 数据集: {viz_cfg.roi_path}")
     elif input_source == "json":
-        project = SmearProject.load_json(str(json_path))
+        project = SmearProject.load_json(str(slide_path))
         smear_type = info.smear_type or project.smear_type
         layer = project.get_layer(info.dpi)
         if layer is None or not layer.tiles:
@@ -236,12 +238,13 @@ def main() -> None:
         raise ValueError(f"不支持的输入来源: {input_source!r}（仅支持 'json' 或 'roi'）")
 
 
-    # user_choice_area = {"x_min": 150000, "y_min": 30000, "x_max": 200000, "y_max": 80000}  # 示例用户选区
+    # user_choice_area={'x_min': 122940, 'y_min': 54988, 'x_max': 133953, 'y_max': 66001}  # 示例用户选区
     # bm_cfg = BM40Config(user_choice_area=user_choice_area, target_cell_num_WBC=300)
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
+                        # user_choice_area=user_choice_area,
                         dpi=info.dpi,
-                        x100_rect_width=496,
-                        x100_rect_height=415,
+                        x100_rect_width=383,
+                        x100_rect_height=287,
                         View_type="WBC", 
                         heatmap_orientation=info.heatmap_orientation,
                         Smear_type=smear_type,
