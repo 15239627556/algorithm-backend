@@ -68,12 +68,6 @@ _SPECS: tuple[dict[str, Any], ...] = (
         "patch": (("backend.tools.model_control", "max_memory"),),
     },
     {
-        "attr": "reserved_memory",
-        "env": "RESERVED_MEMORY",
-        "kind": "int",
-        "patch": (("backend.tools.model_control", "reserved_memory"),),
-    },
-    {
         "attr": "save_heatmap",
         "env": "SAVE_HEATMAP",
         "kind": "bool",
@@ -596,6 +590,9 @@ def plan_updates(merged: dict[str, Any]) -> tuple[list[tuple[str, Any, tuple]], 
         if found is None:
             continue
         key, raw = found
+        if spec["attr"] == "max_memory" and cfg.max_memory_from_gpu:
+            held.append(key)
+            continue
         if _env_set(spec["env"]):
             held.append(key)
             continue

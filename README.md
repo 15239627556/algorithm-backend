@@ -149,8 +149,7 @@ curl http://localhost:3090/health
 | `PIPELINE_HTTP_CONNECT_TIMEOUT_S` | `10` | multi_pipeline 连接超时（秒） |
 | `PIPELINE_INFER_URL` | （空） | 可选，覆盖 `/infer` 完整 URL |
 | `PIPELINE_147246_INFER_URL` | （空） | 遗留别名，同 `PIPELINE_INFER_URL` |
-| `MAX_MEMORY` | `11` | Triton 侧显存预算（GB） |
-| `RESERVED_MEMORY` | `1` | 预留显存（GB） |
+| `MAX_MEMORY` | `11` | 查不到实际剩余显存时的上限（GB） |
 
 ### 业务开关
 

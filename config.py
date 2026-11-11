@@ -7,39 +7,10 @@ TRITON_IPS：端点主机列表，顺序即 gpu_id；定点模式用 TRITON_GPU_
 """
 from __future__ import annotations
 
-import json
 import os
+import re
 import threading
-
-
-def _manifest_path() -> str:
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "manifest.json")
-
-
-def _reserved_memory_from_manifest(default: int = 2) -> int:
-    """从 manifest.json 的 python-server[].memory-usage-gb 读取预留显存；读不到则用 default。"""
-    path = _manifest_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            payload = json.load(f)
-    except Exception:
-        return default
-    if not isinstance(payload, dict):
-        return default
-    entries = payload.get("python-server")
-    if not isinstance(entries, list):
-        return default
-    for item in entries:
-        if not isinstance(item, dict):
-            continue
-        raw = item.get("memory-usage-gb")
-        if raw is None or raw == "":
-            continue
-        try:
-            return int(float(raw))
-        except (TypeError, ValueError):
-            continue
-    return default
+import urllib.request
 
 
 def _endpoint(
@@ -50,10 +21,12 @@ def _endpoint(
     grpc_port: int,
     metrics_port: int,
     multi_pipeline_port: int,
+    gpu_uuid: str,
 ) -> dict:
     return {
         "name": name,
         "ip": ip,
+        "gpu_uuid": gpu_uuid,
         "http_port": http_port,
         "grpc_port": grpc_port,
         "metrics_port": metrics_port,
@@ -65,11 +38,16 @@ def _endpoint(
 
 
 # ========== Triton ==========
+# 最多两张卡。下标 0 是 triton_gpu0，对应 GPU_UUID；下标 1 是 triton_gpu1，对应 GPU_UUID2。
+GPU_UUID = os.environ.get("GPU_UUID", "").strip()
+GPU_UUID2 = os.environ.get("GPU_UUID2", "").strip()
+_GPU_UUIDS = (GPU_UUID, GPU_UUID2)
+
 # 端点主机列表（改这里即可；顺序即 gpu_id，定点默认用 [0]）
 TRITON_IPS = [
     "triton_gpu0",
     # "triton_gpu1",
-]
+][:2]
 
 # 骨髓增生原图路径前缀
 cellularity_file_path_prefix = os.environ.get("CELLULARITY_FILE_PATH_PREFIX", "/mnt/d/data/result")
@@ -92,17 +70,6 @@ if _plt_switch_raw is None:
 else:
     plt_switch = _plt_switch_raw.strip().lower() not in ("0", "false", "no", "off", "")
 
-# 最大显存（GB）；可用预算 = max_memory - reserved_memory
-max_memory = int(os.environ.get("MAX_MEMORY", "11"))
-
-# 预留显存（GB）：默认读 manifest.json python-server[].memory-usage-gb，读不到为 2；
-# 显式设置 RESERVED_MEMORY 时优先生效（运维平台可覆盖）。
-_reserved_env = os.environ.get("RESERVED_MEMORY")
-if _reserved_env is not None and str(_reserved_env).strip() != "":
-    reserved_memory = int(_reserved_env)
-else:
-    reserved_memory = _reserved_memory_from_manifest(default=2)
-
 # 是否保存热力图，默认关闭
 save_heatmap = os.environ.get("SAVE_HEATMAP", "false").strip().lower() not in ("0", "false", "no", "off", "")
 
@@ -112,6 +79,52 @@ TRITON_GRPC_PORT = int(os.environ.get("TRITON_GRPC_PORT", "8001"))
 TRITON_METRICS_PORT = int(os.environ.get("TRITON_METRICS_PORT", "8002"))
 MULTI_PIPELINE_PORT = int(os.environ.get("MULTI_PIPELINE_PORT", "9000"))
 
+_NV_GPU_TOTAL_LINE = re.compile(
+    r"^nv_gpu_memory_total_bytes(?:\{([^}]*)\})?\s+"
+    r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$"
+)
+
+
+def _max_memory_from_gpu_uuid() -> int | None:
+    """读 triton_gpu0 上 GPU_UUID 的总显存（GB）。单双卡型号相同，读一张即可。"""
+    if not GPU_UUID or not TRITON_IPS:
+        return None
+    url = f"http://{TRITON_IPS[0]}:{TRITON_METRICS_PORT}/metrics"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    total_bytes: float | None = None
+    for raw in text.splitlines():
+        match = _NV_GPU_TOTAL_LINE.match(raw.strip())
+        if not match:
+            continue
+        labels = match.group(1) or ""
+        found = re.search(r'gpu_uuid="([^"]*)"', labels)
+        if found and found.group(1) == GPU_UUID:
+            total_bytes = float(match.group(2))
+            break
+    if total_bytes is None or total_bytes <= 0:
+        return None
+    return int(round(total_bytes / (1024 ** 3)))
+
+
+# 最大显存（GB）：优先 GPU_UUID 的实际总显存，读不到再用 MAX_MEMORY，最后默认 11。
+_gpu_total_gb = _max_memory_from_gpu_uuid()
+max_memory_from_gpu = _gpu_total_gb is not None
+if _gpu_total_gb is not None:
+    max_memory = _gpu_total_gb
+    max_memory_source = f"GPU_UUID {GPU_UUID} 的总显存"
+else:
+    _max_env = os.environ.get("MAX_MEMORY")
+    if _max_env is not None and str(_max_env).strip() != "":
+        max_memory = int(_max_env)
+        max_memory_source = "环境变量 MAX_MEMORY"
+    else:
+        max_memory = 10
+        max_memory_source = "默认值"
+
 TRITON_ENDPOINTS = [
     _endpoint(
         name=f"triton_gpu{i}",
@@ -120,6 +133,7 @@ TRITON_ENDPOINTS = [
         grpc_port=TRITON_GRPC_PORT,
         metrics_port=TRITON_METRICS_PORT,
         multi_pipeline_port=MULTI_PIPELINE_PORT,
+        gpu_uuid=_GPU_UUIDS[i],
     )
     for i, ip in enumerate(TRITON_IPS)
 ]
@@ -194,7 +208,7 @@ yunwei_plat = os.environ.get("YUNWEI_PLAT", "").strip()
 # 需要启动运维平台注册时设置环境变量：YUNWEI_PLAT=http://192.168.31.80:9000/
 sufa_name = "SUANFA_AI"
 # manifest.json 没有 version 时才回退到这里
-sufa_version = "v1.0.4"
+sufa_version = "v1.0.6"
 # 是否显示文档
 is_doc = True
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import urllib.request
 from dataclasses import dataclass, field
@@ -16,7 +17,6 @@ from config import (
     get_triton_endpoint,
     max_memory,
     next_triton_endpoint,
-    reserved_memory,
 )
 from backend.tools.MESSAGE_DICT import (
     DEFAULT_MODEL_VRAM_GB,
@@ -45,6 +45,12 @@ _TRITON_MODEL_ALIASES: dict[str, str] = {
 }
 
 LOAD_TIMEOUT = int(os.environ.get("TRITON_LOAD_TIMEOUT", "600"))
+_GPU_METRICS_TIMEOUT_S = float(os.environ.get("GPU_METRICS_TIMEOUT_S", "3"))
+# 卸载后指标可能还停在旧值。新读数比「卸载前剩余 + 刚卸掉的模型」少这么多，就认为指标没跟上。
+_GPU_METRICS_LAG_GB = 0.25
+_NV_GPU_MEMORY_LINE = re.compile(
+    r"^(nv_gpu_memory_(?:total|used)_bytes)(?:\{([^}]*)\})?\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$"
+)
 
 _FLIR_WBC_CLASSIFIER = "DPIALL_FLIR_BM_PB_WBC_classifier"
 _DEFAULT_WBC_CLASSIFIER = "DPIALL_BM_PB_WBC_classifier"
@@ -387,9 +393,7 @@ def load_model(
     base = _get_http_base_url(gpu_id)
     url = f"{base}/v2/repository/models/{model_name}/load"
     ok, msg = _http_post(url, b"{}", timeout=timeout)
-    if ok:
-        logger.info("Model %s loaded on gpu=%s (%s).", model_name, gpu_id, base)
-    else:
+    if not ok:
         logger.warning("Load model %s failed on gpu=%s: %s", model_name, gpu_id, msg)
     return ok, msg
 
@@ -403,15 +407,127 @@ def unload_model(
     base = _get_http_base_url(gpu_id)
     url = f"{base}/v2/repository/models/{model_name}/unload"
     ok, msg = _http_post(url, b"{}", timeout=timeout)
-    if ok:
-        logger.info("Model %s unloaded on gpu=%s (%s).", model_name, gpu_id, base)
-    else:
+    if not ok:
         logger.warning("Unload model %s failed on gpu=%s: %s", model_name, gpu_id, msg)
     return ok, msg
 
 
 def _vram_budget_gb() -> float:
-    return max(0.5, float(max_memory) - float(reserved_memory))
+    """查不到实际剩余时的上限，用总显存。实际剩余里已经含了当前占用。"""
+    return max(0.5, float(max_memory))
+
+
+def _endpoint_gpu_uuid(gpu_id: int) -> str:
+    return str(get_triton_endpoint(gpu_id).get("gpu_uuid") or "").strip()
+
+
+def _metrics_url(gpu_id: int) -> str:
+    endpoint = get_triton_endpoint(gpu_id)
+    ip = str(endpoint.get("ip") or "127.0.0.1")
+    port = int(endpoint.get("metrics_port") or 8002)
+    return f"http://{ip}:{port}/metrics"
+
+
+def _gpu_series_key(labels: str) -> str:
+    """同一张卡的 total/used 行用同一个键对齐。优先 gpu_uuid。"""
+    uuid = re.search(r'gpu_uuid="([^"]*)"', labels or "")
+    if uuid:
+        return uuid.group(1)
+    gpu = re.search(r'\bgpu="([^"]*)"', labels or "")
+    if gpu:
+        return gpu.group(1)
+    return labels or ""
+
+
+def _parse_gpu_free_vram_gb(metrics_text: str, gpu_uuid: str) -> float | None:
+    """从 Triton Prometheus 文本取出指定 gpu_uuid 的剩余显存（GB）。"""
+    totals: dict[str, float] = {}
+    useds: dict[str, float] = {}
+    for raw in metrics_text.splitlines():
+        match = _NV_GPU_MEMORY_LINE.match(raw.strip())
+        if not match:
+            continue
+        name, labels, value = match.group(1), match.group(2) or "", float(match.group(3))
+        key = _gpu_series_key(labels)
+        if name.endswith("total_bytes"):
+            totals[key] = value
+        else:
+            useds[key] = value
+    if not totals:
+        return None
+    want = (gpu_uuid or "").strip()
+    if want:
+        if want not in totals:
+            return None
+        return max(0.0, totals[want] - useds.get(want, 0.0)) / (1024 ** 3)
+    if len(totals) == 1:
+        key = next(iter(totals))
+        return max(0.0, totals[key] - useds.get(key, 0.0)) / (1024 ** 3)
+    return None
+
+
+def _query_gpu_free_vram_gb(gpu_id: int) -> float | None:
+    """读指定 gpu_id 对应 Triton 的 /metrics，只取该端点 gpu_uuid 这张卡的剩余显存。"""
+    gpu_uuid = _endpoint_gpu_uuid(gpu_id)
+    if not gpu_uuid:
+        return None
+    url = _metrics_url(gpu_id)
+    try:
+        with urllib.request.urlopen(url, timeout=_GPU_METRICS_TIMEOUT_S) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.warning("query GPU free VRAM failed gpu=%s url=%s: %s", gpu_id, url, e)
+        return None
+    free = _parse_gpu_free_vram_gb(text, gpu_uuid)
+    if free is None:
+        logger.warning(
+            "GPU metrics have no memory for gpu=%s uuid=%s url=%s",
+            gpu_id,
+            gpu_uuid or "-",
+            url,
+        )
+        return None
+    return free
+
+
+def _vram_allowance(
+    gpu_id: int,
+    names: set[str],
+    loaded: set[str],
+    by_name: dict[str, ModelSpec],
+) -> tuple[float, float, str]:
+    """
+    返回 (需要的 GB, 上限 GB, 来源)。
+    该卡 GPU_UUID 为空：需要量是已加载加待加载的估算，上限是 max_memory。
+    GPU_UUID 有值：需要量只算还没加载的模型，上限是这张卡的实际剩余显存。
+    """
+    if not _endpoint_gpu_uuid(gpu_id):
+        need = _estimated_vram(set(loaded) | set(names), by_name)
+        limit = _vram_budget_gb()
+        return need, limit, "configured"
+    free = _query_gpu_free_vram_gb(gpu_id)
+    if free is not None:
+        return _pending_vram(names, loaded, by_name), free, "actual"
+    used = _estimated_vram(set(loaded), by_name)
+    estimated = max(0.0, _vram_budget_gb() - used)
+    logger.warning(
+        "gpu=%s actual free VRAM unavailable, fallback %.2fGB "
+        "(max_memory=%s loaded~%.2fGB)",
+        gpu_id,
+        estimated,
+        max_memory,
+        used,
+    )
+    return _pending_vram(names, loaded, by_name), estimated, "estimated"
+
+
+def _pending_vram(
+    names: set[str],
+    loaded: set[str],
+    by_name: dict[str, ModelSpec],
+) -> float:
+    """还没在这张卡上的模型才占用即将发生的显存。已加载的已经反映在剩余显存里。"""
+    return _estimated_vram(set(names) - set(loaded), by_name)
 
 
 def _vram_of(name: str, by_name: dict[str, ModelSpec]) -> float:
@@ -472,19 +588,55 @@ def _load_specs_by_triton_name(specs: List[ModelSpec]) -> dict[str, ModelSpec]:
     return out
 
 
+def _allowance_after_unload(
+    gpu_id: int,
+    names: set[str],
+    loaded: set[str],
+    by_name: dict[str, ModelSpec],
+    free_before: float,
+    unloaded: list[str],
+) -> tuple[float, float, str]:
+    """卸载后再算一次。UUID 为空仍用总显存；有 UUID 时指标没跟上就加上刚卸掉的模型。"""
+    need, limit, source = _vram_allowance(gpu_id, names, loaded, by_name)
+    if not unloaded or source != "actual":
+        return need, limit, source
+    expected = free_before + _estimated_vram(set(unloaded), by_name)
+    if limit < expected - _GPU_METRICS_LAG_GB:
+        return need, expected, "estimated-after-unload"
+    return need, limit, source
+
+
 def _evict_other_dpi_models(
     needed: List[ModelSpec],
     gpu_id: int,
-) -> None:
-    """显存不够时卸载其它 actual_dpi 层级的已加载模型。"""
+) -> tuple[float, float, str]:
+    """放不下时先卸载用不到的模型，再按卸载后的剩余显存判断。返回 (需要, 上限, 来源)。"""
     by_name = _load_specs_by_triton_name(needed)
     needed_names = {spec.name for spec in needed}
     needed_dpis = {spec.actual_dpi for spec in needed}
-    budget = _vram_budget_gb()
     loaded = set(get_loaded_models(gpu_id=gpu_id))
-    future = loaded | needed_names
-    if _estimated_vram(future, by_name) <= budget + 1e-6:
-        return
+    need, limit, source = _vram_allowance(gpu_id, needed_names, loaded, by_name)
+    remaining = "实际剩余" if source == "actual" else "剩余"
+    # 待加载为 0 说明模型已在卡上，不打日志，避免每个请求一行。
+    if need <= limit + 1e-6:
+        if need > 1e-6:
+            logger.info(
+                "gpu=%s 加载新模型需要 %.1fGB，%s %.1fGB",
+                gpu_id,
+                need,
+                remaining,
+                limit,
+            )
+        return need, limit, source
+    has_other = any(name not in needed_names for name in loaded)
+    logger.info(
+        "gpu=%s 加载新模型需要 %.1fGB，%s %.1fGB%s",
+        gpu_id,
+        need,
+        remaining,
+        limit,
+        "，不够，卸载其他模型" if has_other else "，不够",
+    )
 
     other = [
         name
@@ -493,22 +645,19 @@ def _evict_other_dpi_models(
         and _actual_dpi_of(name, by_name) not in needed_dpis
     ]
     if other:
-        logger.info(
-            "VRAM not enough (need ~%.1fGB, budget %.1fGB); "
-            "unloading other DPI-level models on gpu=%s: %s",
-            _estimated_vram(future, by_name),
-            budget,
-            gpu_id,
-            other,
-        )
+        unloaded: list[str] = []
         for name in other:
-            unload_model(name, gpu_id=gpu_id)
-
-    loaded = set(get_loaded_models(gpu_id=gpu_id))
-    future = loaded | needed_names
-    used = _estimated_vram(future, by_name)
-    if used <= budget + 1e-6:
-        return
+            ok, _msg = unload_model(name, gpu_id=gpu_id)
+            if ok:
+                unloaded.append(name)
+        loaded = set(get_loaded_models(gpu_id=gpu_id))
+        need, limit, source = _allowance_after_unload(
+            gpu_id, needed_names, loaded, by_name, limit, unloaded,
+        )
+        if unloaded:
+            logger.info("gpu=%s 卸载后剩余 %.1fGB", gpu_id, limit)
+        if need <= limit + 1e-6:
+            return need, limit, source
 
     extra_same_dpi = [
         name
@@ -517,16 +666,18 @@ def _evict_other_dpi_models(
         and _actual_dpi_of(name, by_name) in needed_dpis
     ]
     if extra_same_dpi:
-        logger.info(
-            "VRAM still not enough (~%.1fGB / %.1fGB); "
-            "unloading extra same-DPI models on gpu=%s: %s",
-            used,
-            budget,
-            gpu_id,
-            extra_same_dpi,
-        )
+        unloaded = []
         for name in extra_same_dpi:
-            unload_model(name, gpu_id=gpu_id)
+            ok, _msg = unload_model(name, gpu_id=gpu_id)
+            if ok:
+                unloaded.append(name)
+        loaded = set(get_loaded_models(gpu_id=gpu_id))
+        need, limit, source = _allowance_after_unload(
+            gpu_id, needed_names, loaded, by_name, limit, unloaded,
+        )
+        if unloaded:
+            logger.info("gpu=%s 卸载后剩余 %.1fGB", gpu_id, limit)
+    return need, limit, source
 
 
 def _drop_single_only_not_needed(
@@ -544,11 +695,6 @@ def _drop_single_only_not_needed(
         ok, msg = unload_model(name, gpu_id=gpu_id)
         if ok:
             loaded.discard(name)
-            logger.info(
-                "Unloaded single-only model %s on gpu=%s (not used by this request)",
-                name,
-                gpu_id,
-            )
         else:
             logger.warning(
                 "Unload single-only model %s failed on gpu=%s: %s",
@@ -559,11 +705,20 @@ def _drop_single_only_not_needed(
     return loaded
 
 
-def _vram_error(gpu_id: int, used: float, budget: float) -> str:
+def _vram_error(gpu_id: int, need: float, limit: float, source: str) -> str:
+    if source == "actual":
+        return (
+            f"VRAM not enough on gpu={gpu_id}: unloaded models need ~{need:.1f}GB, "
+            f"free {limit:.1f}GB (gpu metrics)"
+        )
+    if source == "configured":
+        return (
+            f"VRAM not enough on gpu={gpu_id}: need ~{need:.1f}GB, "
+            f"budget {limit:.1f}GB (max_memory={max_memory})"
+        )
     return (
-        f"VRAM not enough on gpu={gpu_id}: need ~{used:.1f}GB, "
-        f"budget {budget:.1f}GB (max_memory={max_memory}, "
-        f"reserved_memory={reserved_memory})"
+        f"VRAM not enough on gpu={gpu_id}: unloaded models need ~{need:.1f}GB, "
+        f"free {limit:.1f}GB ({source}, max_memory={max_memory})"
     )
 
 
@@ -597,16 +752,13 @@ def load_resolved_models(
                 gid,
                 set(get_loaded_models(gpu_id=gid)),
             )
-            _evict_other_dpi_models(required, gid)
-            by_name = _specs_by_name()
-            loaded = set(get_loaded_models(gpu_id=gid))
-            budget = _vram_budget_gb()
-            future = loaded | set(required_names)
-            used = _estimated_vram(future, by_name)
-            if used > budget + 1e-6:
-                msg = _vram_error(gid, used, budget)
+            need, limit, source = _evict_other_dpi_models(required, gid)
+            if need > limit + 1e-6:
+                msg = _vram_error(gid, need, limit, source)
                 logger.warning(msg)
                 return False, msg, required_names
+            by_name = _specs_by_name()
+            loaded = set(get_loaded_models(gpu_id=gid))
 
             ready: set[str] = set()
             for model_name in required_names:
@@ -623,10 +775,11 @@ def load_resolved_models(
                 if name in loaded:
                     ready.add(name)
                     continue
-                trial = loaded | {name}
-                if _estimated_vram(trial, by_name) > budget + 1e-6:
-                    _evict_other_dpi_models(required + [spec], gid)
+                need, limit, _source = _vram_allowance(gid, {name}, loaded, by_name)
+                if need > limit + 1e-6:
+                    need, limit, _source = _evict_other_dpi_models(required + [spec], gid)
                     loaded = set(get_loaded_models(gpu_id=gid))
+                    reloaded = False
                     for req_name in required_names:
                         if req_name in loaded:
                             continue
@@ -634,9 +787,11 @@ def load_resolved_models(
                         if not ok:
                             return False, msg, required_names
                         loaded.add(req_name)
+                        reloaded = True
                         last_msg = msg
-                    trial = loaded | {name}
-                if _estimated_vram(trial, by_name) > budget + 1e-6:
+                    if reloaded:
+                        need, limit, _source = _vram_allowance(gid, {name}, loaded, by_name)
+                if need > limit + 1e-6:
                     logger.warning(
                         "Skip optional model %s on gpu=%s: VRAM not enough",
                         name,
@@ -674,7 +829,7 @@ def load_models(
 ) -> Tuple[bool, str, List[str]]:
     """
     按需加载模型：参数为玻片类型、DPI、目标检测类型。
-    加载前按 max_memory-reserved_memory 判断显存；不够则卸载其它 DPI 层级模型。
+    GPU_UUID 有值时查该卡实际剩余显存；为空时用 max_memory。不够则卸载其它 DPI 层级模型。
     """
     resolved = resolve_models(dpi, smear_type, target_cell_types)
     return load_resolved_models(resolved, gpu_id=gpu_id, all_gpus=all_gpus)
@@ -713,7 +868,7 @@ def ensure_model_loaded(
     gpu_id: Optional[int] = None,
 ) -> Tuple[bool, str]:
     """
-    单模型按需加载：与 load_models 相同，先按显存预算驱逐其它 DPI 层级，再 load。
+    单模型按需加载：与 load_models 相同，先按该卡实际剩余显存驱逐其它 DPI 层级，再 load。
     滤镜 / 增生分析 / 全局图等单模型场景统一走此路径。
     max_models / max_groups 保留签名兼容，已不再使用。
     """
@@ -726,20 +881,13 @@ def ensure_model_loaded(
     gid = _normalize_gpu_id(gpu_id)
     needed = [_resolve_load_spec(name) for name in model_names]
     with _model_lock:
-        _evict_other_dpi_models(needed, gid)
-        by_name = _load_specs_by_triton_name(needed)
-        loaded = set(get_loaded_models(gpu_id=gid))
-        future = loaded | set(model_names)
-        used = _estimated_vram(future, by_name)
-        budget = _vram_budget_gb()
-        if used > budget + 1e-6:
-            msg = (
-                f"VRAM not enough on gpu={gid}: need ~{used:.1f}GB, "
-                f"budget {budget:.1f}GB (max_memory={max_memory}, "
-                f"reserved_memory={reserved_memory})"
-            )
+        need, limit, source = _evict_other_dpi_models(needed, gid)
+        if need > limit + 1e-6:
+            msg = _vram_error(gid, need, limit, source)
             logger.warning(msg)
             return False, msg
+        by_name = _load_specs_by_triton_name(needed)
+        loaded = set(get_loaded_models(gpu_id=gid))
         for name in model_names:
             if name in loaded:
                 continue

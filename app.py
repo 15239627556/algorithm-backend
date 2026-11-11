@@ -289,6 +289,18 @@ class AccessLogMiddleware:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from config import (
+        GPU_UUID,
+        max_memory,
+        max_memory_source,
+    )
+
+    app_logger.info(
+        "显存配置 MAX_MEMORY=%sGB 来自%s；GPU_UUID=%s",
+        max_memory,
+        max_memory_source,
+        GPU_UUID or "-",
+    )
     # 同步路由跑在 anyio 线程池；调大以提升阻塞推理/IO 的并发能力
     try:
         import anyio
