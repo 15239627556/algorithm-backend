@@ -411,6 +411,8 @@ RED_SIZE_LABELS = {
     "20": "小红细胞",
     "21": "巨大红细胞",
 }
+# 分类前过滤：平均直径 (w+h)/2 严格小于该值（微米）的成熟红细胞不进入分类
+RED_MIN_MEAN_UM = 4.5
 
 PLAT_MORPH_LABELS = {
     '0': '无形态异常',
@@ -1181,6 +1183,7 @@ def _cells_from_xywh_detections(
     cell_type: int,
     default_type_name: str,
     extra_builder: Optional[Callable[[int], dict[str, Any]]] = None,
+    keep_box: Optional[Callable[[float, float], bool]] = None,
 ) -> List[Cell]:
     type_name = _cell_type_name(cell_type, default_type_name)
     cells: List[Cell] = []
@@ -1189,6 +1192,9 @@ def _cells_from_xywh_detections(
         if len(row) < 4:
             continue
         x, y, w, h = float(row[0]), float(row[1]), float(row[2]), float(row[3])
+        # 先按框尺寸过滤，再对保留框做分类（extra_builder 仍用原始下标，与分类头对齐）
+        if keep_box is not None and not keep_box(w, h):
+            continue
         det_score = float(det_scores[i]) if det_scores is not None and i < len(det_scores) else 1.0
         extra = extra_builder(i) if extra_builder else {}
         cells.append(Cell(
@@ -1255,10 +1261,25 @@ def _append_plat_abnormality_extra(
     }
 
 
-def _classify_red_size_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
-    """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定大小异常。"""
+def _red_mean_diameter_um(w_px: float, h_px: float, dpi: int) -> float:
+    """框宽高换算为微米后的平均直径 (w+h)/2。"""
     um_px = um_per_pixel_from_dpi(dpi)
-    avg_um = (w_px * um_px + h_px * um_px) / 2.0
+    return (float(w_px) + float(h_px)) * um_px / 2.0
+
+
+def _keep_red_box_for_classify(w_px: float, h_px: float, dpi: int) -> bool:
+    """平均直径达到 RED_MIN_MEAN_UM 才保留。尺寸或 DPI 无效时保留，避免误删。"""
+    if dpi <= 0 or w_px <= 0 or h_px <= 0:
+        return True
+    return _red_mean_diameter_um(w_px, h_px, dpi) >= RED_MIN_MEAN_UM
+
+
+def _classify_red_size_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
+    """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定大小异常。
+
+    调用前应已丢掉平均直径 < RED_MIN_MEAN_UM 的框。
+    """
+    avg_um = _red_mean_diameter_um(w_px, h_px, dpi)
     if avg_um < 6:
         label_id = "20"
     elif avg_um < 10:
@@ -1624,6 +1645,9 @@ def _infer_714756_bm_from_pipeline_json(
 
     if red_num > 0 and rd is not None:
 
+        def _keep_mature_rbc(w_px: float, h_px: float) -> bool:
+            return _keep_red_box_for_classify(w_px, h_px, dpi)
+
         def _red_extra(i: int) -> dict[str, Any]:
             row = np.asarray(rd[i]).flatten()
             w_px = float(row[2]) if len(row) >= 4 else 0.0
@@ -1645,7 +1669,9 @@ def _infer_714756_bm_from_pipeline_json(
 
         if classify_rbc:
             rbc_cells = _cells_from_xywh_detections(
-                rd, red_num, red_scores, 100005, "已分类红细胞", extra_builder=_red_extra,
+                rd, red_num, red_scores, 100005, "已分类红细胞",
+                extra_builder=_red_extra,
+                keep_box=_keep_mature_rbc,
             )
             rbc_list = _finalize_abnormal_top5_cells(
                 rbc_cells,
@@ -1662,6 +1688,7 @@ def _infer_714756_bm_from_pipeline_json(
         else:
             rbc_cells = _cells_from_xywh_detections(
                 rd, red_num, red_scores, 100002, "未分类红细胞",
+                keep_box=_keep_mature_rbc,
             )
             cells.extend(rbc_cells)
             scores_out.extend([c.bbox_confidence for c in rbc_cells])
