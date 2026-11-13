@@ -44,7 +44,10 @@ from backend.tools.model_control import (
     resolve_models,
     ResolvedModels,
 )
-from backend.tools.filter_edge_incomplete_cells import um_per_pixel_from_dpi
+from backend.tools.filter_edge_incomplete_cells import (
+    cell_should_drop_edge_elongated_1pct,
+    um_per_pixel_from_dpi,
+)
 from backend.tools.pipeline_guard import (
     PipelineUnavailable,
     assert_inference_allowed,
@@ -411,7 +414,9 @@ RED_SIZE_LABELS = {
     "20": "小红细胞",
     "21": "巨大红细胞",
 }
-# 分类前过滤：平均直径 (w+h)/2 严格小于该值（微米）的成熟红细胞不进入分类
+# 分类前过滤（满足任一即丢弃）：
+# 1. 平均直径 (w+h)/2 严格小于该值（微米）
+# 2. 与有核细胞相同的靠边规则：距图像边缘 1% 且长宽比 >= 1.5
 RED_MIN_MEAN_UM = 4.5
 
 PLAT_MORPH_LABELS = {
@@ -1183,7 +1188,7 @@ def _cells_from_xywh_detections(
     cell_type: int,
     default_type_name: str,
     extra_builder: Optional[Callable[[int], dict[str, Any]]] = None,
-    keep_box: Optional[Callable[[float, float], bool]] = None,
+    keep_box: Optional[Callable[[float, float, float, float], bool]] = None,
 ) -> List[Cell]:
     type_name = _cell_type_name(cell_type, default_type_name)
     cells: List[Cell] = []
@@ -1192,8 +1197,8 @@ def _cells_from_xywh_detections(
         if len(row) < 4:
             continue
         x, y, w, h = float(row[0]), float(row[1]), float(row[2]), float(row[3])
-        # 先按框尺寸过滤，再对保留框做分类（extra_builder 仍用原始下标，与分类头对齐）
-        if keep_box is not None and not keep_box(w, h):
+        # 先按过小或靠边过滤，再对保留框做分类（extra_builder 仍用原始下标，与分类头对齐）
+        if keep_box is not None and not keep_box(x, y, w, h):
             continue
         det_score = float(det_scores[i]) if det_scores is not None and i < len(det_scores) else 1.0
         extra = extra_builder(i) if extra_builder else {}
@@ -1267,17 +1272,48 @@ def _red_mean_diameter_um(w_px: float, h_px: float, dpi: int) -> float:
     return (float(w_px) + float(h_px)) * um_px / 2.0
 
 
-def _keep_red_box_for_classify(w_px: float, h_px: float, dpi: int) -> bool:
-    """平均直径达到 RED_MIN_MEAN_UM 才保留。尺寸或 DPI 无效时保留，避免误删。"""
-    if dpi <= 0 or w_px <= 0 or h_px <= 0:
-        return True
-    return _red_mean_diameter_um(w_px, h_px, dpi) >= RED_MIN_MEAN_UM
+def _red_touches_edge_like_wbc(
+    x_px: float,
+    y_px: float,
+    w_px: float,
+    h_px: float,
+    image_w: int,
+    image_h: int,
+) -> bool:
+    """与有核细胞 714756 靠边规则相同：距边 1% 且长宽比 >= 1.5。"""
+    if image_w <= 0 or image_h <= 0 or w_px <= 0 or h_px <= 0:
+        return False
+    return cell_should_drop_edge_elongated_1pct(
+        int(x_px),
+        int(y_px),
+        int(x_px + w_px),
+        int(y_px + h_px),
+        int(image_w),
+        int(image_h),
+    )
+
+
+def _keep_red_box_for_classify(
+    x_px: float,
+    y_px: float,
+    w_px: float,
+    h_px: float,
+    dpi: int,
+    image_w: int = 0,
+    image_h: int = 0,
+) -> bool:
+    """过小或靠边则不保留。两条独立，满足任一即丢弃；尺寸或 DPI 无效时不做过小过滤。"""
+    too_small = False
+    if dpi > 0 and w_px > 0 and h_px > 0:
+        too_small = _red_mean_diameter_um(w_px, h_px, dpi) < RED_MIN_MEAN_UM
+    on_edge = _red_touches_edge_like_wbc(x_px, y_px, w_px, h_px, image_w, image_h)
+    return not (too_small or on_edge)
 
 
 def _classify_red_size_label_id(w_px: float, h_px: float, dpi: int) -> tuple[str, str]:
     """根据框宽高（像素）与 DPI 换算为微米后，按 (w+h)/2 判定大小异常。
 
-    调用前应已丢掉平均直径 < RED_MIN_MEAN_UM 的框。
+    调用前应已丢掉平均直径 < RED_MIN_MEAN_UM 的框，以及靠边细长框。
     """
     avg_um = _red_mean_diameter_um(w_px, h_px, dpi)
     if avg_um < 6:
@@ -1492,6 +1528,8 @@ def _infer_714756_bm_from_pipeline_json(
     *,
     dpi: int,
     resolved: Optional[ResolvedModels] = None,
+    image_w: int = 0,
+    image_h: int = 0,
 ) -> dict[str, Any]:
     # logger.info("714756_bm pipeline 原始返回:\n%s", res)
     if res.get("error"):
@@ -1645,8 +1683,10 @@ def _infer_714756_bm_from_pipeline_json(
 
     if red_num > 0 and rd is not None:
 
-        def _keep_mature_rbc(w_px: float, h_px: float) -> bool:
-            return _keep_red_box_for_classify(w_px, h_px, dpi)
+        def _keep_mature_rbc(x_px: float, y_px: float, w_px: float, h_px: float) -> bool:
+            return _keep_red_box_for_classify(
+                x_px, y_px, w_px, h_px, dpi, image_w=image_w, image_h=image_h,
+            )
 
         def _red_extra(i: int) -> dict[str, Any]:
             row = np.asarray(rd[i]).flatten()
@@ -1977,6 +2017,16 @@ def _post_unified_pipeline_infer(
     )
 
 
+def _peek_image_size(image_bytes: bytes) -> tuple[int, int]:
+    """只读图片头拿宽高，供红细胞靠边过滤使用。失败时返回 (0, 0)，不做靠边过滤。"""
+    try:
+        with Image.open(BytesIO(image_bytes)) as im:
+            return int(im.size[0]), int(im.size[1])
+    except Exception:
+        logger.debug("peek image size failed", exc_info=True)
+        return 0, 0
+
+
 def infer(
     image_bytes: bytes,
     dpi: int,
@@ -1988,6 +2038,7 @@ def infer(
     resolved: Optional[ResolvedModels] = None,
     route_dpi: Optional[int] = None,
     no_cls: bool = False,
+    filter_rbc_edge: bool = True,
 ) -> dict:
     """
     细胞检测推理。先 resolve_models 查 MODEL_TABLE，再 POST /infer（dpi=actual_dpi）。
@@ -1996,6 +2047,8 @@ def infer(
     平扫 upload_image 与单张识别均经 run_cell_image_infer 在推理前 load_models。
     gpu_id 未指定时经 next_triton_endpoint 轮询单卡选 endpoint。
     resolved / route_dpi 同时传入时跳过按请求 DPI 重新选模，用于强制走某一档模型。
+    filter_rbc_edge: 为 False 时不做红细胞靠边过滤。大图内部分块时关闭，避免切缝被当成图像边缘；
+    整图合并后仍按有核细胞同一条靠边规则过滤。
     """
     assert_inference_allowed()
     if resolved is None:
@@ -2057,8 +2110,9 @@ def infer(
     elif family == "meg":
         result = _infer_357378_from_pipeline_json(res_json, smear_type)
     elif family == "highres":
+        image_w, image_h = _peek_image_size(image_bytes) if filter_rbc_edge else (0, 0)
         result = _infer_714756_bm_from_pipeline_json(
-            res_json, smear_type, dpi=dpi, resolved=resolved
+            res_json, smear_type, dpi=dpi, resolved=resolved, image_w=image_w, image_h=image_h,
         )
     else:
         result = {"cells": [], "scores": [], "cell_list": []}

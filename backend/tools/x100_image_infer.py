@@ -485,7 +485,7 @@ def infer_x100_on_bgr(
     """对单张 BGR 图推理：必要时按模型最大尺寸分块，返回 cell_list / cells。"""
     h, w = int(bgr.shape[0]), int(bgr.shape[1])
 
-    def _run_infer(tile_bytes: bytes) -> dict[str, Any]:
+    def _run_infer(tile_bytes: bytes, *, filter_rbc_edge: bool = True) -> dict[str, Any]:
         # resolved / route_dpi 仅小程序强制档位时传入；平扫和单张保持原来的选模。
         extra: dict[str, Any] = {}
         if resolved is not None:
@@ -494,6 +494,7 @@ def infer_x100_on_bgr(
             extra["route_dpi"] = route_dpi
         if no_cls:
             extra["no_cls"] = True
+        extra["filter_rbc_edge"] = filter_rbc_edge
         return infer(
             tile_bytes,
             dpi=infer_dpi,
@@ -531,7 +532,7 @@ def infer_x100_on_bgr(
             if crop.size == 0:
                 cell_lists[(y0, y1, x0, x1)] = []
                 continue
-            part = _run_infer(encode_bgr_jpeg(crop))
+            part = _run_infer(encode_bgr_jpeg(crop), filter_rbc_edge=False)
             warning = warning or part.get("warning")
             raw_list = part.get("cell_list") or []
             cells = part.get("cells") or []

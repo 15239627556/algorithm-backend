@@ -208,7 +208,7 @@ yunwei_plat = os.environ.get("YUNWEI_PLAT", "").strip()
 # 需要启动运维平台注册时设置环境变量：YUNWEI_PLAT=http://192.168.31.80:9000/
 sufa_name = "SUANFA_AI"
 # manifest.json 没有 version 时才回退到这里
-sufa_version = "v1.0.7"
+sufa_version = "v1.0.8"
 # 是否显示文档
 is_doc = True
 
