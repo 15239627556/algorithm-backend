@@ -26,8 +26,8 @@ from .project_info import load_dpi_and_orientation
 
 @dataclass(frozen=True)
 class VizConfigRBC:
-    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/PB/视野框偏离/20261110041/57008613f5bc46ecb8a402480e9551a8.roi.npz"
-    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/PB/视野框偏离/20261110041/output"
+    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/6楼-办公室平替/PB/选区不好/20261112012/f5569c8160cd4a39803601f26675b8f8.roi.npz"
+    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/6楼-办公室平替/PB/选区不好/20261112012/output"
 
     result_json_name: str = "results_rbc.json"
 
@@ -208,8 +208,8 @@ def main() -> None:
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
                         # user_choice_area=user_choice_area,
                         dpi=info.dpi,
-                        x100_rect_width=383,
-                        x100_rect_height=287,
+                        x100_rect_width=496,
+                        x100_rect_height=415,
                         heatmap_orientation=info.heatmap_orientation,
                         View_type="wbc", 
                         Smear_type=smear_type,

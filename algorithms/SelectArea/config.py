@@ -83,7 +83,7 @@ class BM40Config:
     coast_erode_ksize_bm: Tuple[int, int] = field(default=(23, 19), init=False)
     coast_erode_iters_bm: int = field(default=2, init=False)
     coast_erode_ksize_pb: Tuple[int, int] = field(default=(35, 29), init=False)
-    coast_erode_iters_pb: int = field(default=2, init=False)
+    coast_erode_iters_pb: int = field(default=3, init=False)
     coast_penalty_distance: float = field(default=20.0, init=False)  # 海岸惩罚渐变距离
 
     # BM 的 logPrior 约为 -2~-13，惩罚尺度参考 x40 gai25。
