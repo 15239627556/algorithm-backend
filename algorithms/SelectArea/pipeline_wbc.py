@@ -85,6 +85,7 @@ class WBCSamplingPipeline:
         self.task_rects = None     # 存储网格坐标任务区域 
         self.forbidden_mask = None # 存储禁区掩码（label=5）
         self.bubble_forbidden_mask = None  # 空泡膨胀禁区
+        self.pre_expand_res = None  # 外扩前的选区（未外扩则为 None）
         self.user_search_mask = None # 存储用户选区掩码
 
 
@@ -258,6 +259,7 @@ class WBCSamplingPipeline:
                 )
 
         # 7.5 细胞不足：围着最终选区按行/列外扩，后续 Initial/补拍覆盖扩大后的选区
+        pre_expand = self.best_res
         self.best_res = expand_selection_to_target(
             best_res=self.best_res,
             cell_matrix=self.cell_matrix,
@@ -266,6 +268,8 @@ class WBCSamplingPipeline:
             user_search_mask=self.user_search_mask,
             confine_to_user_mask=not expand_beyond_user,
         )
+        if self.best_res is not pre_expand:
+            self.pre_expand_res = pre_expand
 
         # 8. 生成拍摄区域（初始拍摄框 + 补拍区域）：规避 label=5 与空泡
         region_forbidden = self.forbidden_mask

@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import traceback
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence, TextIO, Tuple
 
 import matplotlib
 
@@ -25,19 +28,22 @@ root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
+from project.smear_project import SmearProject
+from project.roi_store import RoiDataset
+
 from .config import BM40Config
 from .data_structure import TaskOutput
 from .main_rbc import visualize_results as visualize_rbc_results
 from .main_wbc import visualize_results as visualize_wbc_results
-from .main_wbc_meg import (
-    _load_data,
-    _pick_input_source,
-    discover_projects,
-    tee_stdio,
-)
 from .pipeline_rbc import RBCSamplingPipeline
 from .pipeline_wbc import WBCSamplingPipeline
-from .project_info import load_dpi_and_orientation, load_project_info
+from .project_info import (
+    load_dpi_and_orientation,
+    load_project_info,
+    resolve_info_path,
+    resolve_roi_path,
+    slide_stem,
+)
 
 
 DEFAULT_DATA_ROOT = Path("/home/ubuntu/VScodeProjects/项目json数据/20260807_project")
@@ -48,6 +54,237 @@ X100_WBC_HEIGHT = 415
 X100_RBC_WIDTH = 482
 X100_RBC_HEIGHT = 403
 
+_SKIP_JSON_NAMES = frozenset(
+    {
+        "results.json",
+        "results_meg.json",
+        "results_wbc.json",
+        "results_rbc.json",
+        "summary.json",
+        "batch_summary.json",
+        "info_used.json",
+        "param.json",
+        "oil_dropped.json",
+    }
+)
+
+
+class _TeeStream:
+    def __init__(self, *streams: TextIO) -> None:
+        self.streams = streams
+
+    def write(self, data: str) -> int:
+        n = 0
+        for s in self.streams:
+            try:
+                n = s.write(data)
+                s.flush()
+            except Exception:
+                pass
+        return n
+
+    def flush(self) -> None:
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+    def isatty(self) -> bool:
+        return False
+
+    @property
+    def encoding(self) -> str:
+        return getattr(self.streams[0], "encoding", "utf-8") or "utf-8"
+
+
+@contextmanager
+def tee_stdio(log_path: Path) -> Iterator[Path]:
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_f = open(log_path, "a", encoding="utf-8")
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout = _TeeStream(old_out, log_f)  # type: ignore[assignment]
+    sys.stderr = _TeeStream(old_err, log_f)  # type: ignore[assignment]
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\n========== batch start {ts} ==========")
+        print(f"[LOG] 运行日志: {log_path}")
+        yield log_path
+    finally:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"========== batch end {ts} ==========\n")
+        sys.stdout = old_out
+        sys.stderr = old_err
+        try:
+            log_f.close()
+        except Exception:
+            pass
+
+
+@dataclass(frozen=True)
+class ProjectPaths:
+    project_dir: Path
+    json_path: Optional[Path]
+    info_path: Path
+    roi_path: Optional[Path]
+    out_key: str
+
+    @property
+    def slide_path(self) -> Path:
+        if self.roi_path is not None:
+            return self.roi_path
+        if self.json_path is not None:
+            return self.json_path
+        return self.info_path
+
+
+def discover_projects(
+    inputs: Sequence[Path],
+    data_root: Optional[Path] = None,
+) -> List[ProjectPaths]:
+    data_root_res = data_root.resolve() if data_root is not None else None
+    found: Dict[Tuple[Path, str], ProjectPaths] = {}
+
+    def _out_key_for(project_dir: Path, stem: str) -> str:
+        parent = project_dir.resolve()
+        if data_root_res is not None:
+            try:
+                rel = parent.relative_to(data_root_res)
+                if str(rel) == ".":
+                    return stem
+                return str(rel).replace("\\", "/")
+            except ValueError:
+                pass
+        if parent.name:
+            return (
+                f"{parent.parent.name}/{parent.name}".strip("/")
+                if parent.parent.name
+                else parent.name
+            )
+        return stem
+
+    def _is_auxiliary_json(path: Path) -> bool:
+        name = path.name
+        if name.endswith(".info.json") or name in _SKIP_JSON_NAMES:
+            return True
+        lower = name.lower()
+        if lower.endswith((".req.json", ".res.json", ".dzi.json")):
+            return True
+        stem = path.stem
+        if stem.endswith(("_before_dedup", "_old", "_dedup")):
+            return True
+        prefixes = ("point", "meg_point", "global", "rect", "report", "app", "batch_")
+        if any(stem.startswith(p) for p in prefixes):
+            return True
+        if "PointFocusReferZs" in name or name.endswith("_shoot.json") or name.endswith("_cells.json"):
+            return True
+        if name.endswith("_data.json") or name.endswith("_match.json") or name.endswith("_select.json"):
+            return True
+        return False
+
+    def _try_add(slide_path: Path) -> None:
+        slide_path = slide_path.resolve()
+        if not slide_path.is_file():
+            return
+        name = slide_path.name
+        if name.endswith(".json") and not name.endswith(".info.json") and _is_auxiliary_json(slide_path):
+            return
+        if not (
+            name.endswith(".roi.npz")
+            or name.endswith(".info.json")
+            or name.endswith(".json")
+        ):
+            return
+
+        stem = slide_stem(slide_path)
+        if stem.endswith(("_before_dedup", "_old", "_dedup")):
+            return
+        info_path = resolve_info_path(slide_path)
+        if info_path is None:
+            print(f"[SKIP] 无 info 文件，跳过: {slide_path}")
+            return
+
+        project_dir = slide_path.parent
+        roi_path = resolve_roi_path(slide_path)
+        json_cand = project_dir / f"{stem}.json"
+        json_path = json_cand.resolve() if json_cand.is_file() else None
+        if roi_path is None and json_path is None:
+            print(f"[SKIP] 无 .roi.npz / .json，跳过: {slide_path}")
+            return
+
+        key = (project_dir.resolve(), stem)
+        if key in found:
+            return
+        found[key] = ProjectPaths(
+            project_dir=project_dir.resolve(),
+            json_path=json_path,
+            info_path=info_path.resolve(),
+            roi_path=roi_path.resolve() if roi_path is not None else None,
+            out_key=_out_key_for(project_dir, stem),
+        )
+
+    for raw in inputs:
+        path = Path(raw).expanduser().resolve()
+        if path.is_file():
+            _try_add(path)
+        elif path.is_dir():
+            for rp in sorted(path.rglob("*.roi.npz")):
+                _try_add(rp)
+            for jp in sorted(path.rglob("*.json")):
+                if jp.name.endswith(".info.json") or _is_auxiliary_json(jp):
+                    continue
+                stem = slide_stem(jp)
+                if (jp.parent.resolve(), stem) in found:
+                    continue
+                _try_add(jp)
+        else:
+            print(f"[WARN] 路径不存在: {path}")
+
+    return sorted(found.values(), key=lambda p: p.out_key)
+
+
+def _pick_input_source(prefer: str, roi_path: Optional[Path]) -> str:
+    env = os.getenv("SELECT_AREA_INPUT_SOURCE", "").strip().lower()
+    if env in ("json", "roi"):
+        return env
+    prefer = (prefer or "auto").strip().lower()
+    if prefer == "auto":
+        return "roi" if roi_path is not None else "json"
+    return prefer
+
+
+def _load_data(
+    json_path: Optional[Path],
+    roi_path: Optional[Path],
+    input_source: str,
+    dpi: int,
+) -> Tuple[Any, Any, str, int, int]:
+    project = None
+    roi = None
+    if input_source == "roi":
+        if roi_path is None:
+            raise ValueError("input_source=roi 但未找到 .roi.npz")
+        roi = RoiDataset.load(str(roi_path))
+        smear_type = roi.smear_type
+        if not roi.tiles:
+            raise ValueError(f"ROI 无 Tile: {roi_path}")
+        first = roi.tiles[0]
+        return project, roi, smear_type, int(first.w), int(first.h)
+
+    if input_source == "json":
+        if json_path is None:
+            raise ValueError("input_source=json 但未找到项目 .json")
+        project = SmearProject.load_json(str(json_path))
+        smear_type = project.smear_type
+        layer = project.get_layer(dpi)
+        if layer is None or not layer.tiles:
+            raise ValueError(f"项目缺少 dpi={dpi} 的 Tile: {json_path}")
+        first = next(iter(layer.tiles.values()))
+        return project, roi, smear_type, int(first.w), int(first.h)
+
+    raise ValueError(f"不支持的 input_source: {input_source!r}")
+
 
 def run_one_project(
     proj,
@@ -57,7 +294,8 @@ def run_one_project(
     target_cell_num_wbc: int = 200,
     skip_viz: bool = False,
 ) -> Dict[str, Any]:
-    params = load_dpi_and_orientation(proj.json_path)
+    slide_path = proj.slide_path
+    params = load_dpi_and_orientation(slide_path)
     smear_type = (params.smear_type or "").strip().upper()
     if smear_type not in ("BM", "PB"):
         raise ValueError(f"不支持的 smear_type={params.smear_type!r}，仅支持 BM/PB")
@@ -76,7 +314,8 @@ def run_one_project(
         json.dump(
             {
                 "source_info": str(params.info_path),
-                "source_json": str(proj.json_path),
+                "source_slide": str(slide_path),
+                "source_json": str(proj.json_path) if proj.json_path else None,
                 "source_roi": str(proj.roi_path) if proj.roi_path else None,
                 "dpi": params.dpi,
                 "heatmap_orientation": params.heatmap_orientation,
@@ -96,6 +335,7 @@ def run_one_project(
     input_source = _pick_input_source(input_source_pref, proj.roi_path)
     print(f"\n{'=' * 60}")
     print(f"[PROJECT] {proj.out_key}")
+    print(f"  slide: {slide_path}")
     print(f"  json : {proj.json_path}")
     print(f"  info : {params.info_path}")
     print(f"  roi  : {proj.roi_path}")
@@ -146,8 +386,7 @@ def run_one_project(
             user_search_mask=pipeline.user_search_mask,
             save_path_base=out_dir,
         )
-        if not is_bm:
-            visualize_kwargs["pre_expand_res"] = pipeline.pre_expand_res
+        visualize_kwargs["pre_expand_res"] = pipeline.pre_expand_res
         visualize(**visualize_kwargs)
 
     summary: Dict[str, Any] = {

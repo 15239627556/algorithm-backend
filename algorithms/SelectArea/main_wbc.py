@@ -30,9 +30,9 @@ from .project_info import load_dpi_and_orientation
 @dataclass(frozen=True)
 class VizConfig:
     # 输入与输出路径配置
-    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/57008613f5bc46ecb8a402480e9551a8.json"
-    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/57008613f5bc46ecb8a402480e9551a8.roi.npz"
-    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/23楼-海德星/BM/视野框偏离/20261110041/output"
+    json_path: str = "/home/ubuntu/VScodeProjects/项目json数据/安徽医院/BM/20261117025/f38b4b9eeebe4d8dbcb3e8a1f820595f.json"
+    roi_path: str = "/home/ubuntu/VScodeProjects/项目json数据/安徽医院/BM/20261117025/f38b4b9eeebe4d8dbcb3e8a1f820595f.roi.npz"
+    out_dir: str = "/home/ubuntu/VScodeProjects/项目json数据/安徽医院/BM/20261117025/output"
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
         
@@ -67,7 +67,8 @@ def visualize_results(
     tasks: List["TaskOutput"], 
     grid_info: Any, 
     save_path_base: Path,
-    user_search_mask: np.ndarray = None  
+    user_search_mask: np.ndarray = None,
+    pre_expand_res: "SelectionResult | None" = None,
 ):
     """
     可视化结果，并在图 2 上绘制用户约束区域（如有）。
@@ -124,7 +125,15 @@ def visualize_results(
         linestyle='-', label='Final Selection', zorder=10
     )
     ax2.add_patch(polygon)
-    
+
+    # C. 外扩前的原选区 - 橙色虚线（仅在发生外扩时绘制）
+    if pre_expand_res is not None:
+        polygon_pre = patches.Polygon(
+            pre_expand_res.vertices_grid, linewidth=2, edgecolor='orange', facecolor='none',
+            linestyle='--', label='Selection Before Expand', zorder=11
+        )
+        ax2.add_patch(polygon_pre)
+
     ax2.set_title("Figure 2: Final Selection & User Constraint on Heatmap")
     ax2.legend(loc='upper right') # 显示图例以区分两个框
     
@@ -243,8 +252,8 @@ def main() -> None:
     bm_cfg = BM40Config(target_cell_num_WBC=200, 
                         # user_choice_area=user_choice_area,
                         dpi=info.dpi,
-                        x100_rect_width=383,
-                        x100_rect_height=287,
+                        x100_rect_width=473,
+                        x100_rect_height=396,
                         View_type="WBC", 
                         heatmap_orientation=info.heatmap_orientation,
                         Smear_type=smear_type,
@@ -278,7 +287,8 @@ def main() -> None:
             tasks=final_task_list,
             grid_info=pipeline.grid,
             user_search_mask=pipeline.user_search_mask,
-            save_path_base=Path(viz_cfg.out_dir)
+            save_path_base=Path(viz_cfg.out_dir),
+            pre_expand_res=pipeline.pre_expand_res,
         )
 
 

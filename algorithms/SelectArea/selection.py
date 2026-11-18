@@ -726,6 +726,167 @@ def selection_covering_user_mask(
     )
 
 
+def _rotated_rect_frame(vertices: np.ndarray):
+    """
+    选区顶点是带旋转角度的矩形时，返回 (原点, 单位向量u, 单位向量v, 边长L1, 边长L2)；
+    轴对齐矩形或非矩形返回 None（走按行/列平移的外扩路径）。
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    if v.shape != (4, 2):
+        return None
+    e1, e2 = v[1] - v[0], v[3] - v[0]
+    l1, l2 = float(np.hypot(*e1)), float(np.hypot(*e2))
+    if l1 <= 0 or l2 <= 0:
+        return None
+    u, w = e1 / l1, e2 / l2
+    if abs(float(u @ w)) > 1e-3:
+        return None
+    if min(abs(u[0]), abs(u[1])) < 1e-6:
+        return None
+    return v[0], u, w, l1, l2
+
+
+def _expand_rotated_selection(
+    best_res: SelectionResult,
+    cell_matrix: np.ndarray,
+    score_map: np.ndarray,
+    allow: np.ndarray,
+    target_num: float,
+    frame,
+) -> SelectionResult:
+    """
+    旋转矩形选区外扩：在矩形自己的坐标系里，每步把 +u / -u / +v / -v 之一
+    的边向外推一格，结果始终是同一旋转角度的矩形。方向选择规则与轴对齐路径一致：
+    新增细胞数优先，其次该边外侧半平面的细胞数，最后是新增有效格数。
+    """
+    rows, cols = cell_matrix.shape
+    origin, u, w, l1, l2 = frame
+    cells = np.rint(cell_matrix).astype(np.int64)
+    cells_allowed = np.where(allow, cells, 0)
+    total_allowed = int(cells_allowed.sum())
+
+    def corners(a0: float, a1: float, b0: float, b1: float) -> np.ndarray:
+        return np.array(
+            [origin + a * u + b * w for a, b in ((a0, b0), (a1, b0), (a1, b1), (a0, b1))]
+        )
+
+    def raster(poly: np.ndarray):
+        """与下游 fillPoly(vertices.astype(int32)) 完全一致的栅格化，只在包围窗口内做。"""
+        pts = poly.astype(np.int32)
+        wx0 = max(0, int(pts[:, 0].min()) - 1)
+        wy0 = max(0, int(pts[:, 1].min()) - 1)
+        wx1 = min(cols, int(pts[:, 0].max()) + 2)
+        wy1 = min(rows, int(pts[:, 1].max()) + 2)
+        if wx1 <= wx0 or wy1 <= wy0:
+            return None
+        m = np.zeros((wy1 - wy0, wx1 - wx0), dtype=np.uint8)
+        cv2.fillPoly(m, [pts - np.array([wx0, wy0], dtype=np.int32)], 1)
+        return wy0, wy1, wx0, wx1, m > 0
+
+    covered_u8 = np.zeros((rows, cols), dtype=np.uint8)
+    cv2.fillPoly(covered_u8, [best_res.vertices_grid.astype(np.int32)], 1)
+    covered = covered_u8 > 0
+    if not covered.any():
+        return best_res
+    covered_allowed = int(cells_allowed[covered].sum())
+    if total_allowed - covered_allowed <= 0:
+        return best_res
+    current_count = int(cells[covered].sum())
+
+    # 各边外侧半平面细胞数：已选区域整体落在 [a0,a1]x[b0,b1] 内，
+    # 外侧细胞必然未覆盖，按沿 u / v 的投影排序后用前缀和查询。
+    ys, xs = np.nonzero(cells_allowed > 0)
+    cnt = cells_allowed[ys, xs]
+    pa = (xs - origin[0]) * u[0] + (ys - origin[1]) * u[1]
+    pb = (xs - origin[0]) * w[0] + (ys - origin[1]) * w[1]
+
+    def _sorted_prefix(proj: np.ndarray):
+        order = np.argsort(proj, kind="stable")
+        return proj[order], np.concatenate(([0], np.cumsum(cnt[order])))
+
+    pa_s, pa_c = _sorted_prefix(pa)
+    pb_s, pb_c = _sorted_prefix(pb)
+
+    def _beyond_hi(sorted_p, prefix, thr):
+        return int(prefix[-1] - prefix[np.searchsorted(sorted_p, thr, side="right")])
+
+    def _beyond_lo(sorted_p, prefix, thr):
+        return int(prefix[np.searchsorted(sorted_p, thr, side="left")])
+
+    start_count = int(best_res.cell_count)
+    print(
+        f"[INFO] 最终选区细胞数 {start_count} < 目标 {target_num:.0f}，"
+        f"沿旋转矩形自身的边按行/列外扩补足。"
+    )
+
+    a0, a1, b0, b1 = 0.0, l1, 0.0, l2
+    steps = 0
+    max_iter = rows + cols
+    while steps < max_iter:
+        if current_count >= target_num:
+            break
+        if total_allowed - covered_allowed <= 0:
+            break
+
+        candidates = (
+            ("+u", (a0, a1 + 1.0, b0, b1), _beyond_hi(pa_s, pa_c, a1)),
+            ("-u", (a0 - 1.0, a1, b0, b1), _beyond_lo(pa_s, pa_c, a0)),
+            ("+v", (a0, a1, b0, b1 + 1.0), _beyond_hi(pb_s, pb_c, b1)),
+            ("-v", (a0, a1, b0 - 1.0, b1), _beyond_lo(pb_s, pb_c, b0)),
+        )
+        best = None
+        best_key = (-1, -1, -1)
+        for _, ext, halfplane in candidates:
+            r = raster(corners(*ext))
+            if r is None:
+                continue
+            wy0, wy1, wx0, wx1, m = r
+            new_area = m & ~covered[wy0:wy1, wx0:wx1] & allow[wy0:wy1, wx0:wx1]
+            allow_hits = int(np.count_nonzero(new_area))
+            if allow_hits <= 0:
+                continue
+            new_cells = int(cells_allowed[wy0:wy1, wx0:wx1][new_area].sum())
+            key = (new_cells, halfplane, allow_hits)
+            if key > best_key:
+                best_key = key
+                best = (ext, r)
+
+        if best is None:
+            break
+        if best_key[0] <= 0 and best_key[1] <= 0:
+            break
+
+        (a0, a1, b0, b1), (wy0, wy1, wx0, wx1, m) = best
+        # 新矩形严格包住旧矩形，窗口外没有已覆盖像素，直接用新栅格替换窗口
+        covered[wy0:wy1, wx0:wx1] = m
+        current_count = int(cells[wy0:wy1, wx0:wx1][m].sum())
+        covered_allowed = int(cells_allowed[wy0:wy1, wx0:wx1][m].sum())
+        steps += 1
+
+    if steps <= 0:
+        return best_res
+
+    poly = corners(a0, a1, b0, b1).astype(np.float32)
+    finite = np.isfinite(score_map) & covered
+    area_score = (
+        float(np.mean(score_map[finite])) if np.any(finite) else float(best_res.area_score)
+    )
+    cx, cy = poly.mean(axis=0)
+    expanded = SelectionResult(
+        area_score=area_score,
+        cell_count=current_count,
+        angle=best_res.angle,
+        center_grid=(int(round(cx)), int(round(cy))),
+        rect_size_grid=(int(round(a1 - a0)), int(round(b1 - b0))),
+        vertices_grid=poly,
+    )
+    print(
+        f"[INFO] 选区外扩完成: 细胞 {start_count} -> {expanded.cell_count}，"
+        f"矩形边长=({a1 - a0:.0f}, {b1 - b0:.0f})，步数={steps}。"
+    )
+    return expanded
+
+
 def expand_selection_to_target(
     best_res: SelectionResult,
     cell_matrix: np.ndarray,
@@ -736,11 +897,16 @@ def expand_selection_to_target(
     confine_to_user_mask: bool = True,
 ) -> SelectionResult:
     """
-    最终选区细胞数不足目标时，按补拍方式围着选区一次扩一行/一列。
+    最终选区细胞数不足目标时，围着原选区的边缘一次扩一行/一列。
 
+    直接在原选区形状（BM 为旋转矩形，PB 为轴对齐矩形）的掩码上逐层外扩：
+    每一步把掩码向 上/下/左/右 之一平移一格并并入新增的一层。
     优先扩进新细胞更多的方向；当前圈没有细胞时，朝选区外仍有细胞的半平面走。
     受图像边界和有效评分区约束。用户框细胞总数已够时，外扩停在框内；
     用户框细胞总数不足时，允许扩出框外，直到细胞数达到目标。
+
+    选区是轴对齐矩形时，按图像的行/列逐层外扩；选区带旋转角度时，沿矩形
+    自身的边外扩（见 _expand_rotated_selection），结果仍是同角度的旋转矩形。
     """
     target_num = config.target_cell_num_WBC * config.target_ratio
     if best_res is None or best_res.cell_count >= target_num:
@@ -751,27 +917,41 @@ def expand_selection_to_target(
         return best_res
 
     score_map = grid.finalize(fill_value=config.heatmap_penalty_value)
-    allow_mask = (build_valid_score_mask(grid, config, score_map) > 0).astype(np.uint8)
+    allow = build_valid_score_mask(grid, config, score_map) > 0
     if confine_to_user_mask and user_search_mask is not None:
-        allow_mask = cv2.bitwise_and(allow_mask, (user_search_mask > 0).astype(np.uint8))
+        allow &= user_search_mask > 0
 
-    selection_mask = np.zeros((rows, cols), dtype=np.uint8)
-    cv2.fillPoly(selection_mask, [best_res.vertices_grid.astype(np.int32)], 1)
-    ys, xs = np.where(selection_mask > 0)
-    if xs.size == 0:
+    # 带旋转角度的矩形选区（BM 的 ±15°）：沿矩形自己的边外扩，保持同一旋转角度
+    frame = _rotated_rect_frame(best_res.vertices_grid)
+    if frame is not None:
+        return _expand_rotated_selection(
+            best_res, cell_matrix, score_map, allow, target_num, frame
+        )
+
+    # 轴对齐矩形（PB / 角度为 0 的 BM）：在原选区掩码上按图像行/列逐层外扩
+    covered_u8 = np.zeros((rows, cols), dtype=np.uint8)
+    cv2.fillPoly(covered_u8, [best_res.vertices_grid.astype(np.int32)], 1)
+    covered = covered_u8 > 0
+    ys0, xs0 = np.where(covered)
+    if xs0.size == 0:
         return best_res
+    y0, y1 = int(ys0.min()), int(ys0.max()) + 1  # 当前外接范围 [y0, y1) x [x0, x1)
+    x0, x1 = int(xs0.min()), int(xs0.max()) + 1
 
-    cur_x, cur_y = int(xs.min()), int(ys.min())
-    cur_w, cur_h = int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)
-    start_count = int(np.sum(cell_matrix[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w]))
-    if start_count >= target_num:
-        return best_res
+    cells = np.rint(cell_matrix).astype(np.int64)
+    cells_allowed = np.where(allow, cells, 0)
+    total_allowed = int(cells_allowed.sum())
+    covered_allowed = int(cells_allowed[covered].sum())
+    if total_allowed - covered_allowed <= 0:
+        return best_res  # 选区外已无可扩的细胞
 
-    start_covered = np.zeros((rows, cols), dtype=np.uint8)
-    start_covered[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w] = 1
-    if not np.any((cell_matrix > 0) & (allow_mask > 0) & (start_covered == 0)):
-        return best_res
+    # 半平面细胞数：已选区域整体落在外接范围内，范围外一侧全是未覆盖细胞，
+    # 用行/列前缀和即可 O(1) 得到。
+    row_prefix = np.concatenate(([0], np.cumsum(cells_allowed.sum(axis=1))))
+    col_prefix = np.concatenate(([0], np.cumsum(cells_allowed.sum(axis=0))))
 
+    current_count = int(cells[covered].sum())
+    start_count = int(best_res.cell_count)
     print(
         f"[INFO] 最终选区细胞数 {start_count} < 目标 {target_num:.0f}，"
         f"按行/列外扩补足。"
@@ -780,79 +960,94 @@ def expand_selection_to_target(
     max_iter = rows + cols
     steps = 0
     while steps < max_iter:
-        covered = np.zeros((rows, cols), dtype=np.uint8)
-        covered[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w] = 1
-        current_count = int(np.sum(cell_matrix[covered > 0]))
         if current_count >= target_num:
             break
-
-        remaining_cells = (cell_matrix > 0) & (allow_mask > 0) & (covered == 0)
-        if not np.any(remaining_cells):
+        if total_allowed - covered_allowed <= 0:
             break
 
-        directions = [
-            ("top", cur_x, cur_y - 1, cur_w, 1),
-            ("bottom", cur_x, cur_y + cur_h, cur_w, 1),
-            ("left", cur_x - 1, cur_y, 1, cur_h),
-            ("right", cur_x + cur_w, cur_y, 1, cur_h),
-        ]
-        best_dir = None
-        best_new_cells = -1
-        best_halfplane_cells = -1
-        best_allow_hits = -1
+        # 只在外接范围 +1 的窗口内计算，窗口外不会受一格平移影响
+        wy0, wy1 = max(0, y0 - 1), min(rows, y1 + 1)
+        wx0, wx1 = max(0, x0 - 1), min(cols, x1 + 1)
+        cov = covered[wy0:wy1, wx0:wx1]
+        allow_w = allow[wy0:wy1, wx0:wx1]
+        cells_w = cells[wy0:wy1, wx0:wx1]
 
-        for _, dx, dy, dw, dh in directions:
-            if dx < 0 or dy < 0 or dx + dw > cols or dy + dh > rows:
-                continue
-            strip_allow = allow_mask[dy:dy + dh, dx:dx + dw]
-            strip_covered = covered[dy:dy + dh, dx:dx + dw]
-            new_area = (strip_allow > 0) & (strip_covered == 0)
-            allow_hits = int(np.count_nonzero(new_area))
+        halfplane_by_dir = {
+            "top": int(row_prefix[y0]),
+            "bottom": int(row_prefix[rows] - row_prefix[y1]),
+            "left": int(col_prefix[x0]),
+            "right": int(col_prefix[cols] - col_prefix[x1]),
+        }
+
+        best_strip = None
+        best_key = (-1, -1, -1)
+        for name in ("top", "bottom", "left", "right"):
+            shifted = np.zeros_like(cov)
+            if name == "top":
+                shifted[:-1, :] = cov[1:, :]
+            elif name == "bottom":
+                shifted[1:, :] = cov[:-1, :]
+            elif name == "left":
+                shifted[:, :-1] = cov[:, 1:]
+            else:
+                shifted[:, 1:] = cov[:, :-1]
+            strip = shifted & ~cov
+            strip_allowed = strip & allow_w
+            allow_hits = int(np.count_nonzero(strip_allowed))
             if allow_hits <= 0:
                 continue
-
-            new_cells = int(np.sum(cell_matrix[dy:dy + dh, dx:dx + dw][new_area]))
-            if dy == cur_y - 1:
-                halfplane = int(np.sum(cell_matrix[:cur_y, :][remaining_cells[:cur_y, :]]))
-            elif dy == cur_y + cur_h:
-                halfplane = int(np.sum(cell_matrix[cur_y + cur_h:, :][remaining_cells[cur_y + cur_h:, :]]))
-            elif dx == cur_x - 1:
-                halfplane = int(np.sum(cell_matrix[:, :cur_x][remaining_cells[:, :cur_x]]))
-            else:
-                halfplane = int(np.sum(cell_matrix[:, cur_x + cur_w:][remaining_cells[:, cur_x + cur_w:]]))
-
-            key = (new_cells, halfplane, allow_hits)
-            best_key = (best_new_cells, best_halfplane_cells, best_allow_hits)
+            new_cells = int(cells_w[strip_allowed].sum())
+            key = (new_cells, halfplane_by_dir[name], allow_hits)
             if key > best_key:
-                best_new_cells, best_halfplane_cells, best_allow_hits = key
-                best_dir = (dx, dy, dw, dh)
+                best_key = key
+                best_strip = (strip, strip_allowed)
 
-        if best_dir is None:
+        if best_strip is None:
             break
+        best_new_cells, best_halfplane_cells, _ = best_key
         if best_new_cells <= 0 and best_halfplane_cells <= 0:
             break
 
-        bx, by, bw, bh = best_dir
-        x1, y1 = min(cur_x, bx), min(cur_y, by)
-        x2, y2 = max(cur_x + cur_w, bx + bw), max(cur_y + cur_h, by + bh)
-        cur_x, cur_y, cur_w, cur_h = x1, y1, x2 - x1, y2 - y1
+        strip, strip_allowed = best_strip
+        covered[wy0:wy1, wx0:wx1] |= strip
+        current_count += int(cells_w[strip].sum())
+        covered_allowed += best_new_cells
+        sy, sx = np.where(strip)
+        y0 = min(y0, wy0 + int(sy.min()))
+        y1 = max(y1, wy0 + int(sy.max()) + 1)
+        x0 = min(x0, wx0 + int(sx.min()))
+        x1 = max(x1, wx0 + int(sx.max()) + 1)
         steps += 1
 
     if steps <= 0:
         return best_res
 
-    expanded = _selection_from_grid_rect(
-        cur_x,
-        cur_y,
-        cur_w,
-        cur_h,
-        cell_matrix,
-        score_map,
-        best_res.area_score,
-    )
+    if bool(covered[y0:y1, x0:x1].all()):
+        # 外扩后仍是轴对齐矩形（PB 或已填满外接范围）：沿用矩形表示
+        expanded = _selection_from_grid_rect(
+            x0, y0, x1 - x0, y1 - y0, cell_matrix, score_map, best_res.area_score
+        )
+    else:
+        # 带旋转角度的选区：外扩结果为沿原选区边缘生长的多边形
+        contours, _ = cv2.findContours(
+            covered.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        contour = max(contours, key=cv2.contourArea)
+        finite = np.isfinite(score_map) & covered
+        area_score = (
+            float(np.mean(score_map[finite])) if np.any(finite) else float(best_res.area_score)
+        )
+        expanded = SelectionResult(
+            area_score=area_score,
+            cell_count=int(cells[covered].sum()),
+            angle=best_res.angle,
+            center_grid=((x0 + x1) // 2, (y0 + y1) // 2),
+            rect_size_grid=(x1 - x0, y1 - y0),
+            vertices_grid=contour.reshape(-1, 2).astype(np.float32),
+        )
     print(
         f"[INFO] 选区外扩完成: 细胞 {start_count} -> {expanded.cell_count}，"
-        f"包围盒=({cur_x}, {cur_y}, {cur_w}, {cur_h})，步数={steps}。"
+        f"包围盒=({x0}, {y0}, {x1 - x0}, {y1 - y0})，步数={steps}。"
     )
     return expanded
 
