@@ -22,10 +22,7 @@ from .selection import (
     selection_covering_user_mask,
     expand_selection_to_target,
 )
-from .task_region_extraction import (
-    build_forbidden_mask,
-    generate_initial_and_extra_tasks,
-)
+from .task_region_extraction import generate_initial_and_extra_tasks
 from .task_wbc import (
     collect_valid_cells_vectorized,
     generate_wbc_view_tasks,
@@ -84,7 +81,7 @@ class RBCSamplingPipeline:
         self.best_res = None
         self.pre_expand_res = None
         self.task_rects = None
-        self.forbidden_mask = None  # label=5 禁区
+        self.forbidden_mask = None  # 血片不使用禁区（全 0）
         self.user_search_mask = None
 
     def run(
@@ -153,7 +150,8 @@ class RBCSamplingPipeline:
         target_num = self.cfg.target_cell_num_WBC * self.cfg.target_ratio
         head_rect = compute_head_crop(self.grid, self.cfg.heatmap_orientation, self.cfg)
         search_rects = generate_search_window_sizes(self.cfg)
-        self.forbidden_mask = build_forbidden_mask(self.grid, self.cfg, tiles=tiles)
+        # 血片没有骨髓小粒，label=5 不作为禁区；保留全 0 掩码，下游接口不变
+        self.forbidden_mask = np.zeros((rows, cols), dtype=np.uint8)
 
         # 用户框总数不够时，先以整框为选区，再允许向外扩出框外
         expand_beyond_user = False
@@ -239,7 +237,7 @@ class RBCSamplingPipeline:
         if self.best_res is not pre_expand:
             self.pre_expand_res = pre_expand
 
-        # 血片只规避 label=5，不做空泡过滤
+        # 血片不规避 label=5，也不做空泡过滤
         region_forbidden = self.forbidden_mask
         self.task_rects = generate_initial_and_extra_tasks(
             best_selection=self.best_res,
