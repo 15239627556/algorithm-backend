@@ -9,13 +9,14 @@
    （靠边细长框多为截断目标）。
 
 714756 ±10% 专用（filter_cell_dicts_edge_elongated_1pct）：
-仅对有核(200000-200034)、成熟红(100005/500000-500035)与巨核(100001)：靠边 1% 且 max(w/h,h/w)>=1.5 → 删除。
+对有核(200000-200034)、成熟红(100005/500000-500035)、巨核(100001)、
+脑脊液(400000-400011)：靠边 1% 且 max(w/h,h/w)>=1.5 → 删除。
 
 小程序专用（filter_cell_dicts_elongated_aspect）：
 仅对有核(200000-200034)、成熟红(100005/500000-500035)与巨核(100001)：max(w/h,h/w)>=1.5 → 删除（不看是否靠边）。
 
 714756 ±10% 专用（filter_cell_dicts_small_wbc_714756）：
-仅对有核(200000-200034)：宽、高换算为微米后均 < 6µm → 删除。
+对有核(200000-200034)与脑脊液(400000-400011)：宽、高换算为微米后均 < 6µm → 删除。
   每像素微米数 = 25.4 / dpi * 1000；框宽(高)微米 = 像素宽(高) * 每像素微米数。
 
 坐标约定与 dedup_cells_across_tiles 一致：cell 为 tile 内局部 xyxy；图像宽 tw、高 th，对应列 0..tw-1、行 0..th-1。
@@ -134,8 +135,11 @@ _TYPES_714756_EDGE_ELONGATED = (
     | {100005, 100001}
     | frozenset(range(500000, 500036))
 )
-# 714756 ±10%：有核(200000-200034) 过小框过滤
-_TYPES_714756_WBC = frozenset(range(200000, 200035))
+# 脑脊液分类结果（CELL_TYPE_CSF）：与有核相同，只参与靠边 1% 细长框过滤
+_TYPES_CSF = frozenset(range(400000, 400012))
+_TYPES_EDGE_ELONGATED_1PCT = _TYPES_714756_EDGE_ELONGATED | _TYPES_CSF
+# 714756 ±10%：有核(200000-200034)与脑脊液(400000-400011) 过小框过滤
+_TYPES_714756_WBC = frozenset(range(200000, 200035)) | _TYPES_CSF
 DEFAULT_MIN_WBC_UM_714756 = 6.0
 DEFAULT_EDGE_RATIO_1PCT = 0.01
 
@@ -208,12 +212,13 @@ def filter_cell_dicts_edge_elongated_1pct(
     image_w: int,
     image_h: int,
     *,
-    target_types: frozenset = _TYPES_714756_EDGE_ELONGATED,
+    target_types: frozenset = _TYPES_EDGE_ELONGATED_1PCT,
     edge_ratio: float = DEFAULT_EDGE_RATIO_1PCT,
     min_aspect_ratio: float = DEFAULT_MIN_ASPECT_RATIO,
 ) -> List[Dict[str, Any]]:
     """
-    仅对 target_types（默认有核 200000-200034、成熟红 100005、巨核 100001）做靠边 1% 细长框过滤。
+    仅对 target_types（默认有核 200000-200034、成熟红 100005/500000-500035、
+    巨核 100001、脑脊液 400000-400011）做靠边 1% 细长框过滤。
     其它类型原样保留；无法解析 bbox 的项原样保留。
     """
     out: List[Dict[str, Any]] = []
@@ -316,7 +321,7 @@ def cell_should_drop_small_wbc_714756(
     min_um: float = DEFAULT_MIN_WBC_UM_714756,
 ) -> bool:
     """
-    714756 ±10% 有核细胞：框宽、框高换算为微米后均严格小于 min_um 则丢弃。
+    714756 ±10% 有核与脑脊液：框宽、框高换算为微米后均严格小于 min_um 则丢弃。
     """
     box_w = int(xmax) - int(xmin)
     box_h = int(ymax) - int(ymin)
@@ -337,8 +342,8 @@ def filter_cell_dicts_small_wbc_714756(
     min_um: float = DEFAULT_MIN_WBC_UM_714756,
 ) -> List[Dict[str, Any]]:
     """
-    714756 ±10%：仅对 target_types（默认有核 200000-200034）过滤过小框。
-    其它类型原样保留；无法解析 bbox 的项原样保留。
+    714756 ±10%：仅对 target_types（默认有核 200000-200034、脑脊液 400000-400011）过滤过小框。
+    宽和高换算为微米后都严格小于 6µm 才丢弃。其它类型原样保留；无法解析 bbox 的项原样保留。
     """
     out: List[Dict[str, Any]] = []
     for d in cell_list:

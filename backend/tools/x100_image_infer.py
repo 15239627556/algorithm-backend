@@ -707,7 +707,7 @@ def run_cell_image_infer(
     平扫保持 False，只定位。可选分类器不存在时跳过，结果退回定位。
     no_cls: 为 True 时请求带 no_cls=true，只返回定位框。
     apply_post_filters: 为 False 时不做靠边过滤和 714756 过小有核过滤。
-    apply_small_wbc_filter: 为 False 时仍做靠边过滤，但跳过 714756 小于 6 微米的有核过滤。
+    apply_small_wbc_filter: 为 False 时仍做靠边过滤，但跳过 714756 宽和高都小于 6 微米的有核、脑脊液过滤。
     use_edge_1pct: 为 True 且不是 714756 模型时，靠边过滤改用原图 1% 且长宽比 >= 1.5。
     use_elongated_aspect: 为 True 时按长宽比 >= 1.5 过滤细长框，不看是否靠边；优先于靠边规则。
     仅小程序最终结果打开，单张和平扫仍用距边 1 像素或 5 像素 / 靠边 1% 细长框规则。
