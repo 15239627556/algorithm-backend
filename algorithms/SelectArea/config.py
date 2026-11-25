@@ -99,8 +99,11 @@ class BM40Config:
 
     # 候选平均分距最高分的差值 <= score_range * shape_score_close_ratio 时视为“接近分”。
     # 最终决选仅在接近分子集内：先比均匀性 u_score，再比形状（横向 > 近正方 > 纵向），最后比 area_score。
+    # u_score = 百倍窗占用率均值 * (主轴连续性 ^ power)；
+    # 连续性沿选区最长边（由四顶点导出，支持 BM 旋转角）按最长空档/跨度惩罚中间断层。
     shape_score_close_ratio: float = field(default=0.02, init=False) # 接近分容差比例（默认 2%）
     near_square_aspect_ratio: float = field(default=1.5, init=False) # 近正方形宽高比
+    uniformity_gap_penalty_power: float = field(default=3.0, init=False) # 主轴连续性惩罚指数（>=1 更厌恶断层）
 
     # --- 百倍视野选区覆盖算法参数 ---
     setcover_pad: int = field(default=100, init=False)     # 百倍视野选区覆盖算法时，搜索区域扩展像素数

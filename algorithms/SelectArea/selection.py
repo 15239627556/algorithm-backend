@@ -1130,15 +1130,96 @@ def sort_candidates_by_score_and_shape(
     return close_prefix + rest
 
 
+def _max_false_run(flags: np.ndarray) -> int:
+    """一维布尔序列中最长的连续 False 长度。"""
+    best = cur = 0
+    for occupied in flags.tolist():
+        if occupied:
+            cur = 0
+        else:
+            cur += 1
+            if cur > best:
+                best = cur
+    return best
+
+
+def _major_axis_from_vertices(vertices_grid: np.ndarray) -> Tuple[np.ndarray, float]:
+    """
+    从选区四顶点取最长边方向作为主轴。
+    返回 (单位方向向量 (dx, dy), 主轴长度)；坐标为网格 (x=col, y=row)。
+    """
+    pts = np.asarray(vertices_grid, dtype=np.float64).reshape(4, 2)
+    best_len = -1.0
+    best_edge = np.array([1.0, 0.0], dtype=np.float64)
+    for i in range(4):
+        edge = pts[(i + 1) % 4] - pts[i]
+        length = float(np.hypot(edge[0], edge[1]))
+        if length > best_len:
+            best_len = length
+            best_edge = edge
+    if best_len <= 1e-6:
+        return np.array([1.0, 0.0], dtype=np.float64), 0.0
+    return best_edge / best_len, best_len
+
+
+def _axis_continuity(
+    result: SelectionResult,
+    selection_mask: np.ndarray,
+    cell_matrix: np.ndarray,
+) -> float:
+    """
+    沿选区真实长边（含旋转）的细胞连续性：1 - 最长空档 / 跨度。
+    将有细胞的格子投影到主轴上按格长度分箱，惩罚中间断层；
+    对 BM 的 ±15° 及后续更大倾角同样适用。
+    """
+    presence = (np.asarray(cell_matrix) > 0) & (selection_mask > 0)
+    major_dir, major_len = _major_axis_from_vertices(result.vertices_grid)
+    if major_len <= 1e-6:
+        return 0.0
+
+    n_bins = max(1, int(round(major_len)))
+    half = 0.5 * major_len
+    cx = float(result.center_grid[0])
+    cy = float(result.center_grid[1])
+
+    ys, xs = np.where(presence)
+    if ys.size == 0:
+        return 0.0
+
+    proj = (xs.astype(np.float64) - cx) * major_dir[0] + (
+        ys.astype(np.float64) - cy
+    ) * major_dir[1]
+    # 投影落到主轴线段 [-half, half] 上再分箱
+    t = (proj + half) / max(major_len, 1e-6)
+    bin_idx = np.floor(t * n_bins).astype(np.int32)
+    bin_idx = bin_idx[(bin_idx >= 0) & (bin_idx < n_bins)]
+    if bin_idx.size == 0:
+        return 0.0
+
+    occupied = np.zeros(n_bins, dtype=bool)
+    occupied[bin_idx] = True
+    gap = _max_false_run(occupied)
+    return max(0.0, 1.0 - float(gap) / float(n_bins))
+
+
 def _uniformity_score(
     result: SelectionResult,
     u_map: np.ndarray,
+    cell_matrix: np.ndarray,
+    gap_penalty_power: float = 1.0,
 ) -> float:
+    """
+    平铺分 = 选区内百倍窗占用率均值 × (主轴连续性 ^ power)。
+    连续性沿选区最长边方向（由顶点导出，支持旋转）计算最长无细胞空档占比。
+    """
     mask = np.zeros(u_map.shape, dtype=np.uint8)
     cv2.fillPoly(mask, [result.vertices_grid.astype(np.int32)], 1)
     if not np.any(mask):
         return -1.0
-    return float(np.mean(u_map[mask > 0]))
+    mean_occupancy = float(np.mean(u_map[mask > 0]))
+    continuity = _axis_continuity(result, mask, cell_matrix)
+    power = max(float(gap_penalty_power), 0.0)
+    return mean_occupancy * (continuity ** power)
 
 
 def select_best_uniform_region(
@@ -1154,7 +1235,7 @@ def select_best_uniform_region(
     1. 按 area_score 降序；
     2. 与最高分差 <= score_range * shape_score_close_ratio 的进入“接近分”子集；
     3. 子集只有 1 个 → 直接返回（最高分胜出）；
-    4. 子集多个 → 比均匀性 u_score（选区内百倍窗细胞占用率均值）；
+    4. 子集多个 → 比均匀性 u_score（占用率均值 × 主轴连续性，惩罚中间断层）；
     5. u_score 相同 → 形状优先（横向 > 近正方 > 纵向）；
     6. 仍相同 → area_score 更高者。
     """
@@ -1171,10 +1252,11 @@ def select_best_uniform_region(
         return close_group[0]
 
     u_map = prepare_uniformity_map(cell_matrix, config)
+    gap_power = float(config.uniformity_gap_penalty_power)
     return min(
         close_group,
         key=lambda res: (
-            -_uniformity_score(res, u_map),
+            -_uniformity_score(res, u_map, cell_matrix, gap_power),
             get_shape_priority(res, config),
             -res.area_score,
         ),
