@@ -483,17 +483,20 @@ def unload_models_api(body: ModelControlBody):
     "/global_image_analysis",
     summary="全局图分析",
     description=(
-        "全局图分析接口（实际业务：骨髓/外周血玻片 ROI 选区与头部朝向识别）。"
-        "字段映射：roi=ROI选区，dir=头部朝向。"
+        "全局图分析接口（实际业务：骨髓/外周血玻片 ROI 选区、头部朝向与摆放识别）。"
+        "字段映射：roi=ROI选区，dir=头部朝向，placement=摆放/图片内容。"
         "内部转发 multi_pipeline POST /global/infer，模型固定为 "
-        "GLOBAL-IMAGE-ANALYSIS、GLOBAL-IMAGE-HEAD-DIR。"
+        "GLOBAL-IMAGE-ANALYSIS、GLOBAL-IMAGE-HEAD-DIR、SLIDE-PLACEMENT-DETECTION。"
     ),
 )
 async def global_image_analysis(
     request: Request,
     image_file: UploadFile = File(..., description="原图"),
     smear_type: str = Form(..., description="涂片类型 BM / PB / CF / CSF，大小写均可；CF 视为 CSF"),
-    task: str = Form(..., description="roi / dir / roi,dir，大小写均可，逗号或分号分隔"),
+    task: str = Form(
+        ...,
+        description="roi / dir / placement，可组合如 roi,dir,placement；大小写均可，逗号或分号分隔",
+    ),
 ):
     client_seq = request.headers.get("x-client-seq")
     filename = image_file.filename or "image.jpg"

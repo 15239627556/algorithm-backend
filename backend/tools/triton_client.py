@@ -67,9 +67,11 @@ MODEL_IMAGE_ENHANCE = "Image_enhance_pipeline"
 _FILTER_PIPELINE_TARGETS = frozenset({"image_enhance", "opencv_enhance"})
 GLOBAL_IMAGE_ANALYSIS_MODEL = "GLOBAL-IMAGE-ANALYSIS"
 GLOBAL_IMAGE_HEAD_DIR_MODEL = "GLOBAL-IMAGE-HEAD-DIR"
+SLIDE_PLACEMENT_DETECTION_MODEL = "SLIDE-PLACEMENT-DETECTION"
 _GLOBAL_TASK_MODELS = {
     "roi": GLOBAL_IMAGE_ANALYSIS_MODEL,
     "dir": GLOBAL_IMAGE_HEAD_DIR_MODEL,
+    "placement": SLIDE_PLACEMENT_DETECTION_MODEL,
 }
 _VALID_GLOBAL_SMEAR_TYPES = frozenset({"BM", "PB", "CSF"})
 _VALID_GLOBAL_TASKS = frozenset(_GLOBAL_TASK_MODELS.keys())
@@ -2165,7 +2167,8 @@ def _parse_global_infer_tasks(raw: str) -> tuple[str | None, frozenset[str] | No
         return "task is required", None
     invalid = sorted(tasks - _VALID_GLOBAL_TASKS)
     if invalid:
-        return f"invalid task {invalid}, allowed: roi, dir", None
+        allowed = ", ".join(sorted(_VALID_GLOBAL_TASKS))
+        return f"invalid task {invalid}, allowed: {allowed}", None
     return None, frozenset(tasks)
 
 
@@ -2195,7 +2198,8 @@ def infer_global_image(
 ) -> dict[str, Any]:
     """
     全局图分析：multi_pipeline_server POST /global/infer。
-    固定模型 GLOBAL-IMAGE-ANALYSIS（roi）与 GLOBAL-IMAGE-HEAD-DIR（dir）。
+    固定模型 GLOBAL-IMAGE-ANALYSIS（roi）、GLOBAL-IMAGE-HEAD-DIR（dir）、
+    SLIDE-PLACEMENT-DETECTION（placement）。
     """
     assert_inference_allowed()
     if not image_bytes:
